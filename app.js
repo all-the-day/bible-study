@@ -369,7 +369,7 @@ function renderFootnotes() {
       const notes = (state.bibleNotes || {})[key];
       if (notes) {
         notes.forEach((note, i) => {
-          items.push({ label: `${ch}:${v}${half} 注${i + 1}`, text: note });
+          items.push({ label: `${ch}:${v}${half} 注${i + 1}`, text: note, chapter: ch, verse: v, half });
         });
       }
     }
@@ -381,6 +381,8 @@ function renderFootnotes() {
   items.forEach(it => {
     const div = document.createElement('div');
     div.className = 'fn-item';
+    div.title = '点击定位到经文';
+    div.addEventListener('click', () => jumpToVerse(it.chapter, it.verse, it.half));
     const label = document.createElement('div');
     label.className = 'fn-label';
     label.textContent = it.label;
@@ -632,13 +634,26 @@ function bindEvents() {
       renderStudy();
     });
   });
-  // 选区标注
+  // 选区标注：桌面 mouseup + 移动端 touchend + selectionchange 兜底（防抖）
   document.addEventListener('mouseup', handleSelection);
+  document.addEventListener('touchend', handleSelection);
+  let _selTimer = null;
+  document.addEventListener('selectionchange', () => {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed) return;
+    clearTimeout(_selTimer);
+    _selTimer = setTimeout(handleSelection, 180);
+  });
   document.addEventListener('mousedown', (e) => {
     const tool = $('floatTool');
     if (tool.hidden) return;
     if (!tool.contains(e.target)) hideFloatTool();
   });
+  document.addEventListener('touchstart', (e) => {
+    const tool = $('floatTool');
+    if (tool.hidden) return;
+    if (!tool.contains(e.target)) hideFloatTool();
+  }, { passive: true });
   // 弹窗关闭
   $('popupBack').addEventListener('click', closePopup);
   $('popupClose').addEventListener('click', closePopup);
@@ -731,6 +746,12 @@ function plainOffset(vtext, node, offset) {
   return count;
 }
 
+// 工具栏按钮按下：桌面 mousedown + 移动端 touchstart（都 preventDefault 防选区塌掉）
+function bindPress(el, fn) {
+  el.addEventListener('mousedown', (e) => { e.preventDefault(); fn(); });
+  el.addEventListener('touchstart', (e) => { e.preventDefault(); fn(); }, { passive: false });
+}
+
 function showFloatTool(rect) {
   const tool = $('floatTool');
   tool.hidden = false;
@@ -740,7 +761,7 @@ function showFloatTool(rect) {
     const sw = document.createElement('div');
     sw.className = `sw ${c.id}`;
     sw.title = `${c.name}：${c.desc}`;
-    sw.addEventListener('mousedown', (e) => { e.preventDefault(); applyColor(c.id); });
+    bindPress(sw, () => applyColor(c.id));
     tool.appendChild(sw);
   });
   const sep = document.createElement('div');
@@ -750,13 +771,13 @@ function showFloatTool(rect) {
   const ul = document.createElement('button');
   ul.className = 'tool-btn';
   ul.textContent = '下划线';
-  ul.addEventListener('mousedown', (e) => { e.preventDefault(); applyUnderline(); });
+  bindPress(ul, applyUnderline);
   tool.appendChild(ul);
   // 笔记
   const nb = document.createElement('button');
   nb.className = 'tool-btn';
   nb.textContent = '加笔记';
-  nb.addEventListener('mousedown', (e) => { e.preventDefault(); addNote(); });
+  bindPress(nb, addNote);
   tool.appendChild(nb);
   const sep2 = document.createElement('div');
   sep2.className = 'tool-sep';
@@ -766,14 +787,14 @@ function showFloatTool(rect) {
   qt.className = 'tool-btn';
   qt.textContent = '引用到笔记';
   qt.title = '把选中文字（带出处）追加到本章笔记';
-  qt.addEventListener('mousedown', (e) => { e.preventDefault(); quoteToNotes(); });
+  bindPress(qt, quoteToNotes);
   tool.appendChild(qt);
   // 复制纯文本（自动过滤注号）
   const cp = document.createElement('button');
   cp.className = 'tool-btn';
   cp.textContent = '复制';
   cp.title = '复制纯文本（不含注号）';
-  cp.addEventListener('mousedown', (e) => { e.preventDefault(); copyPlainText(); });
+  bindPress(cp, copyPlainText);
   tool.appendChild(cp);
   // 定位
   const x = rect.left + rect.width / 2 - tool.offsetWidth / 2;
@@ -878,7 +899,7 @@ function showMarkTool(mark, annId) {
     const sw = document.createElement('div');
     sw.className = `sw ${c.id}` + (ann.colorId === c.id && !ann.underline ? ' active' : '');
     sw.title = `${c.name}：${c.desc}`;
-    sw.addEventListener('mousedown', (e) => { e.preventDefault(); changeAnnColor(annId, c.id); });
+    bindPress(sw, () => changeAnnColor(annId, c.id));
     tool.appendChild(sw);
   });
   const sep = document.createElement('div');
@@ -887,7 +908,7 @@ function showMarkTool(mark, annId) {
   const del = document.createElement('button');
   del.className = 'tool-btn';
   del.textContent = '删除';
-  del.addEventListener('mousedown', (e) => { e.preventDefault(); deleteAnn(annId); });
+  bindPress(del, () => deleteAnn(annId));
   tool.appendChild(del);
   const rect = mark.getBoundingClientRect();
   const x = rect.left + rect.width / 2 - tool.offsetWidth / 2;
