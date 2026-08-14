@@ -21,3 +21,4 @@ data/lifereading/
 
 # Vercel
 .vercel/
+.vercel

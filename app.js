@@ -41,7 +41,40 @@ function load(key, fallback) {
   try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
   catch (e) { return fallback; }
 }
-function save(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
+// 云同步客户端（sync.js 加载失败时静默降级为纯本地）
+const Sync = window.BibleStudySync || null;
+const SYNC_KEYS = [LS_ANNOTATIONS, LS_CHAPTER_NOTES];
+
+function save(key, val) {
+  localStorage.setItem(key, JSON.stringify(val));
+  if (Sync && SYNC_KEYS.includes(key)) {
+    Sync.putRemote(key, val);
+  }
+}
+
+// 启动时后台同步：服务器为主，成功后覆盖本地；再重试离线未推送的改动
+async function syncFromRemote() {
+  if (!Sync) return;
+  await Sync.pullAll(SYNC_KEYS);
+  state.annotations = load(LS_ANNOTATIONS, []);
+  state.chapterNotes = load(LS_CHAPTER_NOTES, {});
+  Sync.flushPending((key) => {
+    if (key === LS_ANNOTATIONS) return state.annotations;
+    if (key === LS_CHAPTER_NOTES) return state.chapterNotes;
+    return undefined;
+  });
+  renderChapter();
+  renderStudy();
+}
+
+function updateSyncStatus() {
+  const el = $('syncStatus');
+  if (!el) return;
+  if (!Sync) { el.className = 'sync-status'; el.title = '云同步不可用'; return; }
+  if (Sync.hasPending()) { el.className = 'sync-status pending'; el.title = '有改动待同步'; }
+  else if (Sync.isRemoteOk()) { el.className = 'sync-status ok'; el.title = '已同步到云端'; }
+  else { el.className = 'sync-status offline'; el.title = '离线（本地保存）'; }
+}
 
 function applyHideMarks() {
   document.body.classList.toggle('hide-marks', state.hideMarks);
@@ -110,6 +143,10 @@ async function init() {
     selectBook(1, 1);
   }
   bindEvents();
+  // 云同步：状态指示 + 后台拉取服务器数据
+  if (Sync) Sync.onStatus(updateSyncStatus);
+  updateSyncStatus();
+  syncFromRemote();
 }
 
 /* ============ 导航 ============ */

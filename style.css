@@ -60,6 +60,12 @@ body {
 .top-btn:hover { background: rgba(255,255,255,.15); }
 .top-btn.active { background: rgba(255,255,255,.25); }
 
+/* 同步状态指示 */
+.sync-status { font-size: 11px; color: rgba(255,255,255,.7); margin-right: 2px; }
+.sync-status.ok { color: #a5f3a5; }
+.sync-status.pending { color: #ffd28a; }
+.sync-status.offline { color: #ff9d9d; }
+
 /* 隐藏注号（纯净阅读模式） */
 body.hide-marks sup.fn-ref,
 body.hide-marks sup.xref-ref { display: none; }
