@@ -539,13 +539,13 @@ function onContentClick(e) {
   const fn = e.target.closest('sup.fn-ref');
   if (fn) {
     e.stopPropagation();
-    showFootnotePopup(fn.dataset.fn);
+    showFootnotePopup(fn.dataset.fn, fn.dataset.key);
     return;
   }
   const xr = e.target.closest('sup.xref-ref');
   if (xr) {
     e.stopPropagation();
-    showXrefPopup(xr.dataset.xref);
+    showXrefPopup(xr.dataset.xref, xr.dataset.key);
     return;
   }
   const ref = e.target.closest('span.ref-link');
@@ -815,30 +815,38 @@ function closePopup() {
   $('overlay').hidden = true;
 }
 
-function showFootnotePopup(n) {
-  // 定位点击所在节
-  const sup = document.querySelector(`sup.fn-ref[data-fn="${n}"]`);
-  let key = null;
-  if (sup) {
-    const vtext = sup.closest('.vtext');
-    const verseNum = vtext.dataset.verse.replace(/[上中下]/g, '');
-    const half = vtext.dataset.verse.match(/[上中下]/)?.[0] || '';
-    key = `${state.currentBook.acronym}${state.currentChapter}:${verseNum}${half}`;
+function showFootnotePopup(n, keyOverride) {
+  // 定位点击所在节（弹窗内的注号自带 data-key）
+  let key = keyOverride || null;
+  if (!key) {
+    const sup = document.querySelector(`sup.fn-ref[data-fn="${n}"]`);
+    if (sup) {
+      const vtext = sup.closest('.vtext');
+      if (vtext) {
+        const verseNum = vtext.dataset.verse.replace(/[上中下]/g, '');
+        const half = vtext.dataset.verse.match(/[上中下]/)?.[0] || '';
+        key = `${state.currentBook.acronym}${state.currentChapter}:${verseNum}${half}`;
+      }
+    }
   }
   const notes = key ? (state.bibleNotes || {})[key] : null;
   if (!notes || !notes[+n - 1]) { openPopup(`注${n}`, '<div class="empty-hint">未找到注解</div>'); return; }
   const note = notes[+n - 1];
-  openPopup(`${state.currentBook.name} ${state.currentChapter} 注${n}`, `<div class="fn-body">${linkifyRefs(note)}</div>`);
+  openPopup(`${key} 注${n}`, `<div class="fn-body">${linkifyRefs(note)}</div>`);
 }
 
-function showXrefPopup(letter) {
-  const sup = document.querySelector(`sup.xref-ref[data-xref="${letter}"]`);
-  let key = null;
-  if (sup) {
-    const vtext = sup.closest('.vtext');
-    const verseNum = vtext.dataset.verse.replace(/[上中下]/g, '');
-    const half = vtext.dataset.verse.match(/[上中下]/)?.[0] || '';
-    key = `${state.currentBook.acronym}${state.currentChapter}:${verseNum}${half}`;
+function showXrefPopup(letter, keyOverride) {
+  let key = keyOverride || null;
+  if (!key) {
+    const sup = document.querySelector(`sup.xref-ref[data-xref="${letter}"]`);
+    if (sup) {
+      const vtext = sup.closest('.vtext');
+      if (vtext) {
+        const verseNum = vtext.dataset.verse.replace(/[上中下]/g, '');
+        const half = vtext.dataset.verse.match(/[上中下]/)?.[0] || '';
+        key = `${state.currentBook.acronym}${state.currentChapter}:${verseNum}${half}`;
+      }
+    }
   }
   const xrefs = key ? (state.bibleXrefs || {})[key] : null;
   const raw = xrefs ? xrefs[letter] : null;
@@ -999,6 +1007,18 @@ function renderLrContent(parent, content, annotations) {
   if (cursor < content.length) appendText(content.slice(cursor), cursor);
 }
 
+// 把带标记的经文文本转成 HTML（保留 {N}/[a] 为可点击上标，key 供弹窗查注解/串珠）
+function markedToHtml(marked, key) {
+  const { segments } = parseMarkedText(marked || '');
+  let html = '';
+  for (const seg of segments) {
+    if (seg.type === 'fn') html += `<sup class="fn-ref" data-fn="${seg.n}" data-key="${escapeHtml(key)}">${seg.n}</sup>`;
+    else if (seg.type === 'xref') html += `<sup class="xref-ref" data-xref="${seg.letter}" data-key="${escapeHtml(key)}">${seg.letter}</sup>`;
+    else html += escapeHtml(seg.text);
+  }
+  return html;
+}
+
 function showRefsPopup(title, refString) {
   const refs = resolveRefString(refString);
   let html = `<div style="color:var(--text-muted);font-size:13px;margin-bottom:8px">${escapeHtml(refString)}</div>`;
@@ -1006,8 +1026,7 @@ function showRefsPopup(title, refString) {
   for (const ref of refs) {
     const verseText = state.bibleText[ref];
     if (verseText) {
-      const { plain } = parseMarkedText(verseText);
-      html += `<div class="popup-verse"><span class="pv-ref">${escapeHtml(ref)}</span><span class="pv-text">${escapeHtml(plain)}</span></div>`;
+      html += `<div class="popup-verse"><span class="pv-ref">${escapeHtml(ref)}</span><span class="pv-text">${markedToHtml(verseText, ref)}</span></div>`;
       found++;
     }
   }
