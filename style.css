@@ -158,6 +158,13 @@ sup.xref-ref {
 }
 sup.xref-ref:hover { color: var(--brand-dark); }
 
+/* 正文中的经文引用链接 */
+.ref-link {
+  color: var(--brand); cursor: pointer;
+  border-bottom: 1px dashed var(--brand);
+}
+.ref-link:hover { color: var(--brand-dark); }
+
 /* ── 研读列 ── */
 .study-col {
   display: flex; flex-direction: column;

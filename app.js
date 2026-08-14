@@ -54,6 +54,8 @@ async function fetchJSON(url) {
 async function init() {
   state.books = await fetchJSON('data/books.json');
   state.books.forEach(b => state.bookIndexByIdx[b.acronym + b.index] = b);
+  state.books.forEach(b => { REF_ALIASES[b.acronym] = b.acronym; });
+  _refAliasesSorted = Object.keys(REF_ALIASES).sort((a, b) => b.length - a.length);
   renderBookList();
   applyHideMarks();
   const last = load(LS_LAST, null);
@@ -302,7 +304,7 @@ function renderFootnotes() {
     label.textContent = it.label;
     const text = document.createElement('div');
     text.className = 'lr-content';
-    text.textContent = it.text;
+    text.innerHTML = linkifyRefs(it.text);
     div.appendChild(label);
     div.appendChild(text);
     body.appendChild(div);
@@ -340,11 +342,7 @@ function renderLifereading() {
     content.dataset.article = a.id;
     const lrAnns = state.annotations.filter(x =>
       x.type === 'lr' && x.book === state.currentBook.index && x.articleId === a.id);
-    if (lrAnns.length === 0) {
-      content.textContent = a.content || '';
-    } else {
-      renderTextWithMarks(content, a.content || '', 0, lrAnns);
-    }
+    renderLrContent(content, a.content || '', lrAnns);
     div.appendChild(content);
     body.appendChild(div);
   });
@@ -488,6 +486,7 @@ function jumpToLr(articleId) {
 
 /* ============ 标注 ============ */
 let pendingRange = null;
+let editingAnnId = null;
 
 function bindEvents() {
   // 隐藏/显示注号
@@ -547,6 +546,18 @@ function onContentClick(e) {
   if (xr) {
     e.stopPropagation();
     showXrefPopup(xr.dataset.xref);
+    return;
+  }
+  const ref = e.target.closest('span.ref-link');
+  if (ref) {
+    e.stopPropagation();
+    showRefsPopup('引用经文', ref.dataset.refs);
+    return;
+  }
+  const mark = e.target.closest('mark[data-ann-id]');
+  if (mark) {
+    e.stopPropagation();
+    showMarkTool(mark, mark.dataset.annId);
     return;
   }
 }
@@ -709,7 +720,7 @@ function quoteToNotes() {
   hideFloatTool();
 }
 
-function hideFloatTool() { $('floatTool').hidden = true; pendingRange = null; }
+function hideFloatTool() { $('floatTool').hidden = true; pendingRange = null; editingAnnId = null; }
 
 function addAnnotation(partial) {
   const r = pendingRange;
@@ -743,6 +754,55 @@ function addNote() {
   else hideFloatTool();
 }
 
+/* ============ 标注编辑（改色/删除） ============ */
+function showMarkTool(mark, annId) {
+  const ann = state.annotations.find(a => a.id === annId);
+  if (!ann) return;
+  editingAnnId = annId;
+  const tool = $('floatTool');
+  tool.hidden = false;
+  tool.innerHTML = '';
+  COLORS.forEach(c => {
+    const sw = document.createElement('div');
+    sw.className = `sw ${c.id}` + (ann.colorId === c.id && !ann.underline ? ' active' : '');
+    sw.title = `${c.name}：${c.desc}`;
+    sw.addEventListener('mousedown', (e) => { e.preventDefault(); changeAnnColor(annId, c.id); });
+    tool.appendChild(sw);
+  });
+  const sep = document.createElement('div');
+  sep.className = 'tool-sep';
+  tool.appendChild(sep);
+  const del = document.createElement('button');
+  del.className = 'tool-btn';
+  del.textContent = '删除';
+  del.addEventListener('mousedown', (e) => { e.preventDefault(); deleteAnn(annId); });
+  tool.appendChild(del);
+  const rect = mark.getBoundingClientRect();
+  const x = rect.left + rect.width / 2 - tool.offsetWidth / 2;
+  const y = rect.top - tool.offsetHeight - 8;
+  tool.style.left = Math.max(8, x) + 'px';
+  tool.style.top = Math.max(8, y) + 'px';
+}
+
+function changeAnnColor(annId, colorId) {
+  const ann = state.annotations.find(a => a.id === annId);
+  if (!ann) return;
+  ann.colorId = colorId;
+  ann.underline = false;
+  save(LS_ANNOTATIONS, state.annotations);
+  renderChapter();
+  renderStudy();
+  hideFloatTool();
+}
+
+function deleteAnn(annId) {
+  state.annotations = state.annotations.filter(a => a.id !== annId);
+  save(LS_ANNOTATIONS, state.annotations);
+  renderChapter();
+  renderStudy();
+  hideFloatTool();
+}
+
 /* ============ 弹窗 ============ */
 function openPopup(title, bodyHtml) {
   $('popupTitle').textContent = title;
@@ -768,7 +828,7 @@ function showFootnotePopup(n) {
   const notes = key ? (state.bibleNotes || {})[key] : null;
   if (!notes || !notes[+n - 1]) { openPopup(`注${n}`, '<div class="empty-hint">未找到注解</div>'); return; }
   const note = notes[+n - 1];
-  openPopup(`${state.currentBook.name} ${state.currentChapter} 注${n}`, `<div class="fn-body">${escapeHtml(note)}</div>`);
+  openPopup(`${state.currentBook.name} ${state.currentChapter} 注${n}`, `<div class="fn-body">${linkifyRefs(note)}</div>`);
 }
 
 function showXrefPopup(letter) {
@@ -783,19 +843,7 @@ function showXrefPopup(letter) {
   const xrefs = key ? (state.bibleXrefs || {})[key] : null;
   const raw = xrefs ? xrefs[letter] : null;
   if (!raw) { openPopup(`串珠 ${letter}`, '<div class="empty-hint">未找到串珠</div>'); return; }
-  const refs = resolveRefString(raw);
-  let html = `<div style="color:var(--text-muted);font-size:13px;margin-bottom:8px">${escapeHtml(raw)}</div>`;
-  let found = 0;
-  for (const ref of refs) {
-    const verseText = state.bibleText[ref];
-    if (verseText) {
-      const { plain } = parseMarkedText(verseText);
-      html += `<div class="popup-verse"><span class="pv-ref">${escapeHtml(ref)}</span><span class="pv-text">${escapeHtml(plain)}</span></div>`;
-      found++;
-    }
-  }
-  if (!found) html += '<div class="empty-hint">未能解析引用经文</div>';
-  openPopup(`串珠 ${letter}`, html);
+  showRefsPopup(`串珠 ${letter}`, raw);
 }
 
 /* ============ 引用解析（简化版） ============ */
@@ -809,6 +857,10 @@ const BOOK_ALIASES = {
   '但以理':'但','以西结':'结','以赛亚':'赛','耶利米':'耶','出埃及':'出','腓立比':'腓','以弗所':'弗','歌罗西':'西','加拉太':'加','马太':'太','约翰':'约','罗马':'罗','哀歌':'哀','行传':'徒','雅各':'雅',
   '约一':'约壹','约二':'约贰','约三':'约参',
 };
+
+// 统一引用别名：全名/简称 → 缩写，加上 books.json 里的缩写 → 缩写
+const REF_ALIASES = { ...BOOK_ALIASES };
+let _refAliasesSorted = Object.keys(REF_ALIASES).sort((a, b) => b.length - a.length);
 
 const CN_DIGITS = { '零':0,'〇':0,'○':0,'一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9 };
 function cnToInt(s) {
@@ -834,11 +886,10 @@ function resolveRefString(raw) {
   const tokens = (raw || '').split(/[，,、;；\s]+/).filter(Boolean);
   const out = [];
   let curAcronym = null, curChapter = null;
-  const aliases = Object.keys(BOOK_ALIASES).sort((a, b) => b.length - a.length);
   for (const token of tokens) {
     let matched = null;
-    for (const alias of aliases) {
-      if (token.startsWith(alias)) { matched = { acronym: BOOK_ALIASES[alias], rest: token.slice(alias.length) }; break; }
+    for (const alias of _refAliasesSorted) {
+      if (token.startsWith(alias)) { matched = { acronym: REF_ALIASES[alias], rest: token.slice(alias.length) }; break; }
     }
     if (matched) {
       curAcronym = matched.acronym;
@@ -847,9 +898,15 @@ function resolveRefString(raw) {
         if (r.key) out.push(r.key);
         if (r.chapter) curChapter = r.chapter;
       }
-    } else if (curAcronym && curChapter) {
+    } else if (curAcronym) {
+      // 相对引用：纯数字节（2）或 中文章+阿拉伯节（三9）
       const m = token.match(/^(\d+)$/);
-      if (m) out.push(`${curAcronym}${curChapter}:${m[1]}`);
+      if (m && curChapter) { out.push(`${curAcronym}${curChapter}:${m[1]}`); continue; }
+      const m2 = token.match(/^([一二三四五六七八九十百〇○]+)(\d+)$/);
+      if (m2) {
+        const ch = cnToInt(m2[1]);
+        if (ch) { out.push(`${curAcronym}${ch}:${m2[2]}`); curChapter = ch; }
+      }
     }
   }
   return out;
@@ -886,6 +943,76 @@ function parseRefTail(acronym, rest, defChapter) {
   m = rest.match(/^([一二三四五六七八九十百〇○]+)$/);
   if (m) { const ch = cnToInt(m[1]); if (ch) return { key: null, chapter: ch }; }
   return null;
+}
+
+/* ============ 正文经文引用检测与包裹 ============ */
+function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+function buildRefRegex() {
+  const cn = '一二三四五六七八九十百〇○';
+  const aliasAlt = _refAliasesSorted.map(escapeRegex).join('|');
+  const tail = '(?:\\d+:\\d+(?:[-~～]\\d+)?|[' + cn + ']+\\d+(?:[-~～]\\d+)?[上下]?|第?[' + cn + ']+章[' + cn + ']+节|[' + cn + ']+)';
+  return new RegExp('(' + aliasAlt + ')' + tail, 'g');
+}
+
+function detectRefs(text) {
+  const re = buildRefRegex();
+  const refs = [];
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    refs.push({ start: m.index, end: m.index + m[0].length, refText: m[0] });
+  }
+  return refs;
+}
+
+// 纯文本 → HTML，把经文引用包成 <span class="ref-link">
+function linkifyRefs(text) {
+  const refs = detectRefs(text || '');
+  if (!refs.length) return escapeHtml(text || '');
+  let html = '', cursor = 0;
+  for (const r of refs) {
+    if (r.start > cursor) html += escapeHtml(text.slice(cursor, r.start));
+    html += `<span class="ref-link" data-refs="${escapeHtml(r.refText)}">${escapeHtml(text.slice(r.start, r.end))}</span>`;
+    cursor = r.end;
+  }
+  html += escapeHtml(text.slice(cursor));
+  return html;
+}
+
+// 渲染生命读经正文：经文引用包 ref-link，同时叠加标注 mark
+function renderLrContent(parent, content, annotations) {
+  const refs = detectRefs(content || '');
+  let cursor = 0;
+  const appendText = (text, base) => {
+    if (!annotations.length) parent.appendChild(document.createTextNode(text));
+    else renderTextWithMarks(parent, text, base, annotations);
+  };
+  for (const r of refs) {
+    if (r.start > cursor) appendText(content.slice(cursor, r.start), cursor);
+    const span = document.createElement('span');
+    span.className = 'ref-link';
+    span.textContent = content.slice(r.start, r.end);
+    span.dataset.refs = r.refText;
+    parent.appendChild(span);
+    cursor = r.end;
+  }
+  if (cursor < content.length) appendText(content.slice(cursor), cursor);
+}
+
+function showRefsPopup(title, refString) {
+  const refs = resolveRefString(refString);
+  let html = `<div style="color:var(--text-muted);font-size:13px;margin-bottom:8px">${escapeHtml(refString)}</div>`;
+  let found = 0;
+  for (const ref of refs) {
+    const verseText = state.bibleText[ref];
+    if (verseText) {
+      const { plain } = parseMarkedText(verseText);
+      html += `<div class="popup-verse"><span class="pv-ref">${escapeHtml(ref)}</span><span class="pv-text">${escapeHtml(plain)}</span></div>`;
+      found++;
+    }
+  }
+  if (!found) html += '<div class="empty-hint">未收录此经文</div>';
+  openPopup(title, html);
 }
 
 function escapeHtml(s) {
