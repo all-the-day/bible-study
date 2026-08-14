@@ -14,6 +14,9 @@ const LS_ANNOTATIONS = 'bible-study.annotations';
 const LS_CHAPTER_NOTES = 'bible-study.chapterNotes';
 const LS_LAST = 'bible-study.last';
 const LS_HIDE_MARKS = 'bible-study.hideMarks';
+const LS_NAV_COLLAPSED = 'bible-study.navCollapsed';
+const LS_VIEW_MODE = 'bible-study.viewMode';
+const LS_STUDY_WIDTH = 'bible-study.studyWidth';
 
 const state = {
   books: [],            // [{index, name, acronym, chapters}]
@@ -27,6 +30,9 @@ const state = {
   annotations: load(LS_ANNOTATIONS, []),
   chapterNotes: load(LS_CHAPTER_NOTES, {}),
   hideMarks: load(LS_HIDE_MARKS, false),
+  navCollapsed: load(LS_NAV_COLLAPSED, false),
+  viewMode: load(LS_VIEW_MODE, 'default'),
+  studyWidth: load(LS_STUDY_WIDTH, 360),
   activeTab: 'notes',
 };
 
@@ -40,6 +46,41 @@ function applyHideMarks() {
   document.body.classList.toggle('hide-marks', state.hideMarks);
   $('hideMarksBtn').textContent = state.hideMarks ? '显示注号' : '隐藏注号';
   $('hideMarksBtn').classList.toggle('active', state.hideMarks);
+}
+
+const VIEW_MODE_LABELS = { default: '双页', stacked: '上下', full: '全屏' };
+
+function applyLayout() {
+  const layout = document.querySelector('.layout');
+  layout.classList.toggle('nav-collapsed', state.navCollapsed);
+  layout.classList.toggle('view-stacked', state.viewMode === 'stacked');
+  layout.classList.toggle('view-full', state.viewMode === 'full');
+  layout.style.setProperty('--study-w', state.studyWidth + 'px');
+  $('viewModeBtn').textContent = VIEW_MODE_LABELS[state.viewMode] || '双页';
+  $('viewModeBtn').classList.toggle('active', state.viewMode !== 'default');
+}
+
+function bindResize() {
+  const handle = $('resizeHandle');
+  handle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = state.studyWidth;
+    handle.classList.add('dragging');
+    const onMove = (ev) => {
+      const newW = Math.min(720, Math.max(260, startW + (startX - ev.clientX)));
+      state.studyWidth = newW;
+      document.querySelector('.layout').style.setProperty('--study-w', newW + 'px');
+    };
+    const onUp = () => {
+      handle.classList.remove('dragging');
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      save(LS_STUDY_WIDTH, state.studyWidth);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
 }
 
 const $ = (id) => document.getElementById(id);
@@ -58,6 +99,7 @@ async function init() {
   _refAliasesSorted = Object.keys(REF_ALIASES).sort((a, b) => b.length - a.length);
   renderBookList();
   applyHideMarks();
+  applyLayout();
   const last = load(LS_LAST, null);
   if (last && state.books.some(b => b.index === last.book)) {
     selectBook(last.book, last.chapter);
@@ -495,14 +537,37 @@ function bindEvents() {
     applyHideMarks();
     save(LS_HIDE_MARKS, state.hideMarks);
   });
-  // 菜单（移动端导航）
-  $('menuBtn').addEventListener('click', () => $('navCol').classList.toggle('open'));
+  // 菜单：移动端开抽屉，桌面端折叠左栏
+  $('menuBtn').addEventListener('click', () => {
+    if (window.innerWidth <= 900) {
+      $('navCol').classList.toggle('open');
+    } else {
+      state.navCollapsed = !state.navCollapsed;
+      applyLayout();
+      save(LS_NAV_COLLAPSED, state.navCollapsed);
+    }
+  });
+  // 视图模式：双页 → 上下 → 全屏 循环
+  $('viewModeBtn').addEventListener('click', () => {
+    const order = ['default', 'stacked', 'full'];
+    const i = order.indexOf(state.viewMode);
+    state.viewMode = order[(i + 1) % order.length];
+    applyLayout();
+    save(LS_VIEW_MODE, state.viewMode);
+  });
   $('notesBtn').addEventListener('click', () => {
     $('studyCol').classList.toggle('open');
+    if (state.viewMode === 'full') {
+      state.viewMode = 'default';
+      applyLayout();
+      save(LS_VIEW_MODE, state.viewMode);
+    }
     state.activeTab = 'mynotes';
     document.querySelectorAll('.study-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'mynotes'));
     renderStudy();
   });
+  // 研读面板拖拽调宽
+  bindResize();
   // 书卷搜索
   $('bookSearch').addEventListener('input', (e) => {
     const q = e.target.value.trim();
