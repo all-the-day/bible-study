@@ -270,6 +270,23 @@ sup.xref-ref:hover { color: var(--brand-dark); }
 .lr-h3 { font-size: 16px; color: var(--text); font-weight: 600; }
 .lr-h4 { font-size: 15px; color: var(--text-soft); font-weight: 600; }
 
+/* 纲目索引（仅全屏研读模式） */
+.lr-toc {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 8px 12px; margin-bottom: 12px;
+}
+.lr-toc-title {
+  font-weight: 700; font-size: 13px; color: var(--text-muted);
+  margin-bottom: 4px; border-bottom: 1px dashed var(--border); padding-bottom: 4px;
+}
+.lr-toc-item { font-size: 14px; padding: 2px 0; cursor: pointer; color: var(--text-soft); }
+.lr-toc-item:hover { color: var(--brand); }
+.lr-toc-l0 { font-weight: 700; color: var(--heading); }
+.lr-toc-l1 { font-weight: 700; color: var(--brand); }
+.lr-toc-l2 { padding-left: 14px; }
+.lr-toc-l3 { padding-left: 28px; font-size: 13px; }
+.lr-toc-l4 { padding-left: 42px; font-size: 13px; color: var(--text-muted); }
+
 /* ── 划线汇总 ── */
 .hl-section { margin-top: 14px; }
 .hl-header { font-weight: 700; color: var(--heading); margin-bottom: 8px; font-size: 15px; }

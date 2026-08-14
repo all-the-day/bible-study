@@ -421,12 +421,17 @@ function renderLifereading() {
     verses.textContent = '经文：' + (a.verses || []).join('、');
     div.appendChild(title);
     div.appendChild(verses);
+    // 纲目索引（仅全屏研读模式显示）
+    if (state.studyFull) {
+      const headings = extractLrHeadings(a.content || '');
+      if (headings.length) div.appendChild(renderLrToc(a.id, headings));
+    }
     const content = document.createElement('div');
     content.className = 'lr-content';
     content.dataset.article = a.id;
     const lrAnns = state.annotations.filter(x =>
       x.type === 'lr' && x.book === state.currentBook.index && x.articleId === a.id);
-    renderLrContent(content, a.content || '', lrAnns);
+    renderLrContent(content, a.content || '', lrAnns, `lrh-${a.id}`);
     div.appendChild(content);
     body.appendChild(div);
   });
@@ -602,6 +607,7 @@ function bindEvents() {
   $('studyFullBtn').addEventListener('click', () => {
     state.studyFull = !state.studyFull;
     applyLayout();
+    renderStudy(); // 重新渲染，让纲目索引出现/消失
   });
   $('notesBtn').addEventListener('click', () => {
     $('studyCol').classList.toggle('open');
@@ -1146,16 +1152,22 @@ function linkifyRefs(text) {
 
 // 渲染生命读经正文：经文引用包 ref-link，同时叠加标注 mark
 // 判断生命读经某行是否为标题，返回层级（null=正文）
-// 层级：0=小标题(如「一本奇妙的书」) 1=壹 2=一 3=１ 4=ａ
+// 层级：0=小标题 1=大标题(壹/（10）) 2=大点(一/《一》) 3=小点(１/《１》) 4=子项(ａ/（ａ）)
 function detectLrHeading(line) {
   const t = line.trim();
   if (!t) return null;
   // 分隔线（---、=== 等纯符号行）不是标题
   if (/^[-—─=*_·●○•]+$/.test(t)) return null;
+  // 裸格式：壹/一/１/ａ + 全角空格
   if (/^[壹贰叁肆伍陆柒捌玖拾]　/.test(t)) return { level: 1 };
   if (/^[一二三四五六七八九十]　/.test(t)) return { level: 2 };
   if (/^[１-９]　/.test(t)) return { level: 3 };
   if (/^[ａ-ｚ]　/.test(t)) return { level: 4 };
+  // 括号格式：（１０）（ａ）《一》《１》
+  if (/^（[０-９一二三四五六七八九十百〇○]+）　/.test(t)) return { level: 1 };
+  if (/^《[一二三四五六七八九十]+》　/.test(t)) return { level: 2 };
+  if (/^《[１-９]+》　/.test(t)) return { level: 3 };
+  if (/^（[ａ-ｚ]）　/.test(t)) return { level: 4 };
   // 短行小标题：2-12 字、无标点结尾、无括号
   if (t.length >= 2 && t.length <= 12 && !/[。，；：？！、」』）】]$/.test(t) && !/[（(【[]/.test(t)) {
     return { level: 0 };
@@ -1183,18 +1195,58 @@ function renderLrLine(parent, text, baseOffset, annotations) {
   if (cursor < text.length) appendText(text.slice(cursor), baseOffset + cursor);
 }
 
-function renderLrContent(parent, content, annotations) {
+function renderLrContent(parent, content, annotations, idPrefix) {
   const lines = (content || '').split('\n');
   let offset = 0;
+  let hIdx = 0;
   for (const line of lines) {
     if (line.trim() === '') { offset += line.length + 1; continue; }
     const heading = detectLrHeading(line);
     const div = document.createElement('div');
     div.className = heading ? `lr-head lr-h${heading.level}` : 'lr-para';
+    if (heading && idPrefix) {
+      div.id = `${idPrefix}-${hIdx}`;
+      hIdx++;
+    }
     renderLrLine(div, line, offset, annotations);
     parent.appendChild(div);
     offset += line.length + 1;
   }
+}
+
+// 提取生命读经纲目（返回 [{level, text}]）
+function extractLrHeadings(content) {
+  const headings = [];
+  for (const line of (content || '').split('\n')) {
+    const h = detectLrHeading(line);
+    if (h) headings.push({ level: h.level, text: line.trim() });
+  }
+  return headings;
+}
+
+// 渲染纲目索引（点击滚动到对应标题）
+function renderLrToc(articleId, headings) {
+  const toc = document.createElement('div');
+  toc.className = 'lr-toc';
+  const header = document.createElement('div');
+  header.className = 'lr-toc-title';
+  header.textContent = `纲目（${headings.length}）`;
+  toc.appendChild(header);
+  headings.forEach((h, i) => {
+    const item = document.createElement('div');
+    item.className = `lr-toc-item lr-toc-l${h.level}`;
+    item.textContent = h.text;
+    item.addEventListener('click', () => {
+      const el = document.getElementById(`lrh-${articleId}-${i}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        el.classList.add('flash');
+        setTimeout(() => el.classList.remove('flash'), 1600);
+      }
+    });
+    toc.appendChild(item);
+  });
+  return toc;
 }
 
 // 把带标记的经文文本转成 HTML（保留 {N}/[a] 为可点击上标，key 供弹窗查注解/串珠）
