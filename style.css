@@ -98,6 +98,13 @@ body.hide-marks sup.xref-ref { display: none; }
 }
 .layout.view-stacked.nav-collapsed { grid-template-columns: 0 minmax(0, 1fr); }
 
+/* 研读面板全屏（只显示研读列） */
+.layout.study-full { grid-template-columns: minmax(0, 1fr); }
+.layout.study-full .nav-col,
+.layout.study-full .text-col { display: none; }
+.layout.study-full .study-col { grid-column: 1; border-left: none; }
+.layout.study-full .resize-handle { display: none; }
+
 /* ── 左侧导航 ── */
 .nav-col {
   display: flex; flex-direction: column;
@@ -218,6 +225,13 @@ sup.xref-ref:hover { color: var(--brand-dark); }
 .study-tab.active {
   color: var(--brand); border-bottom-color: var(--brand); font-weight: 600;
 }
+.study-full-btn {
+  border: none; background: transparent; cursor: pointer;
+  font-size: 16px; line-height: 1; color: var(--text-muted);
+  padding: 0 12px; flex-shrink: 0;
+}
+.study-full-btn:hover { color: var(--brand); }
+.study-full-btn.active { color: var(--brand); font-weight: 700; }
 .study-body {
   flex: 1; overflow-y: auto; min-height: 0; padding: 14px;
 }

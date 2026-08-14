@@ -33,6 +33,7 @@ const state = {
   navCollapsed: load(LS_NAV_COLLAPSED, false),
   viewMode: load(LS_VIEW_MODE, 'default'),
   studyWidth: load(LS_STUDY_WIDTH, 480),
+  studyFull: false,
   activeTab: 'notes',
 };
 
@@ -55,9 +56,11 @@ function applyLayout() {
   layout.classList.toggle('nav-collapsed', state.navCollapsed);
   layout.classList.toggle('view-stacked', state.viewMode === 'stacked');
   layout.classList.toggle('view-full', state.viewMode === 'full');
+  layout.classList.toggle('study-full', state.studyFull);
   layout.style.setProperty('--study-w', state.studyWidth + 'px');
   $('viewModeBtn').textContent = VIEW_MODE_LABELS[state.viewMode] || '双页';
   $('viewModeBtn').classList.toggle('active', state.viewMode !== 'default');
+  $('studyFullBtn').classList.toggle('active', state.studyFull);
 }
 
 function bindResize() {
@@ -549,11 +552,17 @@ function bindEvents() {
   });
   // 视图模式：双页 → 上下 → 全屏 循环
   $('viewModeBtn').addEventListener('click', () => {
+    state.studyFull = false;
     const order = ['default', 'stacked', 'full'];
     const i = order.indexOf(state.viewMode);
     state.viewMode = order[(i + 1) % order.length];
     applyLayout();
     save(LS_VIEW_MODE, state.viewMode);
+  });
+  // 研读面板全屏
+  $('studyFullBtn').addEventListener('click', () => {
+    state.studyFull = !state.studyFull;
+    applyLayout();
   });
   $('notesBtn').addEventListener('click', () => {
     $('studyCol').classList.toggle('open');
