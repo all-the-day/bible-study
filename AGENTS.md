@@ -31,10 +31,12 @@
 
 **键格式**：`书卷缩写 + 章 + ":" + 节 + 半节后缀`，如 `创1:1`、`创1:2上`、`创1:2下`（`flag` 1=上 2=下 0=无，与 bible.db 的 content.flag 对齐）。
 
-**标注**（localStorage）：
+**标注**（localStorage，两种目标，经文与生命读经都可划）：
 ```json
-{"id":"uuid","book":1,"chapter":24,"verse":5,"start":0,"end":10,"colorId":"c1","underline":false,"note":"..."}
+{"id":"uuid","type":"verse","book":1,"chapter":24,"verse":5,"half":"","start":0,"end":10,"colorId":"c1","underline":false,"note":"..."}
+{"id":"uuid","type":"lr","book":1,"articleId":60,"start":0,"end":6,"colorId":"c2","underline":false,"note":"..."}
 ```
+- `type: verse` 目标为经文（offset 在该节合并文本内）；`type: lr` 目标为生命读经篇目正文（offset 在该篇 content 全文内）
 - 颜色沿用 bible-reader 5 色语义：c1黄=重要句子 / c2绿=「耶和华我的神」等 / c3紫=「我是耶和华」 / c4蓝=神所喜愛讚賞的 / c5红=神所恨惡審判禁止的
 - 标注 + 笔记 + 下划线 三种形态：高亮（背景色）、下划线、笔记（附加文字）
 
