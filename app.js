@@ -407,34 +407,83 @@ function renderLifereading() {
     });
   });
   if (!matched.length) {
+    body.classList.remove('lr-full-mode');
     body.innerHTML = '<div class="empty-hint">本章暂无相关生命读经</div>';
     return;
   }
+  if (state.studyFull) {
+    renderLrFullscreen(body, matched);
+  } else {
+    body.classList.remove('lr-full-mode');
+    body.innerHTML = '';
+    matched.forEach(a => body.appendChild(renderLrArticle(a)));
+  }
+}
+
+// 渲染单篇生命读经（标题 + 经文引用 + 正文），返回 DOM 节点
+function renderLrArticle(a) {
+  const div = document.createElement('div');
+  div.className = 'lr-item';
+  const title = document.createElement('div');
+  title.className = 'lr-title';
+  title.textContent = a.title;
+  const verses = document.createElement('div');
+  verses.className = 'lr-verses';
+  verses.textContent = '经文：' + (a.verses || []).join('、');
+  div.appendChild(title);
+  div.appendChild(verses);
+  const content = document.createElement('div');
+  content.className = 'lr-content';
+  content.dataset.article = a.id;
+  const lrAnns = state.annotations.filter(x =>
+    x.type === 'lr' && x.book === state.currentBook.index && x.articleId === a.id);
+  renderLrContent(content, a.content || '', lrAnns, `lrh-${a.id}`);
+  div.appendChild(content);
+  return div;
+}
+
+// 全屏研读：左侧纲目侧边栏 + 右侧正文
+function renderLrFullscreen(body, matched) {
+  body.classList.add('lr-full-mode');
+  body.innerHTML = '';
+  const wrap = document.createElement('div');
+  wrap.className = 'lr-full-wrap';
+  // 纲目侧边栏
+  const outline = document.createElement('div');
+  outline.className = 'lr-outline';
   matched.forEach(a => {
-    const div = document.createElement('div');
-    div.className = 'lr-item';
-    const title = document.createElement('div');
-    title.className = 'lr-title';
-    title.textContent = a.title;
-    const verses = document.createElement('div');
-    verses.className = 'lr-verses';
-    verses.textContent = '经文：' + (a.verses || []).join('、');
-    div.appendChild(title);
-    div.appendChild(verses);
-    // 纲目索引（仅全屏研读模式显示）
-    if (state.studyFull) {
-      const headings = extractLrHeadings(a.content || '');
-      if (headings.length) div.appendChild(renderLrToc(a.id, headings));
-    }
-    const content = document.createElement('div');
-    content.className = 'lr-content';
-    content.dataset.article = a.id;
-    const lrAnns = state.annotations.filter(x =>
-      x.type === 'lr' && x.book === state.currentBook.index && x.articleId === a.id);
-    renderLrContent(content, a.content || '', lrAnns, `lrh-${a.id}`);
-    div.appendChild(content);
-    body.appendChild(div);
+    const headings = extractLrHeadings(a.content || '');
+    if (!headings.length) return;
+    const group = document.createElement('div');
+    group.className = 'lr-outline-group';
+    const gTitle = document.createElement('div');
+    gTitle.className = 'lr-outline-group-title';
+    gTitle.textContent = a.title.replace(/^\d*第.+?篇\s*/, '');
+    gTitle.title = a.title;
+    group.appendChild(gTitle);
+    headings.forEach((h, i) => {
+      const item = document.createElement('div');
+      item.className = `lr-toc-item lr-toc-l${h.level}`;
+      item.textContent = h.text;
+      item.addEventListener('click', () => {
+        const el = document.getElementById(`lrh-${a.id}-${i}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          el.classList.add('flash');
+          setTimeout(() => el.classList.remove('flash'), 1600);
+        }
+      });
+      group.appendChild(item);
+    });
+    outline.appendChild(group);
   });
+  wrap.appendChild(outline);
+  // 正文
+  const contentArea = document.createElement('div');
+  contentArea.className = 'lr-full-content';
+  matched.forEach(a => contentArea.appendChild(renderLrArticle(a)));
+  wrap.appendChild(contentArea);
+  body.appendChild(wrap);
 }
 
 function renderMyNotes() {
@@ -1225,30 +1274,6 @@ function extractLrHeadings(content) {
 }
 
 // 渲染纲目索引（点击滚动到对应标题）
-function renderLrToc(articleId, headings) {
-  const toc = document.createElement('div');
-  toc.className = 'lr-toc';
-  const header = document.createElement('div');
-  header.className = 'lr-toc-title';
-  header.textContent = `纲目（${headings.length}）`;
-  toc.appendChild(header);
-  headings.forEach((h, i) => {
-    const item = document.createElement('div');
-    item.className = `lr-toc-item lr-toc-l${h.level}`;
-    item.textContent = h.text;
-    item.addEventListener('click', () => {
-      const el = document.getElementById(`lrh-${articleId}-${i}`);
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        el.classList.add('flash');
-        setTimeout(() => el.classList.remove('flash'), 1600);
-      }
-    });
-    toc.appendChild(item);
-  });
-  return toc;
-}
-
 // 把带标记的经文文本转成 HTML（保留 {N}/[a] 为可点击上标，key 供弹窗查注解/串珠）
 function markedToHtml(marked, key) {
   const { segments } = parseMarkedText(marked || '');

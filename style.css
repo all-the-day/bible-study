@@ -270,14 +270,26 @@ sup.xref-ref:hover { color: var(--brand-dark); }
 .lr-h3 { font-size: 16px; color: var(--text); font-weight: 600; }
 .lr-h4 { font-size: 15px; color: var(--text-soft); font-weight: 600; }
 
-/* 纲目索引（仅全屏研读模式） */
-.lr-toc {
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius-sm); padding: 8px 12px; margin-bottom: 12px;
+/* 生命读经全屏：纲目侧边栏 + 正文 */
+.study-body.lr-full-mode {
+  padding: 0; overflow: hidden;
 }
-.lr-toc-title {
-  font-weight: 700; font-size: 13px; color: var(--text-muted);
-  margin-bottom: 4px; border-bottom: 1px dashed var(--border); padding-bottom: 4px;
+.lr-full-wrap {
+  display: grid; grid-template-columns: 200px minmax(0, 1fr);
+  height: 100%; min-height: 0; overflow: hidden;
+}
+.lr-outline {
+  overflow-y: auto; min-height: 0;
+  border-right: 1px solid var(--border);
+  padding: 12px 10px; background: var(--surface);
+}
+.lr-full-content {
+  overflow-y: auto; min-height: 0; padding: 14px;
+}
+.lr-outline-group { margin-bottom: 14px; }
+.lr-outline-group-title {
+  font-weight: 700; font-size: 14px; color: var(--heading);
+  margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .lr-toc-item { font-size: 14px; padding: 2px 0; cursor: pointer; color: var(--text-soft); }
 .lr-toc-item:hover { color: var(--brand); }
