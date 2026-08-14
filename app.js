@@ -529,8 +529,9 @@ function bindEvents() {
     if (!tool.contains(e.target)) hideFloatTool();
   });
   // 弹窗关闭
+  $('popupBack').addEventListener('click', closePopup);
   $('popupClose').addEventListener('click', closePopup);
-  $('overlay').addEventListener('click', closePopup);
+  $('overlay').addEventListener('click', closePopupAll);
   // 注脚/串珠点击（事件委托）
   document.addEventListener('click', onContentClick);
 }
@@ -804,15 +805,39 @@ function deleteAnn(annId) {
 }
 
 /* ============ 弹窗 ============ */
+const popupStack = [];
+
 function openPopup(title, bodyHtml) {
+  if (!$('popup').hidden) {
+    popupStack.push({ title: $('popupTitle').textContent, body: $('popupBody').innerHTML });
+  } else {
+    popupStack.length = 0;
+  }
   $('popupTitle').textContent = title;
   $('popupBody').innerHTML = bodyHtml;
   $('popup').hidden = false;
   $('overlay').hidden = false;
+  $('popupBack').hidden = popupStack.length === 0;
 }
+
+// 返回上一层（栈空则完全关闭）
 function closePopup() {
+  if (popupStack.length) {
+    const prev = popupStack.pop();
+    $('popupTitle').textContent = prev.title;
+    $('popupBody').innerHTML = prev.body;
+    $('popupBack').hidden = popupStack.length === 0;
+    return;
+  }
+  closePopupAll();
+}
+
+// 完全关闭
+function closePopupAll() {
+  popupStack.length = 0;
   $('popup').hidden = true;
   $('overlay').hidden = true;
+  $('popupBack').hidden = true;
 }
 
 function showFootnotePopup(n, keyOverride) {
