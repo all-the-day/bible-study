@@ -1,0 +1,23 @@
+# 缓存与日志
+cache/
+*.log
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 数据文件由 scripts/export.py 生成，不入库（体积大、可再生）
+data/bible-text.json
+data/bible-notes.json
+data/bible-xrefs.json
+data/lifereading/
+
+# 本地密钥
+.env
+
+# Vercel
+.vercel/

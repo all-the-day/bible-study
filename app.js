@@ -1,0 +1,699 @@
+'use strict';
+
+/* ============ 配置：5 色语义（沿用 bible-reader） ============ */
+const COLORS = [
+  { id: 'c1', name: '黄', hex: '#FFEB3B', desc: '重要的句子' },
+  { id: 'c2', name: '绿', hex: '#4CAF50', desc: '「耶和华我的神」等' },
+  { id: 'c3', name: '紫', hex: '#9C27B0', desc: '「我是耶和华」' },
+  { id: 'c4', name: '蓝', hex: '#2196F3', desc: '神所喜愛、讚賞的' },
+  { id: 'c5', name: '红', hex: '#F44336', desc: '神所恨惡、審判、禁止的' },
+];
+
+/* ============ 状态 ============ */
+const LS_ANNOTATIONS = 'bible-study.annotations';
+const LS_CHAPTER_NOTES = 'bible-study.chapterNotes';
+const LS_LAST = 'bible-study.last';
+
+const state = {
+  books: [],            // [{index, name, acronym, chapters}]
+  bookIndexByIdx: {},   // acronym+index -> book
+  currentBook: null,
+  currentChapter: null,
+  bibleText: null,      // {key: markedText}
+  bibleNotes: null,     // {key: [notes]}
+  bibleXrefs: null,     // {key: {letter: rawString}}
+  lifereading: null,    // {articles: [...]} 当前书卷
+  annotations: load(LS_ANNOTATIONS, []),
+  chapterNotes: load(LS_CHAPTER_NOTES, {}),
+  activeTab: 'notes',
+};
+
+function load(key, fallback) {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
+  catch (e) { return fallback; }
+}
+function save(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
+
+const $ = (id) => document.getElementById(id);
+
+/* ============ 数据加载 ============ */
+async function fetchJSON(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`加载失败 ${url}: ${r.status}`);
+  return r.json();
+}
+
+async function init() {
+  state.books = await fetchJSON('data/books.json');
+  state.books.forEach(b => state.bookIndexByIdx[b.acronym + b.index] = b);
+  renderBookList();
+  const last = load(LS_LAST, null);
+  if (last && state.books.some(b => b.index === last.book)) {
+    selectBook(last.book, last.chapter);
+  } else {
+    selectBook(1, 1);
+  }
+  bindEvents();
+}
+
+/* ============ 导航 ============ */
+function renderBookList() {
+  const list = $('bookList');
+  list.innerHTML = '';
+  let currentGroup = '';
+  for (const b of state.books) {
+    const group = b.index <= 39 ? '旧约' : '新约';
+    if (group !== currentGroup) {
+      const g = document.createElement('div');
+      g.className = 'group-label';
+      g.textContent = group;
+      list.appendChild(g);
+      currentGroup = group;
+    }
+    const item = document.createElement('div');
+    item.className = 'book-item';
+    item.textContent = b.name;
+    item.dataset.index = b.index;
+    item.addEventListener('click', () => selectBook(b.index, 1));
+    list.appendChild(item);
+  }
+}
+
+function renderChapterList() {
+  const list = $('chapterList');
+  list.innerHTML = '';
+  if (!state.currentBook) return;
+  for (let i = 1; i <= state.currentBook.chapters; i++) {
+    const item = document.createElement('div');
+    item.className = 'ch-item';
+    item.textContent = i;
+    item.dataset.chapter = i;
+    item.addEventListener('click', () => selectChapter(i));
+    list.appendChild(item);
+  }
+}
+
+function highlightNav() {
+  document.querySelectorAll('#bookList .book-item').forEach(el => {
+    el.classList.toggle('active', +el.dataset.index === state.currentBook.index);
+  });
+  document.querySelectorAll('#chapterList .ch-item').forEach(el => {
+    el.classList.toggle('active', +el.dataset.chapter === state.currentChapter);
+  });
+}
+
+async function selectBook(index, chapter) {
+  state.currentBook = state.books.find(b => b.index === index);
+  state.currentChapter = chapter;
+  state.lifereading = null; // 重新加载新书卷生命读经
+  renderChapterList();
+  highlightNav();
+  $('bookName').textContent = state.currentBook.name;
+  $('chapterLabel').textContent = `第 ${chapter} 章`;
+  save(LS_LAST, { book: index, chapter });
+  await ensureBibleData();
+  await selectChapter(chapter);
+}
+
+async function selectChapter(chapter) {
+  state.currentChapter = chapter;
+  $('chapterLabel').textContent = `第 ${chapter} 章`;
+  highlightNav();
+  renderChapter();
+  renderStudy();
+  save(LS_LAST, { book: state.currentBook.index, chapter });
+  // 生命读经懒加载
+  if (!state.lifereading) {
+    const acr = state.currentBook.acronym;
+    try {
+      state.lifereading = await fetchJSON(`data/lifereading/${acr}.json`);
+    } catch (e) { state.lifereading = { articles: [] }; }
+    if (state.currentChapter === chapter) renderStudy();
+  }
+}
+
+async function ensureBibleData() {
+  if (state.bibleText) return;
+  const [text, notes, xrefs] = await Promise.all([
+    fetchJSON('data/bible-text.json'),
+    fetchJSON('data/bible-notes.json'),
+    fetchJSON('data/bible-xrefs.json'),
+  ]);
+  state.bibleText = text;
+  state.bibleNotes = notes;
+  state.bibleXrefs = xrefs;
+}
+
+/* ============ 原文渲染 ============ */
+function parseMarkedText(marked) {
+  // '{1}[a]起初{2}神' → segments + plain
+  const segments = [];
+  let plain = '';
+  const re = /\{(\d+)\}|\[([a-z]+)\]/g;
+  let last = 0, m;
+  while ((m = re.exec(marked)) !== null) {
+    const text = marked.slice(last, m.index);
+    if (text) { segments.push({ type: 'text', text }); plain += text; }
+    if (m[1] !== undefined) segments.push({ type: 'fn', n: m[1] });
+    else segments.push({ type: 'xref', letter: m[2] });
+    last = re.lastIndex;
+  }
+  const tail = marked.slice(last);
+  if (tail) { segments.push({ type: 'text', text: tail }); plain += tail; }
+  return { segments, plain };
+}
+
+function colorBg(id) {
+  const c = COLORS.find(x => x.id === id);
+  if (!c) return 'rgba(255,235,59,.4)';
+  return `rgba(${parseInt(c.hex.slice(1,3),16)},${parseInt(c.hex.slice(3,5),16)},${parseInt(c.hex.slice(5,7),16)},.4)`;
+}
+
+function renderChapter() {
+  const container = $('verseContainer');
+  container.innerHTML = '';
+  const acr = state.currentBook.acronym;
+  const ch = state.currentChapter;
+  const anns = state.annotations.filter(a => a.book === state.currentBook.index && a.chapter === ch);
+  for (let v = 1; v <= 500; v++) {
+    for (const half of ['', '上', '下']) {
+      const key = `${acr}${ch}:${v}${half}`;
+      const marked = state.bibleText[key];
+      if (marked === undefined) continue;
+      const verseAnns = anns.filter(a => a.verse === v && a.half === half);
+      container.appendChild(renderVerse(v + half, marked, verseAnns));
+    }
+  }
+}
+
+function renderVerse(vn, marked, annotations) {
+  const { segments, plain } = parseMarkedText(marked);
+  const el = document.createElement('div');
+  el.className = 'verse';
+  const num = document.createElement('span');
+  num.className = 'vnum';
+  num.textContent = vn;
+  el.appendChild(num);
+  const vtext = document.createElement('span');
+  vtext.className = 'vtext';
+  vtext.dataset.verse = vn;
+  vtext.dataset.plain = plain;
+  let cursor = 0;
+  for (const seg of segments) {
+    if (seg.type === 'fn') {
+      const sup = document.createElement('sup');
+      sup.className = 'fn-ref';
+      sup.textContent = seg.n;
+      sup.dataset.fn = seg.n;
+      vtext.appendChild(sup);
+    } else if (seg.type === 'xref') {
+      const sup = document.createElement('sup');
+      sup.className = 'xref-ref';
+      sup.textContent = seg.letter;
+      sup.dataset.xref = seg.letter;
+      vtext.appendChild(sup);
+    } else {
+      const start = cursor, end = cursor + seg.text.length;
+      cursor = end;
+      const overlapping = annotations.filter(a => a.start < end && a.end > start);
+      if (overlapping.length === 0) {
+        vtext.appendChild(document.createTextNode(seg.text));
+      } else {
+        renderTextWithMarks(vtext, seg.text, start, overlapping);
+      }
+    }
+  }
+  el.appendChild(vtext);
+  return el;
+}
+
+function renderTextWithMarks(parent, text, baseOffset, annotations) {
+  const points = new Set([0, text.length]);
+  for (const a of annotations) {
+    points.add(Math.max(a.start - baseOffset, 0));
+    points.add(Math.min(a.end - baseOffset, text.length));
+  }
+  const sorted = [...points].sort((x, y) => x - y);
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const s = sorted[i], e = sorted[i + 1];
+    if (s >= e) continue;
+    const piece = text.slice(s, e);
+    const covering = annotations.filter(a => a.start <= baseOffset + s && a.end >= baseOffset + e);
+    if (covering.length === 0) {
+      parent.appendChild(document.createTextNode(piece));
+    } else {
+      const sortedCov = [...covering].sort((a, b) => a.createdAt - b.createdAt);
+      let node = document.createTextNode(piece);
+      for (let j = sortedCov.length - 1; j >= 0; j--) {
+        const mark = document.createElement('mark');
+        const a = sortedCov[j];
+        if (a.underline) { mark.className = 'ul'; }
+        else { mark.className = a.colorId; mark.style.background = colorBg(a.colorId); }
+        mark.dataset.annId = a.id;
+        mark.appendChild(node);
+        node = mark;
+      }
+      parent.appendChild(node);
+    }
+  }
+}
+
+/* ============ 研读列 ============ */
+function renderStudy() {
+  $('studyBody').innerHTML = '';
+  if (state.activeTab === 'notes') renderFootnotes();
+  else if (state.activeTab === 'lifereading') renderLifereading();
+  else renderMyNotes();
+}
+
+function renderFootnotes() {
+  const body = $('studyBody');
+  const acr = state.currentBook.acronym, ch = state.currentChapter;
+  const items = [];
+  for (let v = 1; v < 200; v++) {
+    for (const half of ['', '上', '下']) {
+      const key = `${acr}${ch}:${v}${half}`;
+      const notes = (state.bibleNotes || {})[key];
+      if (notes) {
+        notes.forEach((note, i) => {
+          items.push({ label: `${ch}:${v}${half} 注${i + 1}`, text: note });
+        });
+      }
+    }
+  }
+  if (!items.length) {
+    body.innerHTML = '<div class="empty-hint">本章暂无注解</div>';
+    return;
+  }
+  items.forEach(it => {
+    const div = document.createElement('div');
+    div.className = 'fn-item';
+    const label = document.createElement('div');
+    label.className = 'fn-label';
+    label.textContent = it.label;
+    const text = document.createElement('div');
+    text.className = 'lr-content';
+    text.textContent = it.text;
+    div.appendChild(label);
+    div.appendChild(text);
+    body.appendChild(div);
+  });
+}
+
+function renderLifereading() {
+  const body = $('studyBody');
+  const articles = (state.lifereading && state.lifereading.articles) || [];
+  const ch = state.currentChapter;
+  const matched = articles.filter(a => {
+    if (!a.verses || !a.verses.length) return false;
+    return a.verses.some(v => {
+      const m = String(v).match(/^(\d+)/);
+      return m && +m[1] === ch;
+    });
+  });
+  if (!matched.length) {
+    body.innerHTML = '<div class="empty-hint">本章暂无相关生命读经</div>';
+    return;
+  }
+  matched.forEach(a => {
+    const div = document.createElement('div');
+    div.className = 'lr-item';
+    const title = document.createElement('div');
+    title.className = 'lr-title';
+    title.textContent = a.title;
+    const verses = document.createElement('div');
+    verses.className = 'lr-verses';
+    verses.textContent = '经文：' + (a.verses || []).join('、');
+    div.appendChild(title);
+    div.appendChild(verses);
+    const content = document.createElement('div');
+    content.className = 'lr-content';
+    content.textContent = a.content || '';
+    div.appendChild(content);
+    body.appendChild(div);
+  });
+}
+
+function renderMyNotes() {
+  const body = $('studyBody');
+  const key = `${state.currentBook.index}:${state.currentChapter}`;
+  // 章级笔记
+  const noteDiv = document.createElement('div');
+  noteDiv.className = 'note-item';
+  const meta = document.createElement('div');
+  meta.className = 'note-meta';
+  meta.textContent = `第 ${state.currentChapter} 章 笔记`;
+  const ta = document.createElement('textarea');
+  ta.placeholder = '写点本章的领受…';
+  ta.value = state.chapterNotes[key] || '';
+  ta.addEventListener('input', () => {
+    state.chapterNotes[key] = ta.value;
+    save(LS_CHAPTER_NOTES, state.chapterNotes);
+  });
+  noteDiv.appendChild(meta);
+  noteDiv.appendChild(ta);
+  body.appendChild(noteDiv);
+  // 带笔记的标注
+  const annotated = state.annotations.filter(a => a.book === state.currentBook.index && a.chapter === state.currentChapter && a.note);
+  if (!annotated.length) {
+    const hint = document.createElement('div');
+    hint.className = 'empty-hint';
+    hint.textContent = '划线的经文加笔记后，会汇总在这里';
+    body.appendChild(hint);
+    return;
+  }
+  annotated.forEach(a => {
+    const div = document.createElement('div');
+    div.className = 'note-item';
+    const m = document.createElement('div');
+    m.className = 'note-meta';
+    m.textContent = `${state.currentBook.acronym}${state.currentChapter}:${a.verse}${a.half || ''}`;
+    const t = document.createElement('div');
+    t.className = 'lr-content';
+    t.textContent = a.note;
+    div.appendChild(m);
+    div.appendChild(t);
+    body.appendChild(div);
+  });
+}
+
+/* ============ 标注 ============ */
+let pendingRange = null;
+
+function bindEvents() {
+  // 菜单（移动端导航）
+  $('menuBtn').addEventListener('click', () => $('navCol').classList.toggle('open'));
+  $('notesBtn').addEventListener('click', () => {
+    $('studyCol').classList.toggle('open');
+    state.activeTab = 'mynotes';
+    document.querySelectorAll('.study-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'mynotes'));
+    renderStudy();
+  });
+  // 书卷搜索
+  $('bookSearch').addEventListener('input', (e) => {
+    const q = e.target.value.trim();
+    document.querySelectorAll('#bookList .book-item').forEach(el => {
+      el.style.display = el.textContent.includes(q) ? '' : 'none';
+    });
+    document.querySelectorAll('#bookList .group-label').forEach(el => {
+      el.style.display = q ? 'none' : '';
+    });
+  });
+  // 研读 tab
+  document.querySelectorAll('.study-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      state.activeTab = tab.dataset.tab;
+      document.querySelectorAll('.study-tab').forEach(t => t.classList.toggle('active', t === tab));
+      renderStudy();
+    });
+  });
+  // 选区标注
+  document.addEventListener('mouseup', handleSelection);
+  document.addEventListener('mousedown', (e) => {
+    const tool = $('floatTool');
+    if (tool.hidden) return;
+    if (!tool.contains(e.target)) hideFloatTool();
+  });
+  // 弹窗关闭
+  $('popupClose').addEventListener('click', closePopup);
+  $('overlay').addEventListener('click', closePopup);
+  // 注脚/串珠点击（事件委托）
+  document.addEventListener('click', onContentClick);
+}
+
+function onContentClick(e) {
+  const fn = e.target.closest('sup.fn-ref');
+  if (fn) {
+    e.stopPropagation();
+    showFootnotePopup(fn.dataset.fn);
+    return;
+  }
+  const xr = e.target.closest('sup.xref-ref');
+  if (xr) {
+    e.stopPropagation();
+    showXrefPopup(xr.dataset.xref);
+    return;
+  }
+}
+
+function handleSelection() {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed) { hideFloatTool(); return; }
+  const range = sel.getRangeAt(0);
+  const vtext = findVtext(range.startContainer);
+  if (!vtext || findVtext(range.endContainer) !== vtext) { hideFloatTool(); return; }
+  // 单节内标注
+  const start = plainOffset(vtext, range.startContainer, range.startOffset);
+  const end = plainOffset(vtext, range.endContainer, range.endOffset);
+  if (end <= start) { hideFloatTool(); return; }
+  pendingRange = { vtext, start, end, verse: vtext.dataset.verse };
+  showFloatTool(range.getBoundingClientRect());
+}
+
+function findVtext(node) {
+  let el = node.nodeType === 1 ? node : node.parentElement;
+  while (el) {
+    if (el.classList && el.classList.contains('vtext')) return el;
+    el = el.parentElement;
+  }
+  return null;
+}
+
+function plainOffset(vtext, node, offset) {
+  let count = 0, done = false;
+  function walk(el) {
+    for (const child of el.childNodes) {
+      if (done) return;
+      if (child === node && child.nodeType === 3) {
+        count += offset;
+        done = true;
+        return;
+      }
+      if (child.nodeType === 3) count += child.textContent.length;
+      else if (child.nodeType === 1 && child.tagName !== 'SUP') walk(child);
+    }
+  }
+  walk(vtext);
+  return count;
+}
+
+function showFloatTool(rect) {
+  const tool = $('floatTool');
+  tool.hidden = false;
+  tool.innerHTML = '';
+  // 5 色
+  COLORS.forEach(c => {
+    const sw = document.createElement('div');
+    sw.className = `sw ${c.id}`;
+    sw.title = `${c.name}：${c.desc}`;
+    sw.addEventListener('mousedown', (e) => { e.preventDefault(); applyColor(c.id); });
+    tool.appendChild(sw);
+  });
+  const sep = document.createElement('div');
+  sep.className = 'tool-sep';
+  tool.appendChild(sep);
+  // 下划线
+  const ul = document.createElement('button');
+  ul.className = 'tool-btn';
+  ul.textContent = '下划线';
+  ul.addEventListener('mousedown', (e) => { e.preventDefault(); applyUnderline(); });
+  tool.appendChild(ul);
+  // 笔记
+  const nb = document.createElement('button');
+  nb.className = 'tool-btn';
+  nb.textContent = '加笔记';
+  nb.addEventListener('mousedown', (e) => { e.preventDefault(); addNote(); });
+  tool.appendChild(nb);
+  // 定位
+  const x = rect.left + rect.width / 2 - tool.offsetWidth / 2;
+  const y = rect.top - tool.offsetHeight - 8;
+  tool.style.left = Math.max(8, x) + 'px';
+  tool.style.top = Math.max(8, y) + 'px';
+}
+
+function hideFloatTool() { $('floatTool').hidden = true; pendingRange = null; }
+
+function addAnnotation(partial) {
+  const r = pendingRange;
+  if (!r) return;
+  const ann = {
+    id: 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    book: state.currentBook.index,
+    chapter: state.currentChapter,
+    verse: +r.verse.replace(/[上中下]/g, ''),
+    half: r.verse.match(/[上中下]/)?.[0] || '',
+    start: r.start,
+    end: r.end,
+    createdAt: Date.now(),
+    ...partial,
+  };
+  state.annotations.push(ann);
+  save(LS_ANNOTATIONS, state.annotations);
+  renderChapter();
+  hideFloatTool();
+}
+
+function applyColor(colorId) { addAnnotation({ colorId, underline: false }); }
+function applyUnderline() { addAnnotation({ underline: true, colorId: null }); }
+function addNote() {
+  const r = pendingRange;
+  if (!r) return;
+  const note = prompt('输入笔记：');
+  if (note) addAnnotation({ note, colorId: null, underline: false });
+  else hideFloatTool();
+}
+
+/* ============ 弹窗 ============ */
+function openPopup(title, bodyHtml) {
+  $('popupTitle').textContent = title;
+  $('popupBody').innerHTML = bodyHtml;
+  $('popup').hidden = false;
+  $('overlay').hidden = false;
+}
+function closePopup() {
+  $('popup').hidden = true;
+  $('overlay').hidden = true;
+}
+
+function showFootnotePopup(n) {
+  // 定位点击所在节
+  const sup = document.querySelector(`sup.fn-ref[data-fn="${n}"]`);
+  let key = null;
+  if (sup) {
+    const vtext = sup.closest('.vtext');
+    const verseNum = vtext.dataset.verse.replace(/[上中下]/g, '');
+    const half = vtext.dataset.verse.match(/[上中下]/)?.[0] || '';
+    key = `${state.currentBook.acronym}${state.currentChapter}:${verseNum}${half}`;
+  }
+  const notes = key ? (state.bibleNotes || {})[key] : null;
+  if (!notes || !notes[+n - 1]) { openPopup(`注${n}`, '<div class="empty-hint">未找到注解</div>'); return; }
+  const note = notes[+n - 1];
+  openPopup(`${state.currentBook.name} ${state.currentChapter} 注${n}`, `<div class="fn-body">${escapeHtml(note)}</div>`);
+}
+
+function showXrefPopup(letter) {
+  const sup = document.querySelector(`sup.xref-ref[data-xref="${letter}"]`);
+  let key = null;
+  if (sup) {
+    const vtext = sup.closest('.vtext');
+    const verseNum = vtext.dataset.verse.replace(/[上中下]/g, '');
+    const half = vtext.dataset.verse.match(/[上中下]/)?.[0] || '';
+    key = `${state.currentBook.acronym}${state.currentChapter}:${verseNum}${half}`;
+  }
+  const xrefs = key ? (state.bibleXrefs || {})[key] : null;
+  const raw = xrefs ? xrefs[letter] : null;
+  if (!raw) { openPopup(`串珠 ${letter}`, '<div class="empty-hint">未找到串珠</div>'); return; }
+  const refs = resolveRefString(raw);
+  let html = `<div style="color:var(--text-muted);font-size:13px;margin-bottom:8px">${escapeHtml(raw)}</div>`;
+  let found = 0;
+  for (const ref of refs) {
+    const verseText = state.bibleText[ref];
+    if (verseText) {
+      const { plain } = parseMarkedText(verseText);
+      html += `<div class="popup-verse"><span class="pv-ref">${escapeHtml(ref)}</span><span class="pv-text">${escapeHtml(plain)}</span></div>`;
+      found++;
+    }
+  }
+  if (!found) html += '<div class="empty-hint">未能解析引用经文</div>';
+  openPopup(`串珠 ${letter}`, html);
+}
+
+/* ============ 引用解析（简化版） ============ */
+const BOOK_ALIASES = {
+  '创世记':'创','出埃及记':'出','利未记':'利','民数记':'民','申命记':'申','约书亚记':'书','士师记':'士','路得记':'得',
+  '撒母耳记上':'撒上','撒母耳记下':'撒下','列王纪上':'王上','列王纪下':'王下','历代志上':'代上','历代志下':'代下',
+  '以斯拉记':'拉','尼希米记':'尼','以斯帖记':'斯','约伯记':'伯','诗篇':'诗','箴言':'箴','传道书':'传','雅歌':'歌',
+  '以赛亚书':'赛','耶利米书':'耶','耶利米哀歌':'哀','以西结书':'结','但以理书':'但','何西阿书':'何','约珥书':'珥','阿摩司书':'摩','俄巴底亚书':'俄','约拿书':'拿','弥迦书':'弥','那鸿书':'鸿','哈巴谷书':'哈','西番雅书':'番','哈该书':'该','撒迦利亚书':'亚','玛拉基书':'玛',
+  '马太福音':'太','马可福音':'可','路加福音':'路','约翰福音':'约','使徒行传':'徒','罗马书':'罗','哥林多前书':'林前','哥林多后书':'林后','加拉太书':'加','以弗所书':'弗','腓立比书':'腓','歌罗西书':'西','帖撒罗尼迦前书':'帖前','帖撒罗尼迦后书':'帖后','提摩太前书':'提前','提摩太后书':'提后','提多书':'多','腓利门书':'门','希伯来书':'来','雅各书':'雅','彼得前书':'彼前','彼得后书':'彼后','约翰一书':'约壹','约翰二书':'约贰','约翰三书':'约参','犹大书':'犹','启示录':'启',
+  // 简称别名
+  '但以理':'但','以西结':'结','以赛亚':'赛','耶利米':'耶','出埃及':'出','腓立比':'腓','以弗所':'弗','歌罗西':'西','加拉太':'加','马太':'太','约翰':'约','罗马':'罗','哀歌':'哀','行传':'徒','雅各':'雅',
+  '约一':'约壹','约二':'约贰','约三':'约参',
+};
+
+const CN_DIGITS = { '零':0,'〇':0,'○':0,'一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9 };
+function cnToInt(s) {
+  if (!s) return null;
+  if (/^\d+$/.test(s)) return parseInt(s, 10);
+  if (s === '十') return 10;
+  if (!/[百十]/.test(s)) {
+    let v = 0;
+    for (const c of s) {
+      if (c in CN_DIGITS) v = v * 10 + CN_DIGITS[c];
+      else return null;
+    }
+    return v;
+  }
+  let total = 0, rest = s;
+  if (rest.includes('百')) { const i = rest.indexOf('百'); total += (CN_DIGITS[rest[i-1]] ?? 1) * 100; rest = rest.slice(i+1); }
+  if (rest.includes('十')) { const i = rest.indexOf('十'); total += (i > 0 ? (CN_DIGITS[rest[i-1]] ?? 1) : 1) * 10; rest = rest.slice(i+1); }
+  if (rest) total += CN_DIGITS[rest[0]] ?? 0;
+  return total;
+}
+
+function resolveRefString(raw) {
+  const tokens = (raw || '').split(/[，,、;；\s]+/).filter(Boolean);
+  const out = [];
+  let curAcronym = null, curChapter = null;
+  const aliases = Object.keys(BOOK_ALIASES).sort((a, b) => b.length - a.length);
+  for (const token of tokens) {
+    let matched = null;
+    for (const alias of aliases) {
+      if (token.startsWith(alias)) { matched = { acronym: BOOK_ALIASES[alias], rest: token.slice(alias.length) }; break; }
+    }
+    if (matched) {
+      curAcronym = matched.acronym;
+      const r = parseRefTail(matched.acronym, matched.rest, null);
+      if (r) {
+        if (r.key) out.push(r.key);
+        if (r.chapter) curChapter = r.chapter;
+      }
+    } else if (curAcronym && curChapter) {
+      const m = token.match(/^(\d+)$/);
+      if (m) out.push(`${curAcronym}${curChapter}:${m[1]}`);
+    }
+  }
+  return out;
+}
+
+function parseRefTail(acronym, rest, defChapter) {
+  rest = (rest || '').trim();
+  if (!rest) return null;
+  // 章:节（阿拉伯）1:2 / 1:2-3
+  let m = rest.match(/^(\d+):(\d+)(?:[-~](\d+))?$/);
+  if (m) {
+    const ch = m[1];
+    const key = m[3] ? `${acronym}${ch}:${m[2]}-${m[3]}` : `${acronym}${ch}:${m[2]}`;
+    return { key, chapter: +ch };
+  }
+  // 中文章 + 阿拉伯节（十二1 / 十二1-3）
+  m = rest.match(/^([一二三四五六七八九十百〇○]+)(\d+)(?:[-~](\d+))?$/);
+  if (m) {
+    const ch = cnToInt(m[1]);
+    if (ch) {
+      const key = m[3] ? `${acronym}${ch}:${m[2]}-${m[3]}` : `${acronym}${ch}:${m[2]}`;
+      return { key, chapter: ch };
+    }
+  }
+  // 中文章节式（三章十九节）
+  m = rest.match(/^第?([一二三四五六七八九十百〇○]+)章([一二三四五六七八九十百〇○]+)节$/);
+  if (m) {
+    const ch = cnToInt(m[1]), v = cnToInt(m[2]);
+    if (ch && v) return { key: `${acronym}${ch}:${v}`, chapter: ch };
+  }
+  // 纯章号（约一1 → 约壹 第1章，节由后续 token 提供）
+  m = rest.match(/^(\d+)$/);
+  if (m) return { key: null, chapter: +m[1] };
+  m = rest.match(/^([一二三四五六七八九十百〇○]+)$/);
+  if (m) { const ch = cnToInt(m[1]); if (ch) return { key: null, chapter: ch }; }
+  return null;
+}
+
+function escapeHtml(s) {
+  return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/* ============ 启动 ============ */
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+init();

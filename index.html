@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#667eea">
+  <title>读经研读笔记</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <button id="menuBtn" class="icon-btn" aria-label="菜单">☰</button>
+    <div class="crumb">
+      <span id="bookName">—</span>
+      <span id="chapterLabel">第 — 章</span>
+    </div>
+    <div class="topbar-actions">
+      <button id="notesBtn" class="icon-btn" aria-label="笔记汇总">✎</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="nav-col" id="navCol">
+      <div class="nav-search">
+        <input id="bookSearch" type="text" placeholder="搜索书卷…" autocomplete="off">
+      </div>
+      <div class="nav-list" id="bookList"></div>
+      <div class="nav-chapters" id="chapterList"></div>
+    </aside>
+
+    <main class="text-col" id="textCol">
+      <div id="chapterTheme" class="chapter-theme"></div>
+      <div id="verseContainer" class="verses"></div>
+    </main>
+
+    <aside class="study-col" id="studyCol">
+      <div class="study-tabs" id="studyTabs">
+        <button class="study-tab active" data-tab="notes">注解</button>
+        <button class="study-tab" data-tab="lifereading">生命读经</button>
+        <button class="study-tab" data-tab="mynotes">我的笔记</button>
+      </div>
+      <div class="study-body" id="studyBody"></div>
+    </aside>
+  </div>
+
+  <div id="floatTool" class="floattool" hidden></div>
+  <div id="overlay" class="overlay" hidden></div>
+  <div id="popup" class="popup" hidden>
+    <div class="popup-header">
+      <span id="popupTitle"></span>
+      <button id="popupClose" class="icon-btn">×</button>
+    </div>
+    <div class="popup-body" id="popupBody"></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
