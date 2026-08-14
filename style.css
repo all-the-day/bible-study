@@ -66,7 +66,7 @@ body.hide-marks sup.xref-ref { display: none; }
 
 /* ── 布局 ── */
 .layout {
-  --study-w: 360px;
+  --study-w: 480px;
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr) var(--study-w);
   height: calc(100vh - 52px);
@@ -151,7 +151,7 @@ body.hide-marks sup.xref-ref { display: none; }
   font-size: 15px; color: var(--text-muted);
   margin-bottom: 20px; line-height: 1.7;
 }
-.verses { max-width: 720px; }
+.verses { width: 100%; }
 .verse {
   margin-bottom: 14px;
 }

@@ -32,7 +32,7 @@ const state = {
   hideMarks: load(LS_HIDE_MARKS, false),
   navCollapsed: load(LS_NAV_COLLAPSED, false),
   viewMode: load(LS_VIEW_MODE, 'default'),
-  studyWidth: load(LS_STUDY_WIDTH, 360),
+  studyWidth: load(LS_STUDY_WIDTH, 480),
   activeTab: 'notes',
 };
 
