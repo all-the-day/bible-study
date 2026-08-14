@@ -1087,23 +1087,56 @@ function linkifyRefs(text) {
 }
 
 // 渲染生命读经正文：经文引用包 ref-link，同时叠加标注 mark
-function renderLrContent(parent, content, annotations) {
-  const refs = detectRefs(content || '');
+// 判断生命读经某行是否为标题，返回层级（null=正文）
+// 层级：0=小标题(如「一本奇妙的书」) 1=壹 2=一 3=１ 4=ａ
+function detectLrHeading(line) {
+  const t = line.trim();
+  if (!t) return null;
+  // 分隔线（---、=== 等纯符号行）不是标题
+  if (/^[-—─=*_·●○•]+$/.test(t)) return null;
+  if (/^[壹贰叁肆伍陆柒捌玖拾]　/.test(t)) return { level: 1 };
+  if (/^[一二三四五六七八九十]　/.test(t)) return { level: 2 };
+  if (/^[１-９]　/.test(t)) return { level: 3 };
+  if (/^[ａ-ｚ]　/.test(t)) return { level: 4 };
+  // 短行小标题：2-12 字、无标点结尾、无括号
+  if (t.length >= 2 && t.length <= 12 && !/[。，；：？！、」』）】]$/.test(t) && !/[（(【[]/.test(t)) {
+    return { level: 0 };
+  }
+  return null;
+}
+
+// 渲染单行：经文引用包 ref-link，叠加标注 mark（baseOffset 为该行在全文中的偏移）
+function renderLrLine(parent, text, baseOffset, annotations) {
+  const refs = detectRefs(text || '');
   let cursor = 0;
-  const appendText = (text, base) => {
-    if (!annotations.length) parent.appendChild(document.createTextNode(text));
-    else renderTextWithMarks(parent, text, base, annotations);
+  const appendText = (t, base) => {
+    if (!annotations.length) parent.appendChild(document.createTextNode(t));
+    else renderTextWithMarks(parent, t, base, annotations);
   };
   for (const r of refs) {
-    if (r.start > cursor) appendText(content.slice(cursor, r.start), cursor);
+    if (r.start > cursor) appendText(text.slice(cursor, r.start), baseOffset + cursor);
     const span = document.createElement('span');
     span.className = 'ref-link';
-    span.textContent = content.slice(r.start, r.end);
+    span.textContent = text.slice(r.start, r.end);
     span.dataset.refs = r.refText;
     parent.appendChild(span);
     cursor = r.end;
   }
-  if (cursor < content.length) appendText(content.slice(cursor), cursor);
+  if (cursor < text.length) appendText(text.slice(cursor), baseOffset + cursor);
+}
+
+function renderLrContent(parent, content, annotations) {
+  const lines = (content || '').split('\n');
+  let offset = 0;
+  for (const line of lines) {
+    if (line.trim() === '') { offset += line.length + 1; continue; }
+    const heading = detectLrHeading(line);
+    const div = document.createElement('div');
+    div.className = heading ? `lr-head lr-h${heading.level}` : 'lr-para';
+    renderLrLine(div, line, offset, annotations);
+    parent.appendChild(div);
+    offset += line.length + 1;
+  }
 }
 
 // 把带标记的经文文本转成 HTML（保留 {N}/[a] 为可点击上标，key 供弹窗查注解/串珠）
