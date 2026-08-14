@@ -238,7 +238,7 @@ sup.xref-ref:hover { color: var(--brand-dark); }
 }
 .note-item .note-meta { color: var(--text-muted); font-size: 12px; margin-bottom: 4px; }
 .empty-hint { color: var(--text-muted); text-align: center; padding: 30px 0; font-size: 14px; }
-.lr-content { white-space: pre-wrap; font-size: 15px; }
+.lr-content { white-space: pre-wrap; font-size: 17px; line-height: 2; }
 .lr-content .lr-para { margin-bottom: 12px; }
 
 /* ── 划线汇总 ── */
