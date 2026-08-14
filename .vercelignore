@@ -1,0 +1,4 @@
+# 覆盖 .gitignore：部署时需包含 data/（圣经数据）
+.vercel/
+.git/
+scripts/
