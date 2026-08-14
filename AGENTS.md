@@ -53,7 +53,9 @@ cd scripts && python export.py
 ```bash
 vercel --prod --yes --archive=tgz
 ```
+- 生产地址：**https://bible-study-teal-seven.vercel.app**
 - 账号 all-the-day；沿用 lingliang-search 的 `--archive=tgz` 约定
+- **关键**：`data/` 大文件在 `.gitignore` 里被忽略，但 `.vercelignore` 覆盖了它（只排除 `.vercel/` `.git/` `scripts/`），保证部署时数据能上传。改动数据后先重跑导出再部署。
 
 ## 修改守则
 
