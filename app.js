@@ -1185,24 +1185,29 @@ function linkifyRefs(text) {
 
 // 渲染生命读经正文：经文引用包 ref-link，同时叠加标注 mark
 // 判断生命读经某行是否为标题，返回层级（null=正文）
-// 层级：0=小标题 1=大标题(壹/（10）) 2=大点(一/《一》) 3=小点(１/《１》) 4=子项(ａ/（ａ）)
+// 恢复版生命读经大纲编号共 10 级（编号可多位）：
+//   0=短行无编号小节  1=壹 2=一 3=１ 4=ａ（裸格式）
+//   5=（一）6=（１）7=（ａ）（括号格式）  8=《一》9=《１》10=《ａ》（书名号格式）
 function detectLrHeading(line) {
   const t = line.trim();
   if (!t) return null;
   // 分隔线（---、=== 等纯符号行）不是标题
   if (/^[-—─=*_·●○•]+$/.test(t)) return null;
-  // 裸格式：壹/一/１/ａ + 全角空格
-  if (/^[壹贰叁肆伍陆柒捌玖拾]　/.test(t)) return { level: 1 };
-  if (/^[一二三四五六七八九十]　/.test(t)) return { level: 2 };
-  if (/^[１-９]　/.test(t)) return { level: 3 };
+  // 裸格式：壹/一/１/ａ + 全角空格（level 1-4，编号支持多位如「十一」「１０」）
+  if (/^[壹贰叁肆伍陆柒捌玖拾]+　/.test(t)) return { level: 1 };
+  if (/^[一二三四五六七八九十]+　/.test(t)) return { level: 2 };
+  if (/^[０-９]+　/.test(t)) return { level: 3 };
   if (/^[ａ-ｚ]　/.test(t)) return { level: 4 };
-  // 括号格式：（１０）（ａ）《一》《１》
-  if (/^（[０-９一二三四五六七八九十百〇○]+）　/.test(t)) return { level: 1 };
-  if (/^《[一二三四五六七八九十]+》　/.test(t)) return { level: 2 };
-  if (/^《[１-９]+》　/.test(t)) return { level: 3 };
-  if (/^（[ａ-ｚ]）　/.test(t)) return { level: 4 };
-  // 短行小标题：2-12 字、无标点结尾、无括号
-  if (t.length >= 2 && t.length <= 12 && !/[。，；：？！、」』）】]$/.test(t) && !/[（(【[]/.test(t)) {
+  // 括号格式：（一）（１）（ａ）（level 5-7）
+  if (/^（[一二三四五六七八九十百〇○]+）　/.test(t)) return { level: 5 };
+  if (/^（[０-９]+）　/.test(t)) return { level: 6 };
+  if (/^（[ａ-ｚ]）　/.test(t)) return { level: 7 };
+  // 书名号格式：《一》《１》《ａ》（level 8-10）
+  if (/^《[一二三四五六七八九十]+》　/.test(t)) return { level: 8 };
+  if (/^《[０-９]+》　/.test(t)) return { level: 9 };
+  if (/^《[ａ-ｚ]》　/.test(t)) return { level: 10 };
+  // 短行小标题：2-12 字、无标点结尾、无括号/书名号
+  if (t.length >= 2 && t.length <= 12 && !/[。，；：？！、」』）】]$/.test(t) && !/[（(【[《]/.test(t)) {
     return { level: 0 };
   }
   return null;
