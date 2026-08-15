@@ -24,7 +24,7 @@ const state = {
   currentBook: null,
   currentChapter: null,
   bibleText: null,      // {key: markedText}
-  bibleNotes: null,     // {key: [notes]}
+  bibleNotes: null,     // {key: {seq: note}}
   bibleXrefs: null,     // {key: {letter: rawString}}
   lifereading: null,    // {articles: [...]} 当前书卷
   annotations: load(LS_ANNOTATIONS, []),
@@ -368,8 +368,8 @@ function renderFootnotes() {
       const key = `${acr}${ch}:${v}${half}`;
       const notes = (state.bibleNotes || {})[key];
       if (notes) {
-        notes.forEach((note, i) => {
-          items.push({ label: `${ch}:${v}${half} 注${i + 1}`, text: note, chapter: ch, verse: v, half });
+        Object.keys(notes).map(Number).sort((a, b) => a - b).forEach((seq) => {
+          items.push({ label: `${ch}:${v}${half} 注${seq}`, text: notes[seq], chapter: ch, verse: v, half });
         });
       }
     }
@@ -717,17 +717,26 @@ function bindEvents() {
   document.addEventListener('click', onContentClick);
 }
 
+// 从注号上标定位其所在节的 key（经文区域内上标无 data-key，需自行反推）
+function verseKeyFromSup(sup) {
+  const vtext = sup.closest('.vtext');
+  if (!vtext) return null;
+  const verseNum = vtext.dataset.verse.replace(/[上中下]/g, '');
+  const half = vtext.dataset.verse.match(/[上中下]/)?.[0] || '';
+  return `${state.currentBook.acronym}${state.currentChapter}:${verseNum}${half}`;
+}
+
 function onContentClick(e) {
   const fn = e.target.closest('sup.fn-ref');
   if (fn) {
     e.stopPropagation();
-    showFootnotePopup(fn.dataset.fn, fn.dataset.key);
+    showFootnotePopup(fn.dataset.fn, fn.dataset.key || verseKeyFromSup(fn));
     return;
   }
   const xr = e.target.closest('sup.xref-ref');
   if (xr) {
     e.stopPropagation();
-    showXrefPopup(xr.dataset.xref, xr.dataset.key);
+    showXrefPopup(xr.dataset.xref, xr.dataset.key || verseKeyFromSup(xr));
     return;
   }
   const ref = e.target.closest('span.ref-link');
@@ -1027,39 +1036,14 @@ function closePopupAll() {
   $('popupBack').hidden = true;
 }
 
-function showFootnotePopup(n, keyOverride) {
-  // 定位点击所在节（弹窗内的注号自带 data-key）
-  let key = keyOverride || null;
-  if (!key) {
-    const sup = document.querySelector(`sup.fn-ref[data-fn="${n}"]`);
-    if (sup) {
-      const vtext = sup.closest('.vtext');
-      if (vtext) {
-        const verseNum = vtext.dataset.verse.replace(/[上中下]/g, '');
-        const half = vtext.dataset.verse.match(/[上中下]/)?.[0] || '';
-        key = `${state.currentBook.acronym}${state.currentChapter}:${verseNum}${half}`;
-      }
-    }
-  }
+function showFootnotePopup(n, key) {
   const notes = key ? (state.bibleNotes || {})[key] : null;
-  if (!notes || !notes[+n - 1]) { openPopup(`注${n}`, '<div class="empty-hint">未找到注解</div>'); return; }
-  const note = notes[+n - 1];
+  if (!notes || !notes[+n]) { openPopup(`注${n}`, '<div class="empty-hint">未找到注解</div>'); return; }
+  const note = notes[+n];
   openPopup(`${key} 注${n}`, `<div class="fn-body">${linkifyRefs(note)}</div>`);
 }
 
-function showXrefPopup(letter, keyOverride) {
-  let key = keyOverride || null;
-  if (!key) {
-    const sup = document.querySelector(`sup.xref-ref[data-xref="${letter}"]`);
-    if (sup) {
-      const vtext = sup.closest('.vtext');
-      if (vtext) {
-        const verseNum = vtext.dataset.verse.replace(/[上中下]/g, '');
-        const half = vtext.dataset.verse.match(/[上中下]/)?.[0] || '';
-        key = `${state.currentBook.acronym}${state.currentChapter}:${verseNum}${half}`;
-      }
-    }
-  }
+function showXrefPopup(letter, key) {
   const xrefs = key ? (state.bibleXrefs || {})[key] : null;
   const raw = xrefs ? xrefs[letter] : null;
   if (!raw) { openPopup(`串珠 ${letter}`, '<div class="empty-hint">未找到串珠</div>'); return; }

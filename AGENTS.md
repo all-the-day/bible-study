@@ -25,7 +25,7 @@
 | `scripts/*-test.js` | puppeteer 端到端测试（e2e / 标注 / 生命读经标注） |
 | `data/books.json` | 66 卷目录 + 每卷章数 + 缩写 |
 | `data/bible-text.json` | 原文，键 `创1:1` / `创1:2上`，值含 `{N}`（注脚）/`[a]`（串珠）标记 |
-| `data/bible-notes.json` | 注解，键 → 注脚文本列表（按 seq 序） |
+| `data/bible-notes.json` | 注解，键 → `{seq: 注脚文本}`（seq 为节内连续编号，可复用同一文本、跨半节连续） |
 | `data/bible-xrefs.json` | 串珠，键 → `{字母: 引用串}` |
 | `data/lifereading/{缩写}.json` | 每卷生命读经：篇目 + 经文映射 + 正文 |
 

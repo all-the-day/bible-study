@@ -1,5 +1,5 @@
-const CACHE = 'bible-study-v2';
-const DATA_CACHE = 'bible-study-data-v2';
+const CACHE = 'bible-study-v3';
+const DATA_CACHE = 'bible-study-data-v3';
 const ASSETS = ['/', '/index.html', '/style.css', '/app.js', '/sync.js', '/manifest.json'];
 
 self.addEventListener('install', (e) => {
@@ -18,19 +18,18 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
 
-  // 数据 JSON（体积大且稳定）：缓存优先 + 后台更新
+  // 数据 JSON：网络优先、失败回退缓存（数据会随 export.py 重跑更新，需即时生效）
   if (url.pathname.startsWith('/data/')) {
     e.respondWith(
-      caches.match(e.request).then((cached) => {
-        const network = fetch(e.request).then((res) => {
+      fetch(e.request)
+        .then((res) => {
           if (res.ok) {
             const clone = res.clone();
             caches.open(DATA_CACHE).then((c) => c.put(e.request, clone));
           }
           return res;
-        }).catch(() => cached);
-        return cached || network;
-      })
+        })
+        .catch(() => caches.match(e.request))
     );
     return;
   }

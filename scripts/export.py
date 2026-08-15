@@ -99,7 +99,13 @@ def export_bible(conn, index_to_name, name_to_acronym):
             beads = sorted(bead_rows.get((bi, ch, sec, flag), []), key=lambda x: x[0])
             bible_text[key] = insert_markers(text, fns, beads)
             if fns:
-                bible_notes[key] = [n for _l, _s, n in sorted(fns, key=lambda x: x[1])]
+                # seq 可被多个注号位置复用（同 seq 仅一条有文本，其余 note 为 NULL）；
+                # 按 seq 去重保留非空文本，输出 {seq: note}，前端按真实 seq 查找（seq 跨半节连续、可有空洞）。
+                notes_by_seq = {}
+                for _l, s, n in sorted(fns, key=lambda x: (x[1], x[0])):
+                    if s not in notes_by_seq and n:
+                        notes_by_seq[s] = n
+                bible_notes[key] = notes_by_seq
             if beads:
                 bible_xrefs[key] = {letter: (bead or '').lstrip('参见参') for _l, letter, bead in beads}
 
