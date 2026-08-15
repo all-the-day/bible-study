@@ -140,6 +140,8 @@ def export_lifereading(name_to_acronym):
                 lines = text.split('\n')
                 if lines and lines[0].startswith('#'):
                     lines = lines[1:]
+                # 过滤末尾元数据行（来源/URL/获取时间，不应作为正文显示）
+                lines = [l for l in lines if not l.strip().startswith(('**来源**', '**URL**', '**获取时间**'))]
                 content = '\n'.join(lines).strip()
             articles.append({
                 'id': a.get('id'),
