@@ -263,6 +263,7 @@ function colorBg(id) {
 }
 
 function renderChapter() {
+  if (!state.bibleText) return; // 数据未加载完成（syncFromRemote 与 ensureBibleData 竞态）
   const container = $('verseContainer');
   container.innerHTML = '';
   const acr = state.currentBook.acronym;
@@ -1280,7 +1281,7 @@ function showRefsPopup(title, refString) {
   let html = `<div style="color:var(--text-muted);font-size:13px;margin-bottom:8px">${escapeHtml(refString)}</div>`;
   let found = 0;
   for (const ref of refs) {
-    const verseText = state.bibleText[ref];
+    const verseText = (state.bibleText || {})[ref];
     if (verseText) {
       html += `<div class="popup-verse"><span class="pv-ref">${escapeHtml(ref)}</span><span class="pv-text">${markedToHtml(verseText, ref)}</span></div>`;
       found++;
