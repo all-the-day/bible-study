@@ -1,5 +1,5 @@
-const CACHE = 'bible-study-v3';
-const DATA_CACHE = 'bible-study-data-v3';
+const CACHE = 'bible-study-v4';
+const DATA_CACHE = 'bible-study-data-v4';
 const ASSETS = ['/', '/index.html', '/style.css', '/app.js', '/sync.js', '/manifest.json'];
 
 self.addEventListener('install', (e) => {
