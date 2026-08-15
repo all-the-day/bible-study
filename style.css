@@ -251,7 +251,10 @@ sup.xref-ref:hover { color: var(--brand-dark); }
 .fn-item .fn-label {
   color: var(--fn-ref); font-weight: 700; font-size: 13px; margin-bottom: 4px;
 }
-.lr-item .lr-title { font-weight: 700; color: var(--heading); margin-bottom: 6px; }
+.lr-item .lr-title {
+  font-weight: 700; text-align: center; font-size: 18px;
+  color: var(--brand); margin: 20px 0 10px;
+}
 .lr-item .lr-verses { color: var(--text-muted); font-size: 13px; margin-bottom: 6px; }
 .note-item textarea {
   width: 100%; border: 1px solid var(--border); border-radius: var(--radius-sm);
@@ -261,14 +264,23 @@ sup.xref-ref:hover { color: var(--brand-dark); }
 .note-item .note-meta { color: var(--text-muted); font-size: 12px; margin-bottom: 4px; }
 .empty-hint { color: var(--text-muted); text-align: center; padding: 30px 0; font-size: 14px; }
 .lr-content { white-space: pre-wrap; font-size: 17px; line-height: 2; }
-.lr-para { margin-bottom: 10px; }
-/* 生命读经标题层级 */
-.lr-head { font-weight: 700; margin: 16px 0 6px; line-height: 1.7; }
-.lr-h0 { font-size: 19px; color: var(--heading); }
-.lr-h1 { font-size: 18px; color: var(--brand); }
-.lr-h2 { font-size: 17px; color: var(--heading); }
-.lr-h3 { font-size: 16px; color: var(--text); font-weight: 600; }
-.lr-h4 { font-size: 15px; color: var(--text-soft); font-weight: 600; }
+.lr-para {
+  margin-bottom: 10px;
+  text-indent: 2em;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  box-shadow: var(--shadow-sm);
+}
+/* 生命读经标题：所有层级统一居中，正文卡片化后标题自然凸显 */
+.lr-head {
+  font-weight: 700;
+  text-align: center;
+  margin: 20px 0 10px;
+  color: var(--brand);
+  line-height: 1.7;
+}
 
 /* 生命读经全屏：纲目侧边栏 + 正文 */
 .study-body.lr-full-mode {
@@ -295,9 +307,15 @@ sup.xref-ref:hover { color: var(--brand-dark); }
 .lr-toc-item:hover { color: var(--brand); }
 .lr-toc-l0 { font-weight: 700; color: var(--heading); }
 .lr-toc-l1 { font-weight: 700; color: var(--brand); }
-.lr-toc-l2 { padding-left: 14px; }
-.lr-toc-l3 { padding-left: 28px; font-size: 13px; }
-.lr-toc-l4 { padding-left: 42px; font-size: 13px; color: var(--text-muted); }
+.lr-toc-l2 { padding-left: 12px; }
+.lr-toc-l3 { padding-left: 22px; }
+.lr-toc-l4 { padding-left: 32px; font-size: 13px; }
+.lr-toc-l5 { padding-left: 42px; font-size: 13px; }
+.lr-toc-l6 { padding-left: 52px; font-size: 13px; }
+.lr-toc-l7 { padding-left: 62px; font-size: 12px; color: var(--text-muted); }
+.lr-toc-l8 { padding-left: 72px; font-size: 12px; color: var(--text-muted); }
+.lr-toc-l9 { padding-left: 82px; font-size: 12px; color: var(--text-muted); }
+.lr-toc-l10 { padding-left: 92px; font-size: 12px; color: var(--text-muted); }
 
 /* ── 划线汇总 ── */
 .hl-section { margin-top: 14px; }
