@@ -1,6 +1,6 @@
 {
   "appId": "com.allday.biblestudy",
-  "appName": "读经研读笔记",
+  "appName": "读经",
   "webDir": "www",
   "android": {
     "allowMixedContent": true
