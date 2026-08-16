@@ -208,9 +208,6 @@ async function selectBook(index, chapter) {
   await selectChapter(chapter);
 }
 
-// 生命读经合并卷：撒母耳记/列王纪/历代志各覆盖两卷，导出文件用首字（撒/列/历）
-const LR_ACRONYM_MAP = { '撒上': '撒', '撒下': '撒', '王上': '列', '王下': '列', '代上': '历', '代下': '历' };
-
 async function selectChapter(chapter) {
   state.currentChapter = chapter;
   $('chapterLabel').textContent = `第 ${chapter} 章`;
@@ -221,9 +218,8 @@ async function selectChapter(chapter) {
   // 生命读经懒加载
   if (!state.lifereading) {
     const acr = state.currentBook.acronym;
-    const lrFile = LR_ACRONYM_MAP[acr] || acr;
     try {
-      state.lifereading = await fetchJSON(`data/lifereading/${lrFile}.json`);
+      state.lifereading = await fetchJSON(`data/lifereading/${acr}.json`);
     } catch (e) { state.lifereading = { articles: [] }; }
     if (state.currentChapter === chapter) renderStudy();
   }

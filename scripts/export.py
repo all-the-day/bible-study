@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """从 ../bible 导出静态 JSON 到 data/（供 bible-study PWA 使用，只读数据源）。"""
 import json
+import re
 import sqlite3
 import sys
 from pathlib import Path
@@ -112,11 +113,99 @@ def export_bible(conn, index_to_name, name_to_acronym):
     return books, bible_text, bible_notes, bible_xrefs
 
 
+# 合并卷：生命读经卷名对应多个圣经书卷（读经行用全名标记上下卷）
+GROUP_BOOK_PAIRS = {
+    '撒母耳记': [('撒母耳记上', '撒上'), ('撒母耳记下', '撒下')],
+    '列王纪': [('列王纪上', '王上'), ('列王纪下', '王下')],
+    '历代志': [('历代志上', '代上'), ('历代志下', '代下')],
+}
+
+
+def parse_lr_book(content, book_name):
+    """从正文「读经：」行下一行解析主书卷简称（撒上/撒下等），普通卷或无标记返回 None。"""
+    pairs = GROUP_BOOK_PAIRS.get(book_name)
+    if not pairs:
+        return None
+    lines = [l.strip() for l in (content or '').split('\n')]
+    for i, l in enumerate(lines):
+        if l == '读经：' or l.startswith('读经：'):
+            reading = lines[i + 1] if i + 1 < len(lines) else ''
+            best, best_pos = None, len(reading) + 1
+            for full, short in pairs:
+                pos = reading.find(full)
+                if 0 <= pos < best_pos:
+                    best, best_pos = short, pos
+            return best
+    return None
+
+
+_CN_NUM = {'一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9}
+
+
+def _cn_to_int(s):
+    if not s:
+        return None
+    if s == '十':
+        return 10
+    if '十' in s:
+        p = s.split('十')
+        tens = _CN_NUM.get(p[0], 1) if p[0] else 1
+        ones = _CN_NUM.get(p[1], 0) if len(p) > 1 and p[1] else 0
+        return tens * 10 + ones
+    return _CN_NUM.get(s)
+
+
+def parse_lr_reading(content, book_name, book_names):
+    """解析正文「读经：」行，返回 {书卷简称: 章节号列表}。
+
+    映射.json 的 verses 字段与读经行常有出入（章节混用/错误），
+    这里以读经行为准重新生成准确的章节范围。用书卷名列表识别边界，
+    避免把其他书卷（如以弗所书/马太福音）的章节误并入合并卷。普通卷返回 None。
+    """
+    pairs = GROUP_BOOK_PAIRS.get(book_name)
+    if not pairs:
+        return None
+    lines = [l.strip() for l in (content or '').split('\n')]
+    reading = ''
+    for i, l in enumerate(lines):
+        if l == '读经：' or l.startswith('读经：'):
+            reading = lines[i + 1] if i + 1 < len(lines) else ''
+            break
+    if not reading:
+        return None
+    # 读经行中所有书卷名出现的位置（作为段落边界）
+    positions = []
+    for name in book_names:
+        for m in re.finditer(re.escape(name), reading):
+            positions.append((m.start(), name))
+    positions.sort()
+    pair_map = dict(pairs)
+    result = {}
+    for i, (pos, name) in enumerate(positions):
+        short = pair_map.get(name)
+        if not short:
+            continue
+        end = positions[i + 1][0] if i + 1 < len(positions) else len(reading)
+        seg = reading[pos + len(name):end]
+        chs = set()
+        for m in re.finditer(r'([一二三四五六七八九十]+)(?:至([一二三四五六七八九十]+))?章', seg):
+            s = _cn_to_int(m.group(1))
+            e = _cn_to_int(m.group(2)) if m.group(2) else s
+            if s and e:
+                chs.update(range(s, e + 1))
+        if chs:
+            result.setdefault(short, set()).update(chs)
+    return {k: sorted(v) for k, v in result.items()}
+
+
 def export_lifereading(name_to_acronym):
     """每卷一个 lifereading/{缩写}.json：篇目 + 经文映射 + 正文。
 
     章节映射.json 提供 verses（经文映射），索引.json 提供 local_rel（md 文件路径），
     按 article id 合并。
+
+    合并卷（撒母耳记/列王纪/历代志）按每篇「读经：」行拆分为上下卷文件
+    （撒上/撒下、王上/王下、代上/代下），避免章节号混用；无明确标记的篇目复制到各子卷。
     """
     mapping = json.loads(LIFEREADING_MAPPING.read_text(encoding='utf-8'))
     index = json.loads(LIFEREADING_INDEX.read_text(encoding='utf-8'))
@@ -126,11 +215,15 @@ def export_lifereading(name_to_acronym):
         for book_name, book_entry in index.get('books', {}).items()
     }
     out_dir = DATA_DIR / 'lifereading'
+    # 清空旧文件（合并卷已拆分为子卷，避免残留撒/列/历.json）
+    if out_dir.exists():
+        for f in out_dir.glob('*.json'):
+            f.unlink()
     out_dir.mkdir(parents=True, exist_ok=True)
     for book_name, entry in mapping.get('books', {}).items():
-        acronym = name_to_acronym.get(book_name, book_name[:1])
+        base_acronym = name_to_acronym.get(book_name, book_name[:1])
         rel_map = rel_by_book.get(book_name, {})
-        articles = []
+        groups = {}  # acronym -> {name, acronym, articles}
         for a in entry.get('articles', []):
             content = ''
             rel = rel_map.get(a.get('id'), '')
@@ -143,16 +236,33 @@ def export_lifereading(name_to_acronym):
                 # 过滤末尾元数据行（来源/URL/获取时间，不应作为正文显示）
                 lines = [l for l in lines if not l.strip().startswith(('**来源**', '**URL**', '**获取时间**'))]
                 content = '\n'.join(lines).strip()
-            articles.append({
+            article = {
                 'id': a.get('id'),
                 'title': a.get('title', ''),
                 'verses': a.get('verses', []),
                 'content': content,
-            })
-        (out_dir / f'{acronym}.json').write_text(
-            json.dumps({'name': book_name, 'acronym': acronym, 'articles': articles}, ensure_ascii=False),
-            encoding='utf-8',
-        )
+            }
+            if book_name in GROUP_BOOK_PAIRS:
+                # 合并卷：以读经行为准重新生成 verses（映射.json 的 verses 章节混用不可靠），
+                # 并按主书卷拆分到子卷文件。
+                reading_map = parse_lr_reading(content, book_name, list(name_to_acronym.keys()))
+                main = parse_lr_book(content, book_name)
+                if reading_map:
+                    if main and main in reading_map:
+                        article['verses'] = [str(c) for c in reading_map[main]]
+                    else:
+                        article['verses'] = [str(c) for c in sorted(set().union(*reading_map.values()))]
+                targets = [main] if main else [p[1] for p in GROUP_BOOK_PAIRS[book_name]]
+            else:
+                targets = [base_acronym]
+            for acronym in targets:
+                groups.setdefault(acronym, {'name': book_name, 'acronym': acronym, 'articles': []})
+                groups[acronym]['articles'].append(article)
+        for acronym, payload in groups.items():
+            (out_dir / f'{acronym}.json').write_text(
+                json.dumps(payload, ensure_ascii=False),
+                encoding='utf-8',
+            )
     print(f'生命读经导出：{len(mapping.get("books", {}))} 卷')
 
 
