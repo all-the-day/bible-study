@@ -1,0 +1,74 @@
+name: Build APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'app.js'
+      - 'style.css'
+      - 'index.html'
+      - 'sync.js'
+      - 'manifest.json'
+      - 'sw.js'
+      - 'capacitor.config.json'
+      - 'package.json'
+      - '.github/workflows/build-apk.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: 准备 web 资源
+        run: |
+          mkdir -p www/data/lifereading
+          cp index.html app.js style.css sync.js manifest.json sw.js www/
+          cp -r icons www/
+
+      - name: 下载数据（从 Vercel）
+        run: |
+          BASE="https://bible-study-teal-seven.vercel.app/data"
+          for f in books.json bible-text.json bible-notes.json bible-xrefs.json; do
+            curl -sL "$BASE/$f" -o "www/data/$f"
+          done
+          for acr in $(python3 -c "import json; print(' '.join(b['acronym'] for b in json.load(open('www/data/books.json'))))"); do
+            code=$(curl -sL -w "%{http_code}" -o "www/data/lifereading/$acr.json" "$BASE/lifereading/$acr.json")
+            if [ "$code" != "200" ]; then rm -f "www/data/lifereading/$acr.json"; fi
+          done
+          echo "lifereading 文件数: $(ls www/data/lifereading/ | wc -l)"
+          du -sh www/data
+
+      - name: 安装依赖
+        run: npm install
+
+      - name: Capacitor add android
+        run: npx cap add android
+
+      - name: Capacitor sync
+        run: npx cap sync android
+
+      - name: 构建 debug APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: 上传 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: bible-study-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
