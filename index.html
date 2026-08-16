@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#667eea">
-  <title>读经研读笔记</title>
+  <title>读经</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="stylesheet" href="style.css">
@@ -17,6 +17,7 @@
       <span id="chapterLabel">第 — 章</span>
     </div>
     <div class="topbar-actions">
+      <span id="syncStatus" class="sync-status" title="同步状态">●</span>
       <button id="viewModeBtn" class="top-btn" aria-label="视图模式">双页</button>
       <button id="hideMarksBtn" class="top-btn" aria-label="隐藏注号">隐藏注号</button>
       <button id="notesBtn" class="icon-btn" aria-label="笔记汇总">✎</button>
@@ -60,6 +61,7 @@
     <div class="popup-body" id="popupBody"></div>
   </div>
 
+  <script src="sync.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

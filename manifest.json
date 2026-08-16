@@ -1,7 +1,7 @@
 {
-  "name": "读经研读笔记",
-  "short_name": "研读笔记",
-  "description": "读经研读/预习草稿：选章、读原文注解生命读经、划线笔记",
+  "name": "读经",
+  "short_name": "读经",
+  "description": "读经研读：选章、读原文注解生命读经、划线笔记",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f0f3f9",

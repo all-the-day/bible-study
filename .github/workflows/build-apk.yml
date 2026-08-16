@@ -13,6 +13,7 @@ on:
       - 'sw.js'
       - 'capacitor.config.json'
       - 'package.json'
+      - 'resources/**'
       - '.github/workflows/build-apk.yml'
 
 jobs:
@@ -61,6 +62,9 @@ jobs:
 
       - name: Capacitor sync
         run: npx cap sync android
+
+      - name: 生成 Android 图标
+        run: npx capacitor-assets generate --android
 
       - name: 构建 debug APK
         run: |
