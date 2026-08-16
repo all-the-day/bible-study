@@ -36,7 +36,8 @@ jobs:
       - name: 准备 web 资源
         run: |
           mkdir -p www/data/lifereading
-          cp index.html app.js style.css sync.js manifest.json sw.js www/
+          cp index.html app.js style.css manifest.json sw.js www/
+          if [ -f sync.js ]; then cp sync.js www/; fi
           cp -r icons www/
 
       - name: 下载数据（从 Vercel）
