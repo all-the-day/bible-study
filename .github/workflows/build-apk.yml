@@ -44,7 +44,7 @@ jobs:
       - name: 下载数据（从 Vercel）
         run: |
           BASE="https://bible-study-teal-seven.vercel.app/data"
-          for f in books.json bible-text.json bible-notes.json bible-xrefs.json; do
+          for f in books.json bible-text.json bible-notes.json bible-xrefs.json bible-outlines.json; do
             curl -sL "$BASE/$f" -o "www/data/$f"
           done
           for acr in $(python3 -c "import json; print(' '.join(b['acronym'] for b in json.load(open('www/data/books.json'))))"); do
