@@ -164,6 +164,33 @@ body.hide-marks sup.xref-ref { display: none; }
   font-size: 15px; color: var(--text-muted);
   margin-bottom: 20px; line-height: 1.7;
 }
+/* 纲目：章首主题 + 经文间分段标题 */
+.theme-row {
+  font-size: 14px; color: var(--text-muted); text-align: center; line-height: 1.9; margin-bottom: 18px;
+}
+.outline-item {
+  line-height: 1.8; padding: 2px 0; margin: 10px 0 4px;
+  color: var(--text-soft);
+}
+.outline-item.lv1 {
+  font-weight: 700; font-size: 17px; color: var(--heading); margin-top: 22px;
+}
+.outline-item.lv2 {
+  font-weight: 600; font-size: 15px; color: var(--brand); margin-top: 14px;
+  padding-left: 14px;
+}
+.outline-item.lv3 {
+  font-size: 14px; color: var(--text);
+  padding-left: 28px;
+}
+.outline-item.lv4 {
+  font-size: 13.5px; color: var(--text-soft);
+  padding-left: 42px;
+}
+.outline-item.lv5, .outline-item.lv6 {
+  font-size: 13px; color: var(--text-muted);
+  padding-left: 56px;
+}
 .verses { width: 100%; }
 .verse {
   margin-bottom: 14px;

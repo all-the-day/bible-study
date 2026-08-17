@@ -110,7 +110,28 @@ def export_bible(conn, index_to_name, name_to_acronym):
             if beads:
                 bible_xrefs[key] = {letter: (bead or '').lstrip('参见参') for _l, letter, bead in beads}
 
-    return books, bible_text, bible_notes, bible_xrefs
+    # 纲目：每章 theme（level 1-2 跨章游走）+ items（level 1-6 带 section/flag 锚点）
+    cur.execute("SELECT book_index, chapter, section, flag, level, outline FROM outline WHERE language='gb' AND book_index <= 66 ORDER BY book_index, chapter, section, flag, level")
+    outlines_by_book = defaultdict(lambda: defaultdict(list))
+    for bi, ch, sec, flag, level, text in cur.fetchall():
+        outlines_by_book[bi][ch].append({'section': sec, 'flag': flag, 'level': level, 'text': text})
+
+    bible_outlines = {}
+    for bi in range(1, 67):
+        acronym = acronym_by_index.get(bi, str(bi))
+        open_level = {}  # level -> text，跨章游走
+        for ch in sorted(outlines_by_book[bi]):
+            outlines = sorted(outlines_by_book[bi][ch], key=lambda o: (o['section'], o['flag'], o['level']))
+            # theme = 本章处理前的 level 1-2 上游状态（跨章继承，不重复本章自己的条目）
+            theme = [{'level': lv, 'text': open_level[lv]} for lv in (1, 2) if lv in open_level]
+            items = [{'level': o['level'], 'text': o['text'], 'section': o['section'], 'flag': o['flag']} for o in outlines]
+            for o in outlines:
+                open_level[o['level']] = o['text']
+                for lv in range(o['level'] + 1, 7):
+                    open_level.pop(lv, None)
+            bible_outlines[f'{acronym}{ch}'] = {'theme': theme, 'items': items}
+
+    return books, bible_text, bible_notes, bible_xrefs, bible_outlines
 
 
 # 合并卷：生命读经卷名对应多个圣经书卷（读经行用全名标记上下卷）
@@ -271,7 +292,7 @@ def main():
     conn = sqlite3.connect(str(BIBLE_DB))
     try:
         index_to_name, name_to_acronym = load_book_names(conn)
-        books, bible_text, bible_notes, bible_xrefs = export_bible(conn, index_to_name, name_to_acronym)
+        books, bible_text, bible_notes, bible_xrefs, bible_outlines = export_bible(conn, index_to_name, name_to_acronym)
     finally:
         conn.close()
 
@@ -279,12 +300,14 @@ def main():
     (DATA_DIR / 'bible-text.json').write_text(json.dumps(bible_text, ensure_ascii=False), encoding='utf-8')
     (DATA_DIR / 'bible-notes.json').write_text(json.dumps(bible_notes, ensure_ascii=False), encoding='utf-8')
     (DATA_DIR / 'bible-xrefs.json').write_text(json.dumps(bible_xrefs, ensure_ascii=False), encoding='utf-8')
+    (DATA_DIR / 'bible-outlines.json').write_text(json.dumps(bible_outlines, ensure_ascii=False), encoding='utf-8')
     export_lifereading(name_to_acronym)
 
     print(f'books: {len(books)} 卷')
     print(f'bible-text: {len(bible_text)} 节')
     print(f'bible-notes: {len(bible_notes)} 节有注解')
     print(f'bible-xrefs: {len(bible_xrefs)} 节有串珠')
+    print(f'bible-outlines: {len(bible_outlines)} 章有纲目')
 
 
 if __name__ == '__main__':
