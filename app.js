@@ -17,6 +17,7 @@ const LS_HIDE_MARKS = 'bible-study.hideMarks';
 const LS_NAV_COLLAPSED = 'bible-study.navCollapsed';
 const LS_VIEW_MODE = 'bible-study.viewMode';
 const LS_STUDY_WIDTH = 'bible-study.studyWidth';
+const LS_LR_MAP = 'bible-study.lrMap';
 
 const state = {
   books: [],            // [{index, name, acronym, chapters}]
@@ -28,6 +29,7 @@ const state = {
   bibleXrefs: null,     // {key: {letter: rawString}}
   outlines: null,       // {key: {theme: [{level,text}], items: [{level,text,section,flag}]}}
   lifereading: null,    // {articles: [...]} 当前书卷
+  lrMap: load(LS_LR_MAP, {}),  // {key: [articleId]} 手动指定某章的生命读经篇目（覆盖自动匹配）
   annotations: load(LS_ANNOTATIONS, []),
   chapterNotes: load(LS_CHAPTER_NOTES, {}),
   hideMarks: load(LS_HIDE_MARKS, false),
@@ -429,29 +431,87 @@ function renderFootnotes() {
   });
 }
 
-function renderLifereading() {
-  const body = $('studyBody');
-  const articles = (state.lifereading && state.lifereading.articles) || [];
-  const ch = state.currentChapter;
-  const matched = articles.filter(a => {
+// 自动匹配当前章的生命读经篇目 id（按 verses 章节号）
+function autoMatchLrIds(articles, ch) {
+  return articles.filter(a => {
     if (!a.verses || !a.verses.length) return false;
     return a.verses.some(v => {
       const m = String(v).match(/^(\d+)/);
       return m && +m[1] === ch;
     });
-  });
+  }).map(a => a.id);
+}
+
+function renderLifereading() {
+  const body = $('studyBody');
+  const articles = (state.lifereading && state.lifereading.articles) || [];
+  const acr = state.currentBook.acronym, ch = state.currentChapter;
+  const key = `${acr}${ch}`;
+  const manual = state.lrMap[key];
+  const ids = manual !== undefined ? manual : autoMatchLrIds(articles, ch);
+  const matched = ids.map(id => articles.find(a => a.id === id)).filter(Boolean);
+
+  body.innerHTML = '';
+  // 顶部工具条：手动指定篇目入口
+  if (!state.studyFull) {
+    const bar = document.createElement('div');
+    bar.className = 'lr-map-bar';
+    const btn = document.createElement('button');
+    btn.className = 'lr-map-btn';
+    btn.textContent = manual !== undefined ? '指定篇目（手动）' : '指定篇目';
+    btn.addEventListener('click', showLrMapPicker);
+    bar.appendChild(btn);
+    body.appendChild(bar);
+  }
+
   if (!matched.length) {
     body.classList.remove('lr-full-mode');
-    body.innerHTML = '<div class="empty-hint">本章暂无相关生命读经</div>';
+    const hint = document.createElement('div');
+    hint.className = 'empty-hint';
+    hint.textContent = '本章暂无相关生命读经';
+    body.appendChild(hint);
     return;
   }
   if (state.studyFull) {
     renderLrFullscreen(body, matched);
   } else {
     body.classList.remove('lr-full-mode');
-    body.innerHTML = '';
     matched.forEach(a => body.appendChild(renderLrArticle(a)));
   }
+}
+
+// 手动指定某章的生命读经篇目（弹窗勾选）
+function showLrMapPicker() {
+  const articles = (state.lifereading && state.lifereading.articles) || [];
+  const acr = state.currentBook.acronym, ch = state.currentChapter;
+  const key = `${acr}${ch}`;
+  const manual = state.lrMap[key];
+  const checked = new Set(manual !== undefined ? manual : autoMatchLrIds(articles, ch));
+  const rows = articles.map(a => {
+    const c = checked.has(a.id) ? ' checked' : '';
+    return `<label class="lr-pick-row"><input type="checkbox" value="${a.id}"${c}><span>${escapeHtml(a.title)}</span></label>`;
+  }).join('');
+  openPopup(`指定 ${acr}${ch} 的生命读经篇目`, `
+    <div class="lr-pick-hint">勾选属于本章的篇目，保存后覆盖自动匹配；「恢复自动」清除手动指定。</div>
+    <div class="lr-pick-list">${rows}</div>
+    <div class="lr-pick-actions">
+      <button class="popup-btn" id="lrPickReset">恢复自动</button>
+      <button class="popup-btn primary" id="lrPickSave">保存</button>
+    </div>
+  `);
+  $('lrPickSave').addEventListener('click', () => {
+    const ids = [...document.querySelectorAll('#popupBody .lr-pick-row input:checked')].map(i => +i.value);
+    state.lrMap[key] = ids;
+    save(LS_LR_MAP, state.lrMap);
+    closePopupAll();
+    renderStudy();
+  });
+  $('lrPickReset').addEventListener('click', () => {
+    delete state.lrMap[key];
+    save(LS_LR_MAP, state.lrMap);
+    closePopupAll();
+    renderStudy();
+  });
 }
 
 // 渲染单篇生命读经（标题 + 经文引用 + 正文），返回 DOM 节点

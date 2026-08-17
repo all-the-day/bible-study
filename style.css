@@ -444,6 +444,33 @@ sup.xref-ref:hover { color: var(--brand-dark); }
 .popup-verse .pv-text { font-size: 16px; line-height: 1.9; }
 .fn-body { white-space: pre-wrap; font-size: 15px; line-height: 1.9; }
 
+/* 生命读经手动指定篇目 */
+.lr-map-bar { margin-bottom: 10px; text-align: right; }
+.lr-map-btn {
+  font-size: 12px; color: var(--brand); background: var(--surface-alt);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 4px 10px; cursor: pointer;
+}
+.lr-map-btn:hover { background: var(--brand); color: #fff; }
+.lr-pick-hint { font-size: 13px; color: var(--text-muted); margin-bottom: 10px; line-height: 1.6; }
+.lr-pick-list {
+  max-height: 50vh; overflow-y: auto; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 8px;
+}
+.lr-pick-row {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 6px 4px; font-size: 14px; cursor: pointer; line-height: 1.5;
+}
+.lr-pick-row:hover { background: var(--surface-alt); }
+.lr-pick-row input { margin-top: 3px; flex: none; }
+.lr-pick-actions { margin-top: 12px; display: flex; justify-content: flex-end; gap: 8px; }
+.popup-btn {
+  font-size: 14px; padding: 7px 16px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--surface); cursor: pointer; color: var(--text);
+}
+.popup-btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+.popup-btn:hover { opacity: .9; }
+
 /* ── 移动端 ── */
 @media (max-width: 900px) {
   .layout { grid-template-columns: 1fr; }
