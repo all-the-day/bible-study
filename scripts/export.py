@@ -141,6 +141,9 @@ GROUP_BOOK_PAIRS = {
     '历代志': [('历代志上', '代上'), ('历代志下', '代下')],
 }
 
+# 合并卷各子卷的最大章数（用于判断映射.json 的 verses 章节号是否与主书卷对应）
+GROUP_BOOK_CHAPTER_MAX = {'撒上': 31, '撒下': 24, '王上': 22, '王下': 25, '代上': 29, '代下': 36}
+
 
 def parse_lr_book(content, book_name):
     """从正文「读经：」行下一行解析主书卷简称（撒上/撒下等），普通卷或无标记返回 None。"""
@@ -179,9 +182,9 @@ def _cn_to_int(s):
 def parse_lr_reading(content, book_name, book_names):
     """解析正文「读经：」行，返回 {书卷简称: 章节号列表}。
 
-    映射.json 的 verses 字段与读经行常有出入（章节混用/错误），
-    这里以读经行为准重新生成准确的章节范围。用书卷名列表识别边界，
-    避免把其他书卷（如以弗所书/马太福音）的章节误并入合并卷。普通卷返回 None。
+    用于补齐映射.json 里 verses 为空的篇目（如撒母耳记上的目录页无引用）。
+    合并卷书卷名用 GROUP_BOOK_PAIRS 里的名字定位，其他书卷名仅作边界，
+    避免把其他书卷（如以弗所书/马太福音）的章节误并入合并卷。
     """
     pairs = GROUP_BOOK_PAIRS.get(book_name)
     if not pairs:
@@ -194,20 +197,24 @@ def parse_lr_reading(content, book_name, book_names):
             break
     if not reading:
         return None
-    # 读经行中所有书卷名出现的位置（作为段落边界）
+    # (start, full_len, short) — 合并卷书卷名带 short，其他书卷名 short=None 仅作边界
     positions = []
+    pair_fulls = {full for full, _ in pairs}
+    for full, short in pairs:
+        for m in re.finditer(re.escape(full), reading):
+            positions.append((m.start(), len(full), short))
     for name in book_names:
+        if name in pair_fulls:
+            continue  # 合并卷书卷名已在上面处理，避免重复锚点
         for m in re.finditer(re.escape(name), reading):
-            positions.append((m.start(), name))
-    positions.sort()
-    pair_map = dict(pairs)
+            positions.append((m.start(), len(name), None))
+    positions.sort(key=lambda x: x[0])
     result = {}
-    for i, (pos, name) in enumerate(positions):
-        short = pair_map.get(name)
-        if not short:
+    for i, (pos, flen, short) in enumerate(positions):
+        if short is None:
             continue
         end = positions[i + 1][0] if i + 1 < len(positions) else len(reading)
-        seg = reading[pos + len(name):end]
+        seg = reading[pos + flen:end]
         chs = set()
         for m in re.finditer(r'([一二三四五六七八九十]+)(?:至([一二三四五六七八九十]+))?章', seg):
             s = _cn_to_int(m.group(1))
@@ -264,15 +271,20 @@ def export_lifereading(name_to_acronym):
                 'content': content,
             }
             if book_name in GROUP_BOOK_PAIRS:
-                # 合并卷：以读经行为准重新生成 verses（映射.json 的 verses 章节混用不可靠），
-                # 并按主书卷拆分到子卷文件。
-                reading_map = parse_lr_reading(content, book_name, list(name_to_acronym.keys()))
+                # 合并卷：按「读经：」行主书卷拆分到子卷文件。
+                # verses 优先用映射.json 精确标注；为空或章节号与主书卷不对应时，用读经行补齐。
                 main = parse_lr_book(content, book_name)
-                if reading_map:
-                    if main and main in reading_map:
+                need_fill = not article['verses']
+                if not need_fill and main:
+                    mx = GROUP_BOOK_CHAPTER_MAX.get(main)
+                    if mx:
+                        chs = [int(m.group(1)) for v in article['verses'] if (m := re.match(r'^(\d+)', str(v)))]
+                        if chs and all(c > mx for c in chs):
+                            need_fill = True
+                if need_fill:
+                    reading_map = parse_lr_reading(content, book_name, list(name_to_acronym.keys()))
+                    if reading_map and main and main in reading_map:
                         article['verses'] = [str(c) for c in reading_map[main]]
-                    else:
-                        article['verses'] = [str(c) for c in sorted(set().union(*reading_map.values()))]
                 targets = [main] if main else [p[1] for p in GROUP_BOOK_PAIRS[book_name]]
             else:
                 targets = [base_acronym]
