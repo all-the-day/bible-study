@@ -14,20 +14,31 @@
 纯静态 PWA（无构建步骤，参照晨读 app / bible-reader 模式）：
 `index.html` + `style.css` + `app.js` + `sync.js` + `manifest.json` + `sw.js`。
 
+离线 APK：Capacitor 6（`capacitor.config.json` + `package.json`），GitHub Actions 云构建（`.github/workflows/build-apk.yml`）。
+
+## 分支
+
+- `main` — 云同步版：标注/笔记走 duoban.xyz 同步，部署 Vercel + 打包 APK（appId `com.allday.biblestudy`）
+- `offline` — 完全离线版：无 `sync.js`，标注纯 localStorage，appId `com.allday.biblestudy.offline`（可与云同步版共存）
+
+两个分支的 `app.js`/`export.py` 保持一致（同步逻辑靠 sync.js 有无自动切换），改动通过 cherry-pick 同步。
+
 ## 文件结构
 
 | 文件 | 职责 |
 |------|------|
 | `index.html` / `style.css` / `app.js` | 单页应用全部逻辑 |
-| `sync.js` | 标注/笔记云同步客户端（duoban.xyz 通用 KV API） |
+| `sync.js` | 标注/笔记云同步客户端（duoban.xyz 通用 KV API），仅 main 分支 |
 | `manifest.json` / `sw.js` | PWA 安装与离线缓存 |
+| `capacitor.config.json` / `package.json` | 离线 APK 打包配置（`resources/icon.png` 为图标源） |
 | `scripts/export.py` | 从 `../bible` 导出静态 JSON → `data/` |
 | `scripts/*-test.js` | puppeteer 端到端测试（e2e / 标注 / 生命读经标注） |
 | `data/books.json` | 66 卷目录 + 每卷章数 + 缩写 |
 | `data/bible-text.json` | 原文，键 `创1:1` / `创1:2上`，值含 `{N}`（注脚）/`[a]`（串珠）标记 |
 | `data/bible-notes.json` | 注解，键 → `{seq: 注脚文本}`（seq 为节内连续编号，可复用同一文本、跨半节连续） |
 | `data/bible-xrefs.json` | 串珠，键 → `{字母: 引用串}` |
-| `data/lifereading/{缩写}.json` | 每卷生命读经：篇目 + 经文映射 + 正文 |
+| `data/bible-outlines.json` | 纲目，键 `创1` → `{theme: [{level,text}], items: [{level,text,section,flag}]}` |
+| `data/lifereading/{缩写}.json` | 每卷生命读经：篇目 + 经文映射（verses）+ 正文。合并卷（撒母耳记/列王纪/历代志）拆分为子卷文件（撒上/撒下、王上/王下、代上/代下） |
 
 ## 数据模型（核心）
 
@@ -41,6 +52,10 @@
 - `type: verse` 目标为经文（offset 在该节合并文本内）；`type: lr` 目标为生命读经篇目正文（offset 在该篇 content 全文内）
 - 颜色沿用 bible-reader 5 色语义：c1黄=重要句子 / c2绿=「耶和华我的神」等 / c3紫=「我是耶和华」 / c4蓝=神所喜愛讚賞的 / c5红=神所恨惡審判禁止的
 - 标注 + 笔记 + 下划线 三种形态：高亮（背景色）、下划线、笔记（附加文字）
+
+**纲目**（`data/bible-outlines.json`）：每章 `theme`（level 1-2 上级纲目，跨章游走，渲染章首）+ `items`（level 1-6 分段标题，按 `section`/`flag` 锚点穿插在经文卡片之间）。
+
+**生命读经匹配**：自动按每篇 `verses` 的章节号（`X:Y` 开头的 `X`）匹配当前章；用户可手动指定（localStorage 键 `bible-study.lrMap`，`{键(如"创24"): [篇目id]}`，覆盖自动匹配，纯本地不参与云同步）。
 
 ## 云同步
 
@@ -65,6 +80,7 @@ cd scripts && python export.py
 ```
 - 数据源路径 `../bible/data/raw/bible_root/bible.db`（只读）与 `../bible/data/raw/life_study/`（只读）
 - 导出到 `data/`，改动数据源后需重跑导出
+- 生命读经 `verses` 来自 `../bible` 的 `生命读经章节映射.json`（ezoe.work 目录页精确标注）；合并卷按「读经：」行拆分到子卷，verses 优先用精确标注，为空或章节号与主书卷不对应时用读经行补齐
 
 ## 部署
 
@@ -74,6 +90,14 @@ vercel --prod --yes --archive=tgz
 - 生产地址：**https://bible-study-teal-seven.vercel.app**
 - 账号 all-the-day；沿用 lingliang-search 的 `--archive=tgz` 约定
 - **关键**：`data/` 大文件在 `.gitignore` 里被忽略，但 `.vercelignore` 覆盖了它（只排除 `.vercel/` `.git/` `scripts/`），保证部署时数据能上传。改动数据后先重跑导出再部署。
+
+## APK 打包（GitHub Actions）
+
+- workflow `.github/workflows/build-apk.yml`：checkout → 准备 web 资源 + 从 Vercel 下载 data → `npm install` → `cap add android` → `cap sync` → `capacitor-assets generate`（图标）→ gradle 构建 debug APK → 上传 artifact
+- 触发：push 到 main/offline 分支且改动前端文件（`app.js`/`style.css`/`index.html` 等）或 `package.json`/`capacitor.config.json`/`resources/**`；`workflow_dispatch` 手动触发
+- `scripts/export.py` 改动**不触发** APK 构建（数据走「重跑导出 → Vercel 部署 → APK 下次构建拉新数据」）
+- 两个分支两个 APK：main（云同步版，appId `com.allday.biblestudy`）、offline（离线版，appId `com.allday.biblestudy.offline`，无 sync.js）
+- 产物为 debug 签名，可安装测试，不能上架商店；正式发布需配 release 签名
 
 ## 修改守则
 
