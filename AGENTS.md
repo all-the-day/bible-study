@@ -93,7 +93,8 @@ vercel --prod --yes --archive=tgz
 
 ## APK 打包（GitHub Actions）
 
-- workflow `.github/workflows/build-apk.yml`：checkout → 准备 web 资源 + 从 Vercel 下载 data → `npm install` → `cap add android` → `cap sync` → `capacitor-assets generate`（图标）→ gradle 构建 debug APK → 上传 artifact
+- workflow `.github/workflows/build-apk.yml`：checkout → 准备 web 资源 + 从 Vercel 下载 data（books/text/notes/xrefs/**outlines** + lifereading）→ `npm install` → `cap add android` → `cap sync` → `capacitor-assets generate`（图标）→ gradle 构建 debug APK → 上传 artifact
+  - **注意**：APK 数据只来自 Vercel 部署产物，不在 git 里；改 `data/` 后务必先 `vercel` 部署再让 APK 构建拉取，否则 APK 拿不到新数据。
 - 触发：push 到 main/offline 分支且改动前端文件（`app.js`/`style.css`/`index.html` 等）或 `package.json`/`capacitor.config.json`/`resources/**`；`workflow_dispatch` 手动触发
 - `scripts/export.py` 改动**不触发** APK 构建（数据走「重跑导出 → Vercel 部署 → APK 下次构建拉新数据」）
 - 两个分支两个 APK：main（云同步版，appId `com.allday.biblestudy`）、offline（离线版，appId `com.allday.biblestudy.offline`，无 sync.js）
