@@ -272,7 +272,7 @@ function renderChapter() {
   const acr = state.currentBook.acronym;
   const ch = state.currentChapter;
   const anns = state.annotations.filter(a => a.book === state.currentBook.index && a.chapter === ch && a.type === 'verse');
-  // 纲目：章首 theme + 按 section/flag 锚点穿插到经文前
+  // 纲目：章首 theme + 按 section/flag 锚点穿插到经文卡片之间
   const ol = (state.outlines || {})[`${acr}${ch}`] || { theme: [], items: [] };
   const appendOutline = (o) => {
     const div = document.createElement('div');
@@ -292,17 +292,25 @@ function renderChapter() {
     const pk = `${it.section}-${it.flag}`;
     (itemsByPos[pk] = itemsByPos[pk] || []).push(it);
   }
+  // 经文卡片：连续经文聚合为卡片，纲目作为标题穿插在卡片之间（凸显纲目）
+  let card = null;
+  const ensureCard = () => {
+    if (!card) { card = document.createElement('div'); card.className = 'scripture-card'; }
+    return card;
+  };
+  const flushCard = () => { if (card) { container.appendChild(card); card = null; } };
   for (let v = 1; v <= 500; v++) {
     for (const half of ['', '上', '下']) {
       const flag = half === '' ? 0 : (half === '上' ? 1 : 2);
       const key = `${acr}${ch}:${v}${half}`;
       const marked = state.bibleText[key];
       if (marked === undefined) continue;
-      for (const o of itemsByPos[`${v}-${flag}`] || []) appendOutline(o);
+      for (const o of itemsByPos[`${v}-${flag}`] || []) { flushCard(); appendOutline(o); }
       const verseAnns = anns.filter(a => a.verse === v && a.half === half);
-      container.appendChild(renderVerse(v + half, marked, verseAnns));
+      ensureCard().appendChild(renderVerse(v + half, marked, verseAnns));
     }
   }
+  flushCard();
 }
 
 function renderVerse(vn, marked, annotations) {
