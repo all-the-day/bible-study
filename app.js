@@ -26,6 +26,7 @@ const state = {
   bibleText: null,      // {key: markedText}
   bibleNotes: null,     // {key: {seq: note}}
   bibleXrefs: null,     // {key: {letter: rawString}}
+  outlines: null,       // {key: {theme: [{level,text}], items: [{level,text,section,flag}]}}
   lifereading: null,    // {articles: [...]} 当前书卷
   annotations: load(LS_ANNOTATIONS, []),
   chapterNotes: load(LS_CHAPTER_NOTES, {}),
@@ -227,14 +228,16 @@ async function selectChapter(chapter) {
 
 async function ensureBibleData() {
   if (state.bibleText) return;
-  const [text, notes, xrefs] = await Promise.all([
+  const [text, notes, xrefs, outlines] = await Promise.all([
     fetchJSON('data/bible-text.json'),
     fetchJSON('data/bible-notes.json'),
     fetchJSON('data/bible-xrefs.json'),
+    fetchJSON('data/bible-outlines.json'),
   ]);
   state.bibleText = text;
   state.bibleNotes = notes;
   state.bibleXrefs = xrefs;
+  state.outlines = outlines;
 }
 
 /* ============ 原文渲染 ============ */
@@ -269,11 +272,33 @@ function renderChapter() {
   const acr = state.currentBook.acronym;
   const ch = state.currentChapter;
   const anns = state.annotations.filter(a => a.book === state.currentBook.index && a.chapter === ch && a.type === 'verse');
+  // 纲目：章首 theme + 按 section/flag 锚点穿插到经文前
+  const ol = (state.outlines || {})[`${acr}${ch}`] || { theme: [], items: [] };
+  const appendOutline = (o) => {
+    const div = document.createElement('div');
+    div.className = `outline-item lv${Math.min(o.level, 6)}`;
+    div.textContent = o.text;
+    container.appendChild(div);
+  };
+  if (ol.theme && ol.theme.length) {
+    const row = document.createElement('div');
+    row.className = 'theme-row';
+    row.textContent = ol.theme.map(t => t.text).join('　');
+    container.appendChild(row);
+  }
+  const itemsByPos = {};
+  for (const it of ol.items) {
+    if (it.section === 0) { appendOutline(it); continue; } // 卷级标题（如诗篇「卷一」）放章首
+    const pk = `${it.section}-${it.flag}`;
+    (itemsByPos[pk] = itemsByPos[pk] || []).push(it);
+  }
   for (let v = 1; v <= 500; v++) {
     for (const half of ['', '上', '下']) {
+      const flag = half === '' ? 0 : (half === '上' ? 1 : 2);
       const key = `${acr}${ch}:${v}${half}`;
       const marked = state.bibleText[key];
       if (marked === undefined) continue;
+      for (const o of itemsByPos[`${v}-${flag}`] || []) appendOutline(o);
       const verseAnns = anns.filter(a => a.verse === v && a.half === half);
       container.appendChild(renderVerse(v + half, marked, verseAnns));
     }
