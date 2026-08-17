@@ -192,6 +192,17 @@ body.hide-marks sup.xref-ref { display: none; }
   padding-left: 56px;
 }
 .verses { width: 100%; }
+/* 经文卡片：连续经文聚合，纲目穿插其间 */
+.scripture-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 8px 18px;
+  margin: 10px 0;
+  box-shadow: 0 1px 5px rgba(102, 126, 234, .20); /* 主题色蓝阴影（#667eea） */
+}
+.scripture-card .verse { margin-bottom: 8px; }
+.scripture-card .verse:last-child { margin-bottom: 0; }
 .verse {
   margin-bottom: 14px;
 }
