@@ -298,6 +298,13 @@ function colorBg(id) {
   return `rgba(${parseInt(c.hex.slice(1,3),16)},${parseInt(c.hex.slice(3,5),16)},${parseInt(c.hex.slice(5,7),16)},.4)`;
 }
 
+/* 重渲染前保存、重渲染后恢复滚动位置，避免标注后页面/面板跳到顶部 */
+function withScrollPreserved(els, fn) {
+  const saved = els.map(el => el ? el.scrollTop : 0);
+  fn();
+  els.forEach((el, i) => { if (el) el.scrollTop = saved[i]; });
+}
+
 function renderChapter() {
   if (!state.bibleText) return; // 数据未加载完成（syncFromRemote 与 ensureBibleData 竞态）
   const container = $('verseContainer');
@@ -1061,8 +1068,16 @@ function addAnnotation(partial) {
   };
   state.annotations.push(ann);
   save(LS_ANNOTATIONS, state.annotations);
-  renderChapter();
-  renderStudy();
+  // 标注后重渲染：保存滚动位置以免面板/页面跳到顶部；
+  // 经文标注只重渲染经文列，生命读经标注只重渲染研读面板
+  if (ann.type === 'verse') {
+    withScrollPreserved([$('textCol'), $('studyBody')], () => {
+      renderChapter();
+      if (state.activeTab === 'mynotes') renderStudy();
+    });
+  } else {
+    withScrollPreserved([$('studyBody'), $('textCol')], renderStudy);
+  }
   hideFloatTool();
 }
 
@@ -1112,16 +1127,30 @@ function changeAnnColor(annId, colorId) {
   ann.colorId = colorId;
   ann.underline = false;
   save(LS_ANNOTATIONS, state.annotations);
-  renderChapter();
-  renderStudy();
+  if (ann.type === 'verse') {
+    withScrollPreserved([$('textCol'), $('studyBody')], () => {
+      renderChapter();
+      if (state.activeTab === 'mynotes') renderStudy();
+    });
+  } else {
+    withScrollPreserved([$('studyBody'), $('textCol')], renderStudy);
+  }
   hideFloatTool();
 }
 
 function deleteAnn(annId) {
+  const ann = state.annotations.find(a => a.id === annId);
+  if (!ann) return;
   state.annotations = state.annotations.filter(a => a.id !== annId);
   save(LS_ANNOTATIONS, state.annotations);
-  renderChapter();
-  renderStudy();
+  if (ann.type === 'verse') {
+    withScrollPreserved([$('textCol'), $('studyBody')], () => {
+      renderChapter();
+      if (state.activeTab === 'mynotes') renderStudy();
+    });
+  } else {
+    withScrollPreserved([$('studyBody'), $('textCol')], renderStudy);
+  }
   hideFloatTool();
 }
 
