@@ -216,6 +216,18 @@ function highlightNav() {
   });
 }
 
+// 上一章/下一章（顶栏 crumb 两侧，同卷内翻页，到卷首/卷尾禁用，不跨卷）
+function renderChapterNav() {
+  const ch = state.currentChapter;
+  const total = state.currentBook.chapters;
+  const prev = $('prevChBtn');
+  const next = $('nextChBtn');
+  prev.disabled = ch <= 1;
+  prev.onclick = () => { if (ch > 1) selectChapter(ch - 1); };
+  next.disabled = ch >= total;
+  next.onclick = () => { if (ch < total) selectChapter(ch + 1); };
+}
+
 async function selectBook(index, chapter) {
   state.currentBook = state.books.find(b => b.index === index);
   state.currentChapter = chapter;
@@ -234,6 +246,7 @@ async function selectChapter(chapter) {
   $('chapterLabel').textContent = `第 ${chapter} 章`;
   highlightNav();
   renderChapter();
+  renderChapterNav();
   renderStudy();
   save(LS_LAST, { book: state.currentBook.index, chapter });
   // 生命读经懒加载

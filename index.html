@@ -15,11 +15,14 @@
     <div class="crumb">
       <span id="bookName">—</span>
       <span id="chapterLabel">第 — 章</span>
+      <button id="prevChBtn" class="crumb-nav">上一章</button>
+      <button id="nextChBtn" class="crumb-nav">下一章</button>
     </div>
     <div class="topbar-actions">
       <span id="syncStatus" class="sync-status" title="同步状态">●</span>
       <button id="viewModeBtn" class="top-btn" aria-label="视图模式">双页</button>
       <button id="hideMarksBtn" class="top-btn" aria-label="隐藏注号">隐藏注号</button>
+      <button id="studyFullBtn" class="top-btn" aria-label="研读全屏">研读全屏</button>
       <button id="notesBtn" class="icon-btn" aria-label="笔记汇总">✎</button>
     </div>
   </header>
@@ -44,7 +47,6 @@
         <button class="study-tab active" data-tab="notes">注解</button>
         <button class="study-tab" data-tab="lifereading">生命读经</button>
         <button class="study-tab" data-tab="mynotes">我的笔记</button>
-        <button id="studyFullBtn" class="study-full-btn" title="全屏研读">⤢</button>
       </div>
       <div class="study-body" id="studyBody"></div>
     </aside>
