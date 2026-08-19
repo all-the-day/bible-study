@@ -298,11 +298,15 @@ function colorBg(id) {
   return `rgba(${parseInt(c.hex.slice(1,3),16)},${parseInt(c.hex.slice(3,5),16)},${parseInt(c.hex.slice(5,7),16)},.4)`;
 }
 
-/* 重渲染前保存、重渲染后恢复滚动位置，避免标注后页面/面板跳到顶部 */
-function withScrollPreserved(els, fn) {
-  const saved = els.map(el => el ? el.scrollTop : 0);
+/* 重渲染前保存、重渲染后恢复滚动位置，避免标注后页面/面板跳到顶部。
+   传入 CSS 选择器（用 querySelector 查询，支持 #id 与 .class），重渲染后重新查询——
+   因重渲染会新建 DOM 节点；恢复放在 requestAnimationFrame，确保新建节点已完成布局 */
+function withScrollPreserved(selectors, fn) {
+  const saved = selectors.map(s => { const el = document.querySelector(s); return el ? el.scrollTop : 0; });
   fn();
-  els.forEach((el, i) => { if (el) el.scrollTop = saved[i]; });
+  requestAnimationFrame(() => {
+    selectors.forEach((s, i) => { const el = document.querySelector(s); if (el) el.scrollTop = saved[i]; });
+  });
 }
 
 function renderChapter() {
@@ -1071,12 +1075,12 @@ function addAnnotation(partial) {
   // 标注后重渲染：保存滚动位置以免面板/页面跳到顶部；
   // 经文标注只重渲染经文列，生命读经标注只重渲染研读面板
   if (ann.type === 'verse') {
-    withScrollPreserved([$('textCol'), $('studyBody')], () => {
+    withScrollPreserved(['#textCol', '#studyBody', '.lr-full-content'], () => {
       renderChapter();
       if (state.activeTab === 'mynotes') renderStudy();
     });
   } else {
-    withScrollPreserved([$('studyBody'), $('textCol')], renderStudy);
+    withScrollPreserved(['#studyBody', '#textCol', '.lr-full-content'], renderStudy);
   }
   hideFloatTool();
 }
@@ -1128,12 +1132,12 @@ function changeAnnColor(annId, colorId) {
   ann.underline = false;
   save(LS_ANNOTATIONS, state.annotations);
   if (ann.type === 'verse') {
-    withScrollPreserved([$('textCol'), $('studyBody')], () => {
+    withScrollPreserved(['#textCol', '#studyBody', '.lr-full-content'], () => {
       renderChapter();
       if (state.activeTab === 'mynotes') renderStudy();
     });
   } else {
-    withScrollPreserved([$('studyBody'), $('textCol')], renderStudy);
+    withScrollPreserved(['#studyBody', '#textCol', '.lr-full-content'], renderStudy);
   }
   hideFloatTool();
 }
@@ -1144,12 +1148,12 @@ function deleteAnn(annId) {
   state.annotations = state.annotations.filter(a => a.id !== annId);
   save(LS_ANNOTATIONS, state.annotations);
   if (ann.type === 'verse') {
-    withScrollPreserved([$('textCol'), $('studyBody')], () => {
+    withScrollPreserved(['#textCol', '#studyBody', '.lr-full-content'], () => {
       renderChapter();
       if (state.activeTab === 'mynotes') renderStudy();
     });
   } else {
-    withScrollPreserved([$('studyBody'), $('textCol')], renderStudy);
+    withScrollPreserved(['#studyBody', '#textCol', '.lr-full-content'], renderStudy);
   }
   hideFloatTool();
 }
