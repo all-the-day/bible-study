@@ -101,7 +101,8 @@ function applyLayout() {
 
 function bindResize() {
   const handle = $('resizeHandle');
-  handle.addEventListener('mousedown', (e) => {
+  // 同时支持鼠标与触摸（APK WebView 只有 pointer 事件）
+  handle.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     const startX = e.clientX;
     const startW = state.studyWidth;
@@ -113,13 +114,29 @@ function bindResize() {
     };
     const onUp = () => {
       handle.classList.remove('dragging');
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
       save(LS_STUDY_WIDTH, state.studyWidth);
     };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
   });
+}
+
+/* 维护 --app-h：用真实 WebView 高度（visualViewport 优先），
+   随键盘弹出 / 窗口缩放 / 旋转实时更新，替代不响应的 100vh */
+function syncAppHeight() {
+  const h = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+  document.documentElement.style.setProperty('--app-h', h + 'px');
+}
+function bindViewport() {
+  syncAppHeight();
+  window.addEventListener('resize', syncAppHeight);
+  window.addEventListener('orientationchange', syncAppHeight);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', syncAppHeight);
+    window.visualViewport.addEventListener('scroll', syncAppHeight);
+  }
 }
 
 const $ = (id) => document.getElementById(id);
@@ -139,6 +156,7 @@ async function init() {
   renderBookList();
   applyHideMarks();
   applyLayout();
+  bindViewport();
   const last = load(LS_LAST, null);
   if (last && state.books.some(b => b.index === last.book)) {
     selectBook(last.book, last.chapter);

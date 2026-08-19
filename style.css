@@ -74,8 +74,10 @@ body.hide-marks sup.xref-ref { display: none; }
 .layout {
   --study-w: 480px;
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr) var(--study-w);
-  height: calc(100vh - 52px);
+  /* 用 JS 实时维护的 --app-h（真实 WebView 高度，随键盘/窗口变化），
+     避免 Android 100vh 不随 WebView 缩放而失效 */
+  grid-template-columns: minmax(0, 220px) minmax(0, 1fr) minmax(0, var(--study-w));
+  height: calc(var(--app-h, 100vh) - 52px);
   overflow: hidden;
 }
 .nav-col { grid-column: 1; }
@@ -83,7 +85,7 @@ body.hide-marks sup.xref-ref { display: none; }
 .study-col { grid-column: 3; }
 
 /* 左栏折叠 */
-.layout.nav-collapsed { grid-template-columns: 0 minmax(0, 1fr) var(--study-w); }
+.layout.nav-collapsed { grid-template-columns: 0 minmax(0, 1fr) minmax(0, var(--study-w)); }
 .layout.nav-collapsed .nav-col { display: none; }
 
 /* 全屏沉浸（只显示原文） */
@@ -94,7 +96,7 @@ body.hide-marks sup.xref-ref { display: none; }
 
 /* 上下分屏（原文上、研读下） */
 .layout.view-stacked {
-  grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
   grid-template-rows: 1fr 1fr;
 }
 .layout.view-stacked .text-col { grid-column: 2; grid-row: 1; }
@@ -103,6 +105,18 @@ body.hide-marks sup.xref-ref { display: none; }
   border-left: none; border-top: 1px solid var(--border);
 }
 .layout.view-stacked.nav-collapsed { grid-template-columns: 0 minmax(0, 1fr); }
+/* 窄屏：默认双页在手机上空间不足，自动切为上下分屏，避免内容被挤压 */
+@media (max-width: 720px) {
+  .layout:not(.view-full):not(.study-full) {
+    grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
+    grid-template-rows: 1fr 1fr;
+  }
+  .layout:not(.view-full):not(.study-full) .text-col { grid-column: 2; grid-row: 1; }
+  .layout:not(.view-full):not(.study-full) .study-col {
+    grid-column: 2; grid-row: 2; border-left: none; border-top: 1px solid var(--border);
+  }
+  .layout:not(.view-full):not(.study-full) .nav-col { grid-row: 1 / span 2; }
+}
 
 /* 研读面板全屏（只显示研读列） */
 .layout.study-full { grid-template-columns: minmax(0, 1fr); }
