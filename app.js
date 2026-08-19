@@ -928,21 +928,28 @@ function findAnnotatable(node) {
   return null;
 }
 
-function plainOffset(vtext, node, offset) {
+function plainOffset(root, node, offset) {
   let count = 0, done = false;
-  function walk(el) {
+  // 行内累加（不含行间换行）
+  function walkInner(el) {
     for (const child of el.childNodes) {
       if (done) return;
-      if (child === node && child.nodeType === 3) {
-        count += offset;
-        done = true;
-        return;
-      }
+      if (child === node && child.nodeType === 3) { count += offset; done = true; return; }
       if (child.nodeType === 3) count += child.textContent.length;
-      else if (child.nodeType === 1 && child.tagName !== 'SUP') walk(child);
+      else if (child.nodeType === 1 && child.tagName !== 'SUP') walkInner(child);
     }
   }
-  walk(vtext);
+  const isBlock = (el) => el.nodeType === 1 &&
+    (el.classList.contains('lr-head') || el.classList.contains('lr-para'));
+  let first = true;
+  for (const child of root.childNodes) {
+    if (done) break;
+    if (!first && isBlock(child)) count += 1; // 行（div）之间补一个换行，与渲染端 baseOffset 对齐
+    first = false;
+    if (child === node && child.nodeType === 3) { count += offset; done = true; break; }
+    if (child.nodeType === 3) count += child.textContent.length;
+    else if (child.nodeType === 1 && child.tagName !== 'SUP') walkInner(child);
+  }
   return count;
 }
 
