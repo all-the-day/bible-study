@@ -343,6 +343,7 @@ function renderChapter() {
     return card;
   };
   const flushCard = () => { if (card) { container.appendChild(card); card = null; } };
+  let healed = false;
   for (let v = 1; v <= 500; v++) {
     for (const half of ['', '上', '下']) {
       const flag = half === '' ? 0 : (half === '上' ? 1 : 2);
@@ -351,10 +352,13 @@ function renderChapter() {
       if (marked === undefined) continue;
       for (const o of itemsByPos[`${v}-${flag}`] || []) { flushCard(); appendOutline(o); }
       const verseAnns = anns.filter(a => a.verse === v && a.half === half);
+      if (healAnnotations(verseAnns, parseMarkedText(marked).plain)) healed = true;
       ensureCard().appendChild(renderVerse(v + half, marked, verseAnns));
     }
   }
   flushCard();
+  // 自愈后偏移已修正，写回存储（含云同步）
+  if (healed) save(LS_ANNOTATIONS, state.annotations);
 }
 
 function renderVerse(vn, marked, annotations) {
@@ -401,8 +405,10 @@ function renderVerse(vn, marked, annotations) {
 function renderTextWithMarks(parent, text, baseOffset, annotations) {
   const points = new Set([0, text.length]);
   for (const a of annotations) {
-    points.add(Math.max(a.start - baseOffset, 0));
-    points.add(Math.min(a.end - baseOffset, text.length));
+    // 边界必须夹在 [0, text.length]：标注在本段之前结束时，end 偏移为负，
+    // 会让 text.slice(负值) 从尾部截取错误片段并提前追加，导致段落乱序
+    points.add(Math.max(Math.min(a.start - baseOffset, text.length), 0));
+    points.add(Math.max(Math.min(a.end - baseOffset, text.length), 0));
   }
   const sorted = [...points].sort((x, y) => x - y);
   for (let i = 0; i < sorted.length - 1; i++) {
@@ -514,6 +520,14 @@ function renderLifereading() {
     body.appendChild(hint);
     return;
   }
+  // 自愈：以源 content（含换行）为坐标系校验/修复本篇标注偏移
+  let healed = false;
+  for (const a of matched) {
+    const lrAnns = state.annotations.filter(x =>
+      x.type === 'lr' && x.book === state.currentBook.index && x.articleId === a.id);
+    if (healAnnotations(lrAnns, a.content || '')) healed = true;
+  }
+  if (healed) save(LS_ANNOTATIONS, state.annotations);
   if (state.studyFull) {
     renderLrFullscreen(body, matched);
   } else {
@@ -716,15 +730,19 @@ function renderHlItem(a) {
 }
 
 function annotationText(a) {
+  let slice = '';
   if (a.type === 'verse') {
     const key = `${state.currentBook.acronym}${a.chapter}:${a.verse}${a.half || ''}`;
     const marked = (state.bibleText || {})[key];
-    if (!marked) return '';
-    return parseMarkedText(marked).plain.slice(a.start, a.end);
+    if (!marked) return a.text || '';
+    slice = parseMarkedText(marked).plain.slice(a.start, a.end);
+  } else {
+    const art = (state.lifereading && state.lifereading.articles.find(x => x.id === a.articleId)) || null;
+    if (!art) return a.text || '';
+    slice = (art.content || '').slice(a.start, a.end);
   }
-  const art = (state.lifereading && state.lifereading.articles.find(x => x.id === a.articleId)) || null;
-  if (!art) return '';
-  return (art.content || '').slice(a.start, a.end);
+  // 偏移失效时退回保存的文本快照（自愈前的兜底）
+  return (a.text && slice !== a.text) ? a.text : slice;
 }
 
 function jumpToVerse(chapter, verse, half) {
@@ -900,8 +918,25 @@ function handleSelection() {
   const start = plainOffset(ctx.el, range.startContainer, range.startOffset);
   const end = plainOffset(ctx.el, range.endContainer, range.endOffset);
   if (end <= start) { hideFloatTool(); return; }
-  const plain = ctx.context.type === 'verse' ? ctx.el.dataset.plain : ctx.el.textContent;
-  pendingRange = { start, end, plain, ...ctx.context };
+  // plain 必须与渲染端偏移坐标系一致：
+  // 经文用 vtext.dataset.plain（已去除 {N}/[a] 标记），生命读经用源 content（含换行）
+  let plain;
+  if (ctx.context.type === 'verse') {
+    plain = ctx.el.dataset.plain;
+  } else {
+    const art = ((state.lifereading || {}).articles || []).find(a => a.id === ctx.context.articleId);
+    plain = art ? (art.content || '') : ctx.el.textContent;
+  }
+  // 文本快照 + 上下文（TextQuoteSelector 自愈锚点）：快照取自 plain 而非 range.toString()，
+  // 保证与渲染切片坐标系严格一致（跨注脚上标的选区也不会混入标记字符）
+  const ctxText = extractContext(plain, start, end);
+  pendingRange = {
+    start, end, plain,
+    text: plain.slice(start, end),
+    prefix: ctxText.prefix,
+    suffix: ctxText.suffix,
+    ...ctx.context,
+  };
   showFloatTool(range.getBoundingClientRect());
 }
 
@@ -951,6 +986,76 @@ function plainOffset(root, node, offset) {
     else if (child.nodeType === 1 && child.tagName !== 'SUP') walkInner(child);
   }
   return count;
+}
+
+/* ── 标注自愈（TextQuoteSelector，移植自晨读 app highlight.js）──
+   保存时记录选中文本快照 + 前后各 25 字上下文；渲染时校验偏移，
+   失效则按文本匹配 + 上下文打分重新定位并写回，正文变动后标注不漂移 */
+function extractContext(plain, start, end, win) {
+  win = win || 25;
+  return {
+    prefix: plain.slice(Math.max(0, start - win), start),
+    suffix: plain.slice(end, Math.min(plain.length, end + win)),
+  };
+}
+// 右对齐比对（prefix：保存的与实际的从右往左比）
+function overlapRight(saved, actual) {
+  let i = saved.length - 1, j = actual.length - 1, count = 0;
+  while (i >= 0 && j >= 0 && saved[i] === actual[j]) { i--; j--; count++; }
+  return count;
+}
+// 左对齐比对（suffix：保存的与实际的从左往右比）
+function overlapLeft(saved, actual) {
+  let i = 0, count = 0;
+  while (i < saved.length && i < actual.length && saved[i] === actual[i]) { i++; count++; }
+  return count;
+}
+// 校验并修复一批标注的偏移（plain 为标注所在内容的纯文本，含换行），返回是否发生修复
+function healAnnotations(anns, plain) {
+  let changed = false;
+  for (const a of anns) {
+    if (!a.text) continue; // 旧数据无文本快照，无法自愈
+    if (plain.slice(a.start, a.end) === a.text) continue; // 偏移仍正确
+    // 偏移失效：收集文本所有出现位置
+    const candidates = [];
+    let from = 0;
+    for (;;) {
+      const pos = plain.indexOf(a.text, from);
+      if (pos < 0) break;
+      candidates.push(pos);
+      from = pos + 1;
+    }
+    if (!candidates.length) continue; // 文本已不存在，放弃
+    let bestPos = -1;
+    if (a.prefix !== undefined && a.suffix !== undefined) {
+      // 优先用 prefix/suffix 打分（TextQuoteSelector）；同分取离原偏移最近
+      let bestScore = -1;
+      for (const pos of candidates) {
+        const ce = pos + a.text.length;
+        const actualPrefix = plain.slice(Math.max(0, pos - 25), pos);
+        const actualSuffix = plain.slice(ce, Math.min(plain.length, ce + 25));
+        const score = overlapRight(a.prefix || '', actualPrefix) + overlapLeft(a.suffix || '', actualSuffix);
+        if (score > bestScore ||
+            (score === bestScore && Math.abs(pos - a.start) < Math.abs(bestPos - a.start))) {
+          bestScore = score; bestPos = pos;
+        }
+      }
+    } else {
+      // 无上下文字段：退化为离原偏移最近
+      let bestDist = Infinity;
+      for (const pos of candidates) {
+        const dist = Math.abs(pos - a.start);
+        if (dist < bestDist) { bestDist = dist; bestPos = pos; }
+      }
+    }
+    a.start = bestPos;
+    a.end = bestPos + a.text.length;
+    const ctx = extractContext(plain, a.start, a.end);
+    a.prefix = ctx.prefix;
+    a.suffix = ctx.suffix;
+    changed = true;
+  }
+  return changed;
 }
 
 // 工具栏按钮按下：桌面 mousedown + 移动端 touchstart（都 preventDefault 防选区塌掉）
@@ -1072,6 +1177,10 @@ function addAnnotation(partial) {
     start: r.start,
     end: r.end,
     createdAt: Date.now(),
+    // TextQuoteSelector 自愈锚点：文本快照 + 前后上下文
+    text: r.text || '',
+    prefix: r.prefix || '',
+    suffix: r.suffix || '',
     ...(r.type === 'verse'
       ? { chapter: state.currentChapter, verse: r.verse, half: r.half }
       : { articleId: r.articleId }),
