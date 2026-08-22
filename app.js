@@ -1407,6 +1407,14 @@ function resolveRefString(raw) {
   const tokens = (raw || '').split(/[，,、;；\s]+/).filter(Boolean);
   const out = [];
   let curAcronym = null, curChapter = null;
+  // 单节 key 入列；整节不存在时兼容上下半节 key（如 创25:9 只有 创25:9上/下）
+  const pushKey = (key) => {
+    const bt = state.bibleText || {};
+    if (bt[key]) out.push(key);
+    else if (bt[key + '上']) out.push(key + '上');
+    else if (bt[key + '下']) out.push(key + '下');
+    else out.push(key); // bibleText 未加载时兜底，弹窗会过滤不存在的节
+  };
   for (const token of tokens) {
     let matched = null;
     for (const alias of _refAliasesSorted) {
@@ -1416,17 +1424,19 @@ function resolveRefString(raw) {
       curAcronym = matched.acronym;
       const r = parseRefTail(matched.acronym, matched.rest, null);
       if (r) {
-        if (r.key) out.push(r.key);
+        // 节范围（如 9～10、19～26）展开为单节 key
+        if (r.range) for (let v = r.range[0]; v <= r.range[1]; v++) pushKey(`${matched.acronym}${r.chapter}:${v}`);
+        else if (r.key) pushKey(r.key);
         if (r.chapter) curChapter = r.chapter;
       }
     } else if (curAcronym) {
       // 相对引用：纯数字节（2）或 中文章+阿拉伯节（三9）
       const m = token.match(/^(\d+)$/);
-      if (m && curChapter) { out.push(`${curAcronym}${curChapter}:${m[1]}`); continue; }
+      if (m && curChapter) { pushKey(`${curAcronym}${curChapter}:${m[1]}`); continue; }
       const m2 = token.match(/^([一二三四五六七八九十百〇○]+)(\d+)$/);
       if (m2) {
         const ch = cnToInt(m2[1]);
-        if (ch) { out.push(`${curAcronym}${ch}:${m2[2]}`); curChapter = ch; }
+        if (ch) { pushKey(`${curAcronym}${ch}:${m2[2]}`); curChapter = ch; }
       }
     }
   }
@@ -1436,27 +1446,30 @@ function resolveRefString(raw) {
 function parseRefTail(acronym, rest, defChapter) {
   rest = (rest || '').trim();
   if (!rest) return null;
-  // 章:节（阿拉伯）1:2 / 1:2-3
-  let m = rest.match(/^(\d+):(\d+)(?:[-~](\d+))?$/);
+  // 上下半节后缀（如 二五9上），剥出后拼回 key
+  let half = '';
+  if (/[上下]$/.test(rest)) { half = rest.slice(-1); rest = rest.slice(0, -1).trim(); }
+  // 章:节（阿拉伯）1:2 / 1:2-3（支持全角波浪号 ～）
+  let m = rest.match(/^(\d+):(\d+)(?:[-~～](\d+))?$/);
   if (m) {
     const ch = m[1];
-    const key = m[3] ? `${acronym}${ch}:${m[2]}-${m[3]}` : `${acronym}${ch}:${m[2]}`;
-    return { key, chapter: +ch };
+    if (m[3]) return { range: [+m[2], +m[3]], chapter: +ch };
+    return { key: `${acronym}${ch}:${m[2]}${half}`, chapter: +ch };
   }
-  // 中文章 + 阿拉伯节（十二1 / 十二1-3）
-  m = rest.match(/^([一二三四五六七八九十百〇○]+)(\d+)(?:[-~](\d+))?$/);
+  // 中文章 + 阿拉伯节（十二1 / 十二1-3，支持全角波浪号 ～）
+  m = rest.match(/^([一二三四五六七八九十百〇○]+)(\d+)(?:[-~～](\d+))?$/);
   if (m) {
     const ch = cnToInt(m[1]);
     if (ch) {
-      const key = m[3] ? `${acronym}${ch}:${m[2]}-${m[3]}` : `${acronym}${ch}:${m[2]}`;
-      return { key, chapter: ch };
+      if (m[3]) return { range: [+m[2], +m[3]], chapter: ch };
+      return { key: `${acronym}${ch}:${m[2]}${half}`, chapter: ch };
     }
   }
   // 中文章节式（三章十九节）
   m = rest.match(/^第?([一二三四五六七八九十百〇○]+)章([一二三四五六七八九十百〇○]+)节$/);
   if (m) {
     const ch = cnToInt(m[1]), v = cnToInt(m[2]);
-    if (ch && v) return { key: `${acronym}${ch}:${v}`, chapter: ch };
+    if (ch && v) return { key: `${acronym}${ch}:${v}${half}`, chapter: ch };
   }
   // 纯章号（约一1 → 约壹 第1章，节由后续 token 提供）
   m = rest.match(/^(\d+)$/);
@@ -1472,7 +1485,9 @@ function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 function buildRefRegex() {
   const cn = '一二三四五六七八九十百〇○';
   const aliasAlt = _refAliasesSorted.map(escapeRegex).join('|');
-  const tail = '(?:\\d+:\\d+(?:[-~～]\\d+)?|[' + cn + ']+\\d+(?:[-~～]\\d+)?[上下]?|第?[' + cn + ']+章[' + cn + ']+节|[' + cn + ']+)';
+  // 只识别带节号/范围/「章…节」的引用；不识别裸「书卷+中文数字」（如 利百、雅各一、
+  // 创世记十一、创世记二十五），避免人名/描述性章节范围被误判为经文引用
+  const tail = '(?:\\d+:\\d+(?:[-~～]\\d+)?|[' + cn + ']+\\d+(?:[-~～]\\d+)?[上下]?|第?[' + cn + ']+章[' + cn + ']+节)';
   return new RegExp('(' + aliasAlt + ')' + tail, 'g');
 }
 
