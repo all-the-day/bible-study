@@ -359,6 +359,13 @@ sup.xref-ref:hover { color: var(--brand-dark); }
 }
 .lr-toc-item { font-size: 14px; padding: 2px 0; cursor: pointer; color: var(--text-soft); }
 .lr-toc-item:hover { color: var(--brand); }
+/* 纲目联动：当前阅读小节对应条目高亮（inset 左条不破坏层级缩进） */
+.lr-toc-item.active {
+  color: var(--brand); font-weight: 600;
+  background: rgba(102,126,234,.1);
+  border-radius: var(--radius-sm);
+  box-shadow: inset 2px 0 0 var(--brand);
+}
 .lr-toc-l0 { font-weight: 700; color: var(--heading); }
 .lr-toc-l1 { font-weight: 700; color: var(--brand); }
 .lr-toc-l2 { padding-left: 12px; }
