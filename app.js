@@ -615,9 +615,12 @@ function renderLrFullscreen(body, matched) {
       const item = document.createElement('div');
       item.className = `lr-toc-item lr-toc-l${h.level}`;
       item.textContent = h.text;
+      item.dataset.target = `lrh-${a.id}-${i}`;
       item.addEventListener('click', () => {
         const el = document.getElementById(`lrh-${a.id}-${i}`);
         if (el) {
+          // 点击即高亮当前项（滚动到达后由 scroll-spy 校正）
+          setLrOutlineActive(outline, item.dataset.target);
           el.scrollIntoView({ behavior: 'smooth', block: 'start' });
           el.classList.add('flash');
           setTimeout(() => el.classList.remove('flash'), 1600);
@@ -634,6 +637,35 @@ function renderLrFullscreen(body, matched) {
   matched.forEach(a => contentArea.appendChild(renderLrArticle(a)));
   wrap.appendChild(contentArea);
   body.appendChild(wrap);
+  // 纲目联动：内容滚动时高亮左侧对应条目（scroll-spy）
+  bindLrOutlineSpy(contentArea, outline);
+}
+
+// 纲目联动（scroll-spy）：内容滚动时，把最接近视口顶部的标题对应的纲目项置为 active
+function bindLrOutlineSpy(contentArea, outline) {
+  contentArea.addEventListener('scroll', () => {
+    const items = outline.querySelectorAll('.lr-toc-item');
+    if (!items.length) return;
+    // 活跃判定线：内容区顶部往下 80px（标题滚入该区域即视为当前小节）
+    const limit = contentArea.getBoundingClientRect().top + 80;
+    let activeId = '';
+    // 标题按文档顺序排列，最后一个越过判定线的即当前项
+    for (const item of items) {
+      const el = document.getElementById(item.dataset.target);
+      if (el && el.getBoundingClientRect().top <= limit) activeId = item.dataset.target;
+    }
+    setLrOutlineActive(outline, activeId);
+    // 让 active 项在左侧栏内保持可见
+    const act = outline.querySelector('.lr-toc-item.active');
+    if (act) act.scrollIntoView({ block: 'nearest' });
+  });
+}
+
+// 把纲目高亮切到指定 target（清除其他 active）
+function setLrOutlineActive(outline, targetId) {
+  outline.querySelectorAll('.lr-toc-item').forEach(item => {
+    item.classList.toggle('active', item.dataset.target === targetId);
+  });
 }
 
 function renderMyNotes() {
