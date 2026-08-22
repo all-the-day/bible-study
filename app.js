@@ -974,6 +974,17 @@ function plainOffset(root, node, offset) {
       else if (child.nodeType === 1 && child.tagName !== 'SUP') walkInner(child);
     }
   }
+  // 生命读经：行 div 带 data-base（该行在源 content 的偏移，含空行），
+  // 选区偏移 = 行基址 + 行内偏移，与渲染 baseOffset / 自愈 plain 同一坐标系
+  if (root.classList.contains('lr-content')) {
+    let div = node.nodeType === 3 ? node.parentElement : node;
+    while (div && div.parentElement !== root) div = div.parentElement;
+    if (div && div.parentElement === root && div.dataset.base !== undefined) {
+      const base = +div.dataset.base;
+      walkInner(div);
+      return done ? base + count : base;
+    }
+  }
   const isBlock = (el) => el.nodeType === 1 &&
     (el.classList.contains('lr-head') || el.classList.contains('lr-para'));
   let first = true;
@@ -1516,6 +1527,9 @@ function renderLrContent(parent, content, annotations, idPrefix) {
     const heading = detectLrHeading(line);
     const div = document.createElement('div');
     div.className = heading ? `lr-head lr-h${heading.level}` : 'lr-para';
+    // 记录该行在源 content 中的偏移（含换行），供 plainOffset 做选区偏移换算，
+    // 保证选区坐标与渲染 baseOffset / 自愈 plain 同一坐标系（源 content 含空行）
+    div.dataset.base = offset;
     if (heading && idPrefix) {
       div.id = `${idPrefix}-${hIdx}`;
       hIdx++;
