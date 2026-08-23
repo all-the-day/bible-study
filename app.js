@@ -424,8 +424,11 @@ function renderTextWithMarks(parent, text, baseOffset, annotations) {
       for (let j = sortedCov.length - 1; j >= 0; j--) {
         const mark = document.createElement('mark');
         const a = sortedCov[j];
-        if (a.underline) { mark.className = 'ul'; }
-        else { mark.className = a.colorId; mark.style.background = colorBg(a.colorId); }
+        // 视觉：颜色→背景高亮；下划线→直线；纯笔记→透明+橙波浪线（晨读语义）
+        if (a.underline) mark.className = 'ul';
+        else if (a.colorId) { mark.className = a.colorId; mark.style.background = colorBg(a.colorId); }
+        else mark.className = 'note';
+        if (a.note) mark.classList.add('has-note');
         mark.dataset.annId = a.id;
         mark.appendChild(node);
         node = mark;
@@ -887,14 +890,25 @@ function bindEvents() {
   });
   document.addEventListener('mousedown', (e) => {
     const tool = $('floatTool');
-    if (tool.hidden) return;
-    if (!tool.contains(e.target)) hideFloatTool();
+    if (!tool.hidden && !tool.contains(e.target)) hideFloatTool();
+    const mk = $('markTool');
+    if (!mk.hidden && !mk.contains(e.target)) hideMarkTool();
   });
   document.addEventListener('touchstart', (e) => {
     const tool = $('floatTool');
-    if (tool.hidden) return;
-    if (!tool.contains(e.target)) hideFloatTool();
+    if (!tool.hidden && !tool.contains(e.target)) hideFloatTool();
+    const mk = $('markTool');
+    if (!mk.hidden && !mk.contains(e.target)) hideMarkTool();
   }, { passive: true });
+  // 滚动/键盘关闭菜单（移植晨读 §9）
+  window.addEventListener('scroll', () => { hideFloatTool(); hideMarkTool(); }, { passive: true });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { hideFloatTool(); hideMarkTool(); cancelNoteEditor(); }
+  });
+  // 笔记编辑器
+  $('noteSave').addEventListener('click', saveNoteEditor);
+  $('noteCancel').addEventListener('click', cancelNoteEditor);
+  $('noteModal').addEventListener('mousedown', (e) => { if (e.target === $('noteModal')) cancelNoteEditor(); });
   // 弹窗关闭
   $('popupBack').addEventListener('click', closePopup);
   $('popupClose').addEventListener('click', closePopup);
@@ -1107,6 +1121,45 @@ function bindPress(el, fn) {
   el.addEventListener('touchstart', (e) => { e.preventDefault(); fn(); }, { passive: false });
 }
 
+/* 菜单定位（移植晨读 §9.2/9.3/9.4）：
+   fixed 定位；先移出视口再显示（防 Android 首帧定位到文档末尾导致页面滚到底）；
+   用 visualViewport（软键盘弹出时 innerHeight 不准）；优先放选区下方避开系统复制菜单，
+   空间不足放上方并跳过系统菜单区域（GAP_BELOW=88 / GAP_ABOVE=78）；边缘 clamp */
+function positionMenuByRect(menu, rect) {
+  menu.style.position = 'fixed';
+  menu.style.transform = 'none';
+  menu.style.top = '-9999px';
+  menu.style.left = '-9999px';
+  menu.style.display = 'flex';
+  menu.style.opacity = '0';
+  requestAnimationFrame(() => {
+    const vvp = window.visualViewport;
+    const vpH = vvp ? vvp.height : window.innerHeight;
+    const vpW = vvp ? vvp.width : window.innerWidth;
+    const GAP_BELOW = 88, GAP_ABOVE = 78;
+    const belowAvail = vpH - rect.bottom - GAP_BELOW;
+    const aboveAvail = rect.top - GAP_ABOVE;
+    let viewTop;
+    if (belowAvail >= menu.offsetHeight || belowAvail >= aboveAvail) {
+      viewTop = rect.bottom + GAP_BELOW;
+    } else {
+      viewTop = rect.top - menu.offsetHeight - GAP_ABOVE;
+    }
+    viewTop = Math.max(GAP_BELOW, Math.min(viewTop, vpH - menu.offsetHeight - 10));
+    const left = rect.left + rect.width / 2 - menu.offsetWidth / 2;
+    menu.style.left = Math.max(10, Math.min(left, vpW - menu.offsetWidth - 10)) + 'px';
+    menu.style.top = viewTop + 'px';
+    menu.style.opacity = '1';
+  });
+}
+
+// 页面滚动锁（弹框/编辑器打开时防穿透），计数式支持嵌套
+let _scrollLockCount = 0;
+function lockScroll(on) {
+  _scrollLockCount = Math.max(0, _scrollLockCount + (on ? 1 : -1));
+  document.body.classList.toggle('scroll-locked', _scrollLockCount > 0);
+}
+
 function showFloatTool(rect) {
   const tool = $('floatTool');
   tool.hidden = false;
@@ -1151,11 +1204,7 @@ function showFloatTool(rect) {
   cp.title = '复制纯文本（不含注号）';
   bindPress(cp, copyPlainText);
   tool.appendChild(cp);
-  // 定位
-  const x = rect.left + rect.width / 2 - tool.offsetWidth / 2;
-  const y = rect.top - tool.offsetHeight - 8;
-  tool.style.left = Math.max(8, x) + 'px';
-  tool.style.top = Math.max(8, y) + 'px';
+  positionMenuByRect(tool, rect);
 }
 
 function selectedPlainText() {
@@ -1210,10 +1259,9 @@ function quoteToNotes() {
 
 function hideFloatTool() { $('floatTool').hidden = true; pendingRange = null; editingAnnId = null; }
 
-function addAnnotation(partial) {
-  const r = pendingRange;
-  if (!r) return;
-  const ann = {
+// 从选区构造标注记录（不依赖全局 pendingRange，供编辑器在菜单关闭后创建）
+function buildAnnotation(r, partial) {
+  return {
     id: 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     book: state.currentBook.index,
     type: r.type,
@@ -1229,10 +1277,23 @@ function addAnnotation(partial) {
       : { articleId: r.articleId }),
     ...partial,
   };
+}
+
+function addAnnotation(partial) {
+  const r = pendingRange;
+  if (!r) return;
+  const ann = buildAnnotation(r, partial);
   state.annotations.push(ann);
   save(LS_ANNOTATIONS, state.annotations);
-  // 标注后重渲染：保存滚动位置以免面板/页面跳到顶部；
-  // 经文标注只重渲染经文列，生命读经标注只重渲染研读面板
+  rerenderAnn(ann);
+  hideFloatTool();
+}
+
+function applyColor(colorId) { addAnnotation({ colorId, underline: false }); }
+function applyUnderline() { addAnnotation({ underline: true, colorId: null }); }
+
+/* 标注变更后的定向重渲染（保留滚动位置） */
+function rerenderAnn(ann) {
   if (ann.type === 'verse') {
     withScrollPreserved(['#textCol', '#studyBody', '.lr-full-content'], () => {
       renderChapter();
@@ -1241,48 +1302,174 @@ function addAnnotation(partial) {
   } else {
     withScrollPreserved(['#studyBody', '#textCol', '.lr-full-content'], renderStudy);
   }
-  hideFloatTool();
 }
 
-function applyColor(colorId) { addAnnotation({ colorId, underline: false }); }
-function applyUnderline() { addAnnotation({ underline: true, colorId: null }); }
+/* ============ 笔记编辑器（textarea 模态框，移植晨读 §5.3） ============ */
+let noteEditorState = null; // {mode:'create', range} | {mode:'edit', annId}
+
+function openNoteEditor(initial) {
+  $('noteTextarea').value = initial || '';
+  $('noteModal').hidden = false;
+  lockScroll(true);
+  setTimeout(() => $('noteTextarea').focus(), 100);
+}
+function closeNoteEditor() {
+  $('noteModal').hidden = true;
+  lockScroll(false);
+}
+// 选中文字后点「加笔记」：保存选区引用，打开编辑器（保存时才创建标注）
 function addNote() {
   const r = pendingRange;
   if (!r) return;
-  const note = prompt('输入笔记：');
-  if (note) addAnnotation({ note, colorId: null, underline: false });
-  else hideFloatTool();
+  noteEditorState = { mode: 'create', range: r };
+  hideFloatTool();
+  openNoteEditor('');
+}
+// 编辑已有标注的笔记
+function editNote(annId) {
+  const ann = state.annotations.find(a => a.id === annId);
+  noteEditorState = { mode: 'edit', annId };
+  hideMarkTool();
+  openNoteEditor(ann ? ann.note || '' : '');
+}
+function saveNoteEditor() {
+  const text = $('noteTextarea').value.trim();
+  const st = noteEditorState;
+  noteEditorState = null;
+  closeNoteEditor();
+  if (!st) return;
+  if (st.mode === 'create') {
+    if (!text) return;
+    const ann = buildAnnotation(st.range, { note: text, colorId: null, underline: false });
+    state.annotations.push(ann);
+    save(LS_ANNOTATIONS, state.annotations);
+    rerenderAnn(ann);
+  } else {
+    saveNote(st.annId, text);
+  }
+}
+function cancelNoteEditor() {
+  noteEditorState = null;
+  closeNoteEditor();
 }
 
-/* ============ 标注编辑（改色/删除） ============ */
+/* ============ 标注编辑（改色/笔记/删除，含晨读的分离操作语义） ============ */
+function saveNote(annId, text) {
+  const ann = state.annotations.find(a => a.id === annId);
+  if (!ann) return;
+  ann.note = text || '';
+  // 无背景、无下划线、无笔记内容 → 删除整条（不留不可见空记录）
+  if (!ann.note && !ann.colorId && !ann.underline) { deleteAnn(annId); return; }
+  save(LS_ANNOTATIONS, state.annotations);
+  rerenderAnn(ann);
+}
+function removeNote(annId) { saveNote(annId, ''); }
+// 仅删除标记（背景色 + 下划线），保留笔记
+function removeMark(annId) {
+  const ann = state.annotations.find(a => a.id === annId);
+  if (!ann) return;
+  ann.colorId = null;
+  ann.underline = false;
+  if (!ann.note) { deleteAnn(annId); return; }
+  save(LS_ANNOTATIONS, state.annotations);
+  rerenderAnn(ann);
+}
+function toggleAnnUnderline(annId) {
+  const ann = state.annotations.find(a => a.id === annId);
+  if (!ann) return;
+  ann.underline = !ann.underline;
+  if (ann.underline) ann.colorId = null; // 与颜色互斥（沿用现状语义）
+  save(LS_ANNOTATIONS, state.annotations);
+  rerenderAnn(ann);
+}
+
+/* 标注菜单（点击已有划线，移植晨读 §5.2）：
+   笔记预览气泡（4行 clamp + 展开）+ 编辑/删除笔记 + 修改/删除标记 + 颜色面板 */
 function showMarkTool(mark, annId) {
   const ann = state.annotations.find(a => a.id === annId);
   if (!ann) return;
   editingAnnId = annId;
-  const tool = $('floatTool');
+  const tool = $('markTool');
   tool.hidden = false;
   tool.innerHTML = '';
+  // 笔记预览气泡
+  const bubble = document.createElement('div');
+  bubble.className = 'mk-bubble';
+  const noteText = document.createElement('div');
+  noteText.className = 'mk-note-preview';
+  noteText.textContent = ann.note || '';
+  const expand = document.createElement('button');
+  expand.className = 'mk-expand';
+  expand.textContent = '展开 ▾';
+  expand.hidden = true;
+  expand.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!ann.note) return;
+    hideMarkTool();
+    openPopup('笔记', `<div class="fn-body">${escapeHtml(ann.note)}</div>`);
+  });
+  bubble.appendChild(noteText);
+  bubble.appendChild(expand);
+  bubble.style.display = ann.note ? 'block' : 'none';
+  tool.appendChild(bubble);
+  // 操作栏
+  const mkBtn = (label, fn, danger) => {
+    const b = document.createElement('button');
+    b.className = 'mk-tool-btn' + (danger ? ' danger' : '');
+    b.textContent = label;
+    bindPress(b, fn);
+    return b;
+  };
+  const bar = document.createElement('div');
+  bar.className = 'mk-bar';
+  const hasMark = !!(ann.colorId || ann.underline);
+  const btnEdit = mkBtn('✏️ ' + (ann.note ? '编辑' : '笔记'), () => editNote(annId));
+  const btnDelNote = mkBtn('🗑 删除笔记', () => { hideMarkTool(); removeNote(annId); }, true);
+  btnDelNote.style.display = ann.note ? '' : 'none';
+  const btnMark = mkBtn('🎨 ' + (hasMark ? '修改' : '标记'), () => toggleMarkPanel(panel, ann, annId));
+  const btnDelMark = mkBtn('✕ 删除标记', () => { hideMarkTool(); removeMark(annId); }, true);
+  btnDelMark.style.display = hasMark ? '' : 'none';
+  bar.append(btnEdit, btnDelNote, btnMark, btnDelMark);
+  tool.appendChild(bar);
+  // 颜色面板（点「标记/修改」展开）
+  const panel = document.createElement('div');
+  panel.className = 'mk-panel';
+  panel.hidden = true;
   COLORS.forEach(c => {
     const sw = document.createElement('div');
     sw.className = `sw ${c.id}` + (ann.colorId === c.id && !ann.underline ? ' active' : '');
     sw.title = `${c.name}：${c.desc}`;
     bindPress(sw, () => changeAnnColor(annId, c.id));
-    tool.appendChild(sw);
+    panel.appendChild(sw);
   });
-  const sep = document.createElement('div');
-  sep.className = 'tool-sep';
-  tool.appendChild(sep);
-  const del = document.createElement('button');
-  del.className = 'tool-btn';
-  del.textContent = '删除';
-  bindPress(del, () => deleteAnn(annId));
-  tool.appendChild(del);
-  const rect = mark.getBoundingClientRect();
-  const x = rect.left + rect.width / 2 - tool.offsetWidth / 2;
-  const y = rect.top - tool.offsetHeight - 8;
-  tool.style.left = Math.max(8, x) + 'px';
-  tool.style.top = Math.max(8, y) + 'px';
+  const uBtn = document.createElement('button');
+  uBtn.className = 'tool-btn' + (ann.underline ? ' active' : '');
+  uBtn.textContent = '下划线';
+  bindPress(uBtn, () => toggleAnnUnderline(annId));
+  panel.appendChild(uBtn);
+  tool.appendChild(panel);
+  positionMenuByRect(tool, mark.getBoundingClientRect());
+  // 溢出检测（rAF 后已布局）：笔记超 4 行才显示「展开」；
+  // 长度兜底：超长文本即使 line-clamp 布局检测失效也显示（部分 WebView 行为差异）
+  requestAnimationFrame(() => {
+    if (ann.note) {
+      const overflow = noteText.scrollHeight > noteText.clientHeight;
+      expand.hidden = !overflow && ann.note.length <= 60;
+    }
+  });
 }
+
+function toggleMarkPanel(panel, ann, annId) {
+  panel.hidden = !panel.hidden;
+  if (!panel.hidden) {
+    panel.querySelectorAll('.sw').forEach(sw => {
+      sw.classList.toggle('active', sw.classList.contains(ann.colorId) && !ann.underline);
+    });
+    panel.querySelector('.tool-btn').classList.toggle('active', !!ann.underline);
+  }
+}
+
+function hideMarkTool() { $('markTool').hidden = true; editingAnnId = null; }
 
 function changeAnnColor(annId, colorId) {
   const ann = state.annotations.find(a => a.id === annId);
@@ -1290,15 +1477,8 @@ function changeAnnColor(annId, colorId) {
   ann.colorId = colorId;
   ann.underline = false;
   save(LS_ANNOTATIONS, state.annotations);
-  if (ann.type === 'verse') {
-    withScrollPreserved(['#textCol', '#studyBody', '.lr-full-content'], () => {
-      renderChapter();
-      if (state.activeTab === 'mynotes') renderStudy();
-    });
-  } else {
-    withScrollPreserved(['#studyBody', '#textCol', '.lr-full-content'], renderStudy);
-  }
-  hideFloatTool();
+  rerenderAnn(ann);
+  hideMarkTool();
 }
 
 function deleteAnn(annId) {
@@ -1306,15 +1486,8 @@ function deleteAnn(annId) {
   if (!ann) return;
   state.annotations = state.annotations.filter(a => a.id !== annId);
   save(LS_ANNOTATIONS, state.annotations);
-  if (ann.type === 'verse') {
-    withScrollPreserved(['#textCol', '#studyBody', '.lr-full-content'], () => {
-      renderChapter();
-      if (state.activeTab === 'mynotes') renderStudy();
-    });
-  } else {
-    withScrollPreserved(['#studyBody', '#textCol', '.lr-full-content'], renderStudy);
-  }
-  hideFloatTool();
+  rerenderAnn(ann);
+  hideMarkTool();
 }
 
 /* ============ 弹窗 ============ */
@@ -1331,6 +1504,7 @@ function openPopup(title, bodyHtml) {
   $('popup').hidden = false;
   $('overlay').hidden = false;
   $('popupBack').hidden = popupStack.length === 0;
+  lockScroll(true);
 }
 
 // 返回上一层（栈空则完全关闭）
@@ -1351,6 +1525,7 @@ function closePopupAll() {
   $('popup').hidden = true;
   $('overlay').hidden = true;
   $('popupBack').hidden = true;
+  lockScroll(false);
 }
 
 function showFootnotePopup(n, key) {

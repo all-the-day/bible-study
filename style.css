@@ -246,6 +246,9 @@ mark.c3 { background: rgba(156,39,176,.28); }
 mark.c4 { background: rgba(33,150,243,.28); }
 mark.c5 { background: rgba(244,67,54,.3); }
 mark.ul { background: transparent; text-decoration: underline wavy #eb6c05 2px; }
+/* 纯笔记标注：透明背景 + 橙色波浪线（晨读语义） */
+mark.note { background: transparent; }
+mark.has-note { text-decoration: underline wavy #eb6c05 1px; text-underline-offset: 2px; }
 
 /* 注脚 / 串珠 上标 */
 sup.fn-ref {
@@ -433,6 +436,76 @@ sup.xref-ref:hover { color: var(--brand-dark); }
   color: var(--text-soft);
 }
 .floattool .tool-btn:hover { background: var(--surface-alt); }
+
+/* ── 标注菜单（点击已有划线） ── */
+.marktool {
+  position: fixed; z-index: 50;
+  background: #fff; border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0,0,0,.18);
+  padding: 8px; min-width: 240px;
+  display: flex; flex-direction: column; gap: 6px;
+  border: 1px solid var(--border);
+}
+.marktool[hidden] { display: none; }
+.mk-bubble {
+  background: var(--surface-alt); border-radius: var(--radius-sm);
+  padding: 8px 10px;
+}
+.mk-note-preview {
+  font-size: 13px; color: var(--text);
+  line-height: 1.7; word-break: break-all; white-space: pre-wrap;
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
+}
+.mk-expand {
+  border: none; background: transparent; color: var(--brand);
+  font-size: 12px; cursor: pointer; padding: 2px 0 0;
+}
+.mk-bar { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.mk-tool-btn {
+  border: 1px solid var(--border); background: transparent; cursor: pointer;
+  padding: 4px 8px; font-size: 13px; border-radius: var(--radius-sm);
+  color: var(--text-soft);
+}
+.mk-tool-btn:hover { background: var(--surface-alt); color: var(--brand); }
+.mk-tool-btn.danger:hover { color: #d33; border-color: #d33; }
+.mk-panel {
+  display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+  padding-top: 6px; border-top: 1px solid var(--border);
+}
+.mk-panel[hidden] { display: none; }
+.marktool .sw {
+  width: 26px; height: 26px; border-radius: 50%; cursor: pointer;
+  border: 2px solid transparent;
+}
+.marktool .sw.active { border-color: #333; }
+.marktool .sw.c1 { background: var(--c1); }
+.marktool .sw.c2 { background: var(--c2); }
+.marktool .sw.c3 { background: var(--c3); }
+.marktool .sw.c4 { background: var(--c4); }
+.marktool .sw.c5 { background: var(--c5); }
+
+/* ── 笔记编辑器 ── */
+.notemodal {
+  position: fixed; inset: 0; z-index: 80;
+  background: rgba(0,0,0,.35);
+  display: flex; align-items: center; justify-content: center;
+}
+.notemodal[hidden] { display: none; }
+.notemodal-card {
+  background: #fff; border-radius: 12px;
+  width: min(520px, 92vw); padding: 16px;
+  box-shadow: 0 12px 32px rgba(0,0,0,.2);
+}
+.notemodal-title { font-weight: 700; color: var(--heading); margin-bottom: 10px; font-size: 15px; }
+.notemodal textarea {
+  width: 100%; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 8px; font-size: 14px; resize: vertical; min-height: 100px;
+  font-family: inherit; box-sizing: border-box;
+}
+.notemodal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+
+/* 弹框打开时锁定页面滚动 */
+body.scroll-locked { overflow: hidden; }
 
 /* ── 弹窗 ── */
 .overlay {
