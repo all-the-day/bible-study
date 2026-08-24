@@ -6,7 +6,9 @@
   "scripts": {
     "cap:add": "cap add android",
     "cap:sync": "cap sync android",
-    "cap:copy": "cap copy android"
+    "cap:copy": "cap copy android",
+    "feedback:pull": "node scripts/feedback/pull.mjs",
+    "feedback:close": "node scripts/feedback/close.mjs"
   },
   "dependencies": {
     "@capacitor/core": "^6.2.0",

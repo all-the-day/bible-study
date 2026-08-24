@@ -575,6 +575,20 @@ body.scroll-locked { overflow: hidden; }
 .popup-btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
 .popup-btn:hover { opacity: .9; }
 
+/* ── 反馈表单 ── */
+.fb-hint { font-size: 13px; color: var(--text-soft); margin-bottom: 10px; line-height: 1.6; }
+.fb-select {
+  width: 100%; padding: 7px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--text); font-size: 14px; margin-bottom: 10px;
+}
+.fb-textarea {
+  width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); background: var(--surface); color: var(--text);
+  font-size: 14px; line-height: 1.6; resize: vertical; font-family: inherit;
+}
+.fb-actions { margin-top: 10px; display: flex; align-items: center; gap: 10px; }
+.fb-msg { font-size: 13px; color: var(--brand); margin-right: auto; }
+
 /* ── 移动端 ── */
 @media (max-width: 900px) {
   .layout { grid-template-columns: 1fr; }

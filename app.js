@@ -19,6 +19,9 @@ const LS_VIEW_MODE = 'bible-study.viewMode';
 const LS_STUDY_WIDTH = 'bible-study.studyWidth';
 const LS_LR_MAP = 'bible-study.lrMap';
 
+// 反馈提交地址（bible-kv 服务器，Caddy /bible-api/ 反代）
+const FEEDBACK_API = 'https://duoban.xyz/bible-api';
+
 const state = {
   books: [],            // [{index, name, acronym, chapters}]
   bookIndexByIdx: {},   // acronym+index -> book
@@ -901,6 +904,8 @@ function bindEvents() {
     document.querySelectorAll('.study-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'mynotes'));
     renderStudy();
   });
+  // 反馈弹窗
+  $('feedbackBtn').addEventListener('click', openFeedbackModal);
   // 研读面板拖拽调宽
   bindResize();
   // 书卷搜索
@@ -1543,6 +1548,52 @@ function deleteAnn(annId) {
   save(LS_ANNOTATIONS, state.annotations);
   rerenderAnn(ann);
   hideMarkTool();
+}
+
+/* ============ 反馈 ============ */
+function openFeedbackModal() {
+  openPopup('反馈', `
+    <div class="fb-hint">遇到问题或有建议？告诉我们。</div>
+    <select id="fbType" class="fb-select">
+      <option value="bug">Bug 问题</option>
+      <option value="suggestion">优化建议</option>
+      <option value="other">其他</option>
+    </select>
+    <textarea id="fbContent" class="fb-textarea" placeholder="描述你遇到的问题或建议…" rows="5"></textarea>
+    <div class="fb-actions">
+      <span id="fbMsg" class="fb-msg"></span>
+      <button class="popup-btn primary" id="fbSubmit">提交</button>
+    </div>
+  `);
+  $('fbSubmit').addEventListener('click', submitFeedback);
+}
+
+async function submitFeedback() {
+  const btn = $('fbSubmit');
+  const content = $('fbContent').value.trim();
+  const msg = $('fbMsg');
+  if (!content) { msg.textContent = '请填写内容'; return; }
+  btn.disabled = true;
+  msg.textContent = '提交中…';
+  try {
+    const res = await fetch(`${FEEDBACK_API}/api/feedback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: $('fbType').value, content }),
+    });
+    if (res.ok) {
+      msg.textContent = '已提交，感谢反馈！';
+      $('fbContent').value = '';
+    } else {
+      const data = await res.json().catch(() => null);
+      msg.textContent = data && data.error === 'rate_limited'
+        ? '提交太频繁，请稍后再试'
+        : '提交失败，请稍后再试';
+    }
+  } catch {
+    msg.textContent = '网络错误，提交失败';
+  }
+  btn.disabled = false;
 }
 
 /* ============ 弹窗 ============ */
