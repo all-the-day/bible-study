@@ -21,7 +21,7 @@
 - `main` — 云同步版：标注/笔记走 duoban.xyz 同步，部署 Vercel + 打包 APK（appId `com.allday.biblestudy`）
 - `offline` — 完全离线版：无 `sync.js`，标注纯 localStorage，appId `com.allday.biblestudy.offline`（可与云同步版共存）
 
-两个分支的 `app.js`/`export.py` 保持一致（同步逻辑靠 sync.js 有无自动切换），改动通过 cherry-pick 同步。
+两个分支的 `app.js`/`export.py` 保持一致（同步逻辑靠 sync.js 有无自动切换），改动通过 cherry-pick 同步。推送后由 `.github/workflows/check-sync.yml` **自动对比两分支共享文件**（有意差异除外：`capacitor.config.json` 的 appId/appName、`index.html` 的 sync.js 行、`sync.js`、`scripts/feedback/inbox.md` 快照），漂移即标红，先 cherry-pick 再部署。
 
 ## 文件结构
 
