@@ -19,6 +19,7 @@ data/lifereading/
 
 # 本地密钥
 .env
+.env.local
 
 # Vercel
 .vercel/

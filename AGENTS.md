@@ -75,6 +75,21 @@
 - 服务器 CORS 白名单在 `/var/www/bible-reader/server.py` 的 `ALLOWED_ORIGINS`，新增域名用 server-ops 操作并重启 `bible-kv`
 - 同步状态指示：顶栏 `#syncStatus`（绿=已同步 / 橙=待同步 / 红=离线）
 
+## 反馈闭环
+
+用户从 APP（在线版/离线 APK 顶栏「反馈」按钮）匿名提交 → 本地拉取开发 → 部署后标记完成：
+
+```bash
+npm run feedback:pull            # 拉取未处理反馈 → scripts/feedback/inbox.md
+npm run feedback:pull -- --all   # 包含已处理
+npm run feedback:close <id>      # 标记已处理
+```
+
+- 服务端：duoban.xyz bible-kv（`/var/www/bible-reader/server.py`）的 `POST/GET/PATCH /api/feedback`；匿名提交有每 IP 20 次/小时限流
+- 管理员令牌：`BIBLE_ADMIN_TOKEN`（项目根 `.env.local`，不入库）== 服务器 `FEEDBACK_ADMIN_TOKEN`（pm2 env）
+- 客户端：顶栏「反馈」按钮 → `openFeedbackModal()`（app.js），提交到 `https://duoban.xyz/bible-api/api/feedback`
+- 任何「检查反馈」动作必须先 `npm run feedback:pull` 刷新，禁止直接读 inbox.md 作为反馈依据（它是本地快照）
+
 ## 数据导出
 
 ```bash
