@@ -690,9 +690,30 @@ function renderMyNotes() {
   noteDiv.appendChild(meta);
   noteDiv.appendChild(ta);
   body.appendChild(noteDiv);
-  // 划线汇总（当前书卷全部标注，点击跳回原文）
-  const highlights = state.annotations.filter(a => a.book === state.currentBook.index);
+  // 划线汇总跟随当前章：本章经文标注 + 当前章对应生命读经篇目的标注（与 renderLifereading 同一套篇目匹配）
+  const acr = state.currentBook.acronym, ch = state.currentChapter;
+  const manual = state.lrMap[`${acr}${ch}`];
+  const lrIds = new Set(manual !== undefined ? manual : autoMatchLrIds((state.lifereading && state.lifereading.articles) || [], ch));
+  const highlights = state.annotations.filter(a =>
+    a.book === state.currentBook.index &&
+    (a.type === 'verse' ? a.chapter === ch : lrIds.has(a.articleId))
+  );
   body.appendChild(renderHighlights(highlights));
+}
+
+function groupHl(list) {
+  const groups = [];
+  const vs = list.filter(a => a.type === 'verse');
+  const lr = list.filter(a => a.type === 'lr');
+  const verseByChapter = {};
+  vs.forEach(a => { (verseByChapter[a.chapter] = verseByChapter[a.chapter] || []).push(a); });
+  Object.keys(verseByChapter).map(Number).sort((a, b) => a - b).forEach(ch => {
+    groups.push({ label: `第 ${ch} 章`, items: verseByChapter[ch].sort((x, y) => (x.verse - y.verse) || (x.start - y.start)) });
+  });
+  if (lr.length) {
+    groups.push({ label: '生命读经', items: lr.sort((x, y) => (x.articleId - y.articleId) || (x.start - y.start)) });
+  }
+  return groups;
 }
 
 function renderHighlights(anns) {
@@ -700,7 +721,7 @@ function renderHighlights(anns) {
   section.className = 'hl-section';
   const header = document.createElement('div');
   header.className = 'hl-header';
-  header.textContent = `划线汇总（${anns.length}）`;
+  header.textContent = '划线汇总';
   section.appendChild(header);
   if (!anns.length) {
     const hint = document.createElement('div');
@@ -709,25 +730,47 @@ function renderHighlights(anns) {
     section.appendChild(hint);
     return section;
   }
-  // 分组：经文按章，生命读经单列
-  const groups = [];
-  const lrItems = anns.filter(a => a.type === 'lr');
   const verseItems = anns.filter(a => a.type === 'verse');
-  const verseByChapter = {};
-  verseItems.forEach(a => { (verseByChapter[a.chapter] = verseByChapter[a.chapter] || []).push(a); });
-  Object.keys(verseByChapter).map(Number).sort((a, b) => a - b).forEach(ch => {
-    groups.push({ label: `第 ${ch} 章`, items: verseByChapter[ch].sort((x, y) => (x.verse - y.verse) || (x.start - y.start)) });
-  });
-  if (lrItems.length) {
-    groups.push({ label: '生命读经', items: lrItems.sort((x, y) => (x.articleId - y.articleId) || (x.start - y.start)) });
-  }
-  groups.forEach(g => {
-    const gl = document.createElement('div');
-    gl.className = 'hl-group';
-    gl.textContent = g.label;
-    section.appendChild(gl);
-    g.items.forEach(a => section.appendChild(renderHlItem(a)));
-  });
+  const lrItems = anns.filter(a => a.type === 'lr');
+  // 来源 tab：全部 / 经文 / 生命读经
+  const tabs = document.createElement('div');
+  tabs.className = 'hl-tabs';
+  const box = document.createElement('div');
+  const renderList = (list) => {
+    box.innerHTML = '';
+    const groups = groupHl(list);
+    if (!groups.length) {
+      const hint = document.createElement('div');
+      hint.className = 'empty-hint';
+      hint.textContent = '此分类暂无划线';
+      box.appendChild(hint);
+      return;
+    }
+    groups.forEach(g => {
+      const gl = document.createElement('div');
+      gl.className = 'hl-group';
+      gl.textContent = g.label;
+      box.appendChild(gl);
+      g.items.forEach(a => box.appendChild(renderHlItem(a)));
+    });
+  };
+  const mkTab = (label, list) => {
+    const t = document.createElement('button');
+    t.className = 'hl-tab';
+    t.textContent = `${label}（${list.length}）`;
+    t.addEventListener('click', () => {
+      tabs.querySelectorAll('.hl-tab').forEach(x => x.classList.toggle('active', x === t));
+      renderList(list);
+    });
+    return t;
+  };
+  const tabAll = mkTab('全部', anns);
+  const tabsArr = [tabAll, mkTab('经文', verseItems), mkTab('生命读经', lrItems)];
+  tabs.append(...tabsArr);
+  tabAll.classList.add('active');
+  section.appendChild(tabs);
+  section.appendChild(box);
+  renderList(anns);
   return section;
 }
 
@@ -1130,7 +1173,7 @@ function positionMenuByRect(menu, rect) {
   menu.style.transform = 'none';
   menu.style.top = '-9999px';
   menu.style.left = '-9999px';
-  menu.style.display = 'flex';
+  menu.style.display = '';   // 显示由 CSS + hidden 属性控制，不写内联 display（否则会压过 [hidden]）
   menu.style.opacity = '0';
   requestAnimationFrame(() => {
     const vvp = window.visualViewport;
@@ -1257,7 +1300,13 @@ function quoteToNotes() {
   hideFloatTool();
 }
 
-function hideFloatTool() { $('floatTool').hidden = true; pendingRange = null; editingAnnId = null; }
+function hideFloatTool() {
+  const t = $('floatTool');
+  t.hidden = true;
+  t.style.removeProperty('display');
+  t.style.removeProperty('opacity');
+  pendingRange = null; editingAnnId = null;
+}
 
 // 从选区构造标注记录（不依赖全局 pendingRange，供编辑器在菜单关闭后创建）
 function buildAnnotation(r, partial) {
@@ -1469,7 +1518,13 @@ function toggleMarkPanel(panel, ann, annId) {
   }
 }
 
-function hideMarkTool() { $('markTool').hidden = true; editingAnnId = null; }
+function hideMarkTool() {
+  const t = $('markTool');
+  t.hidden = true;
+  t.style.removeProperty('display');
+  t.style.removeProperty('opacity');
+  editingAnnId = null;
+}
 
 function changeAnnColor(annId, colorId) {
   const ann = state.annotations.find(a => a.id === annId);
