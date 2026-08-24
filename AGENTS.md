@@ -115,6 +115,7 @@ vercel --prod --yes --archive=tgz
 - 触发：push 到 main/offline 分支且改动前端文件（`app.js`/`style.css`/`index.html` 等）或 `package.json`/`capacitor.config.json`/`resources/**`；`workflow_dispatch` 手动触发
 - `scripts/export.py` 改动**不触发** APK 构建（数据走「重跑导出 → Vercel 部署 → APK 下次构建拉新数据」）
 - 两个分支两个 APK：main（云同步版，appId `com.allday.biblestudy`）、offline（离线版，appId `com.allday.biblestudy.offline`，无 sync.js）
+- **发布到 GitHub Releases**：main/offline 分支构建后自动滚动发布（`gh release delete --cleanup-tag` 后重建），tag `bible-study-main` / `bible-study-offline`，标题「读经 云同步版/离线版」，releases 页始终只有最新两个
 - 产物为 debug 签名，可安装测试，不能上架商店；正式发布需配 release 签名
 
 ## 修改守则
