@@ -121,6 +121,10 @@ function openSettingsModal() {
       </div>
       <div class="settings-card">
         <div class="settings-group">其他</div>
+        <div class="settings-row" id="setUpdate">
+          <span class="settings-label">检查更新</span>
+          <span class="settings-value" id="setUpdateVal">${_updateInfo ? (_updateInfo.hasUpdate ? `新版本 v${_updateInfo.latest.version}` : '已是最新') : '检查更新'}</span>
+        </div>
         <div class="settings-row" id="setFeedback">
           <span class="settings-label">反馈</span>
           <span class="settings-arrow">›</span>
@@ -160,6 +164,8 @@ function onSettingsRow(e) {
     if (v) v.textContent = VIEW_MODE_LABELS[state.viewMode] || '双页';
   } else if (id === 'setFeedback') {
     openFeedbackModal();
+  } else if (id === 'setUpdate') {
+    openUpdateModal();
   }
 }
 
@@ -1083,6 +1089,9 @@ function bindEvents() {
   // 设置菜单（⚙️）——行点击走委托，弹窗栈返回后依然有效
   $('settingsBtn').addEventListener('click', openSettingsModal);
   document.addEventListener('click', onSettingsRow);
+  // 检查更新弹窗
+  $('updateCancel').addEventListener('click', closeUpdateModal);
+  $('updateAction').addEventListener('click', startUpdateDownload);
   // 研读面板拖拽调宽
   bindResize();
   // 书卷搜索
@@ -2087,8 +2096,117 @@ function escapeHtml(s) {
   return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+/* ============ 检查更新（update.js） ============ */
+let _updateInfo = null; // 最近一次 check 结果：null=未知/失败，{latest, current, hasUpdate}
+
+function updateSettingsBadge() {
+  const has = !!(window.BibleStudyUpdate && _updateInfo && _updateInfo.hasUpdate);
+  const btn = $('settingsBtn');
+  if (btn) btn.classList.toggle('update-dot', has);
+}
+
+function closeUpdateModal() {
+  $('updateModal').hidden = true;
+  document.body.classList.remove('scroll-locked');
+}
+
+function openUpdateModal() {
+  const modal = $('updateModal');
+  const status = $('updateStatus');
+  const body = $('updateBody');
+  const progress = $('updateProgress');
+  const fill = $('updateFill');
+  const percent = $('updatePercent');
+  const action = $('updateAction');
+  modal.hidden = false;
+  document.body.classList.add('scroll-locked');
+  status.textContent = '检查中…';
+  body.innerHTML = '';
+  progress.hidden = true;
+  fill.style.width = '0%';
+  percent.textContent = '0%';
+  action.hidden = true;
+  action.textContent = '下载并安装';
+  action.disabled = false;
+
+  window.BibleStudyUpdate.check().then((res) => {
+    _updateInfo = res;
+    updateSettingsBadge();
+    if (!res) {
+      status.textContent = '检查失败';
+      body.innerHTML = '无法连接 GitHub Releases，请检查网络后重试。';
+      return;
+    }
+    const { latest, current, hasUpdate } = res;
+    if (!hasUpdate) {
+      status.textContent = `已是最新版本 v${current}`;
+      return;
+    }
+    status.textContent = `发现新版本 v${latest.version}（当前 v${current}）`;
+    body.innerHTML = escapeHtml(latest.body ? latest.body.slice(0, 500) : '');
+    if (!window.BibleStudyUpdate.isNative()) {
+      body.innerHTML += '\n\n网页版内容会自动更新，刷新页面即可；如需安装 APK 请点下方按钮前往 Releases 下载。';
+      action.textContent = '前往 Releases';
+    }
+    action.hidden = false;
+  });
+}
+
+function startUpdateDownload() {
+  const status = $('updateStatus');
+  const body = $('updateBody');
+  const progress = $('updateProgress');
+  const fill = $('updateFill');
+  const percent = $('updatePercent');
+  const action = $('updateAction');
+  const isNative = window.BibleStudyUpdate.isNative();
+  const latest = _updateInfo && _updateInfo.latest;
+
+  // PWA：直接跳转 Releases 页
+  if (!isNative || !latest) {
+    if (latest && latest.html_url) window.open(latest.html_url, '_blank');
+    closeUpdateModal();
+    return;
+  }
+
+  action.disabled = true;
+  progress.hidden = false;
+  status.textContent = '正在下载 APK…';
+  body.innerHTML = '';
+
+  window.BibleStudyUpdate.download(latest, (frac) => {
+    const p = Math.round(frac * 100);
+    fill.style.width = p + '%';
+    percent.textContent = p + '%';
+  }).then((r) => {
+    progress.hidden = true;
+    if (r.ok) {
+      status.textContent = '安装程序已打开，请在系统弹窗中点击安装。';
+      action.hidden = true;
+    } else {
+      status.textContent = '下载/安装失败：' + r.msg;
+      body.innerHTML = r.filePath ? 'APK 已保存，可手动安装：' + escapeHtml(r.filePath) : '';
+      action.disabled = false;
+      action.textContent = '重试';
+    }
+  });
+}
+
 /* ============ 启动 ============ */
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 init();
+
+// 启动后静默检查更新：发现新版给 ⚙️ 加红点，设置弹窗行显示状态
+setTimeout(() => {
+  if (!window.BibleStudyUpdate) return;
+  window.BibleStudyUpdate.check().then((res) => {
+    _updateInfo = res;
+    updateSettingsBadge();
+    const uv = $('setUpdateVal');
+    if (uv) {
+      uv.textContent = !res ? '检查更新' : (res.hasUpdate ? `新版本 v${res.latest.version}` : '已是最新');
+    }
+  });
+}, 3000);

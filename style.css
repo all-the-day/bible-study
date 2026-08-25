@@ -562,6 +562,29 @@ sup.xref-ref:hover { color: var(--brand-dark); }
 }
 .notemodal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 
+/* 检查更新弹窗 */
+.update-status { font-size: 14px; color: var(--text); margin-bottom: 8px; }
+.update-body { font-size: 13px; color: var(--text-soft); margin-bottom: 8px; line-height: 1.7; white-space: pre-wrap; }
+.update-body a { color: var(--brand); }
+.update-progress { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
+.update-progress[hidden] { display: none; }
+.update-progress .bar {
+  flex: 1; height: 8px; border-radius: 4px; background: var(--surface);
+  overflow: hidden;
+}
+.update-progress .fill { height: 100%; width: 0; background: var(--brand); border-radius: 4px; transition: width .15s; }
+.update-percent { font-size: 12px; color: var(--text-soft); min-width: 40px; text-align: right; }
+
+/* ⚙️ 设置按钮：发现新版本时红点角标 */
+.update-dot {
+  position: relative;
+}
+.update-dot::after {
+  content: '●';
+  position: absolute; top: -2px; right: -4px;
+  font-size: 10px; color: #ef4444; line-height: 1;
+}
+
 /* 弹框打开时锁定页面滚动 */
 body.scroll-locked { overflow: hidden; }
 

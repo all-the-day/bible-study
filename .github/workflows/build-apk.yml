@@ -12,11 +12,14 @@ on:
       - 'style.css'
       - 'index.html'
       - 'sync.js'
+      - 'update.js'
       - 'manifest.json'
       - 'sw.js'
       - 'capacitor.config.json'
       - 'package.json'
       - 'resources/**'
+      - 'config/**'
+      - 'scripts/patch-android.mjs'
       - '.github/workflows/build-apk.yml'
 
 jobs:
@@ -42,8 +45,22 @@ jobs:
       - name: 准备 web 资源
         run: |
           mkdir -p www/data/lifereading
-          cp index.html app.js style.css manifest.json sw.js sync.js www/
+          cp index.html app.js style.css manifest.json sw.js sync.js update.js www/
           cp -r icons www/
+          # APK 内 manifest 版本用 package.json 值重写（App 内更新检查的本地版本依据）
+          VERSION=$(node -p "require('./package.json').version")
+          node -e "const fs=require('fs');const f='www/manifest.json';const m=JSON.parse(fs.readFileSync(f));m.version=process.argv[1];fs.writeFileSync(f,JSON.stringify(m,null,2))" "$VERSION"
+          echo "APK manifest version: $VERSION"
+
+      - name: 版本一致性守卫（package.json 与 manifest.json）
+        run: |
+          PKG=$(node -p "require('./package.json').version")
+          MAN=$(node -p "require('./manifest.json').version")
+          echo "package.json=$PKG manifest.json=$MAN"
+          if [ "$PKG" != "$MAN" ]; then
+            echo "::error::版本不一致：package.json ($PKG) != manifest.json ($MAN)。App 内更新依赖两者一致，请同步升版本号。"
+            exit 1
+          fi
 
       - name: 下载数据（从 Vercel）
         run: |
@@ -69,6 +86,9 @@ jobs:
 
       - name: 生成 Android 图标
         run: npx capacitor-assets generate --android
+
+      - name: 注入原生更新插件（patch-android）
+        run: node scripts/patch-android.mjs
 
       - name: 构建 debug APK
         run: |

@@ -29,6 +29,8 @@ data/lifereading/
 node_modules/
 www/
 android/
+!config/                # 原生插件源码目录需要入库（android/ 模式会连带命中 config/android/，需先解除父目录）
+!config/android/
 package-lock.json
 builds/
 .workbuddy/memory/

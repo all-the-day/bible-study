@@ -27,10 +27,13 @@
 | 文件 | 职责 |
 |------|------|
 | `index.html` / `style.css` / `app.js` | 单页应用全部逻辑 |
-| `sync.js` | 标注/笔记云同步客户端（duoban.xyz 通用 KV API）；离线变体由 `scripts/prepare-offline.mjs` 在 CI 中移除其引用 |
+| `sync.js` | 标注/笔记云同步客户端（duoban.xyz 通用 KV API） |
+| `update.js` | App 内检查更新客户端（GitHub Releases 查版本 + 镜像下载 APK + 安装，移植晨读 app 更新逻辑） |
 | `manifest.json` / `sw.js` | PWA 安装与离线缓存 |
-| `capacitor.config.json` / `package.json` | 在线版 APK 打包配置；离线版配置在 `config/offline/capacitor.config.json`（`resources/icon.png` 为图标源） |
+| `capacitor.config.json` / `package.json` | APK 打包配置（`resources/icon.png` 为图标源） |
+| `config/android/` | 原生更新插件源码（ApkInstallerPlugin/MainActivity/file_paths.xml），CI 注入 android/ 工程，不入本地构建 |
 | `scripts/export.py` | 从 `../bible` 导出静态 JSON → `data/` |
+| `scripts/patch-android.mjs` | CI 帮手：注入原生插件 + AndroidManifest 权限/FileProvider（幂等） |
 | `scripts/*-test.js` | puppeteer 端到端测试（e2e / 标注 / 生命读经标注） |
 | `data/books.json` | 66 卷目录 + 每卷章数 + 缩写 |
 | `data/bible-text.json` | 原文，键 `创1:1` / `创1:2上`，值含 `{N}`（注脚）/`[a]`（串珠）标记 |
@@ -58,7 +61,7 @@
 
 **生命读经匹配**：自动按每篇 `verses` 的章节号（`X:Y` 开头的 `X`）匹配当前章；用户可手动指定（localStorage 键 `bible-study.lrMap`，`{键(如"创24"): [篇目id]}`，覆盖自动匹配，纯本地不参与云同步）。
 
-**移动端（≤900px）单视图模型**：同一时刻只显示一个内容——读经（经文）或研读（注解/生命读经/我的笔记），底部导航 `#mobileNav` 切换（`setMobileView`，读经/研读二选一），导航两侧为章节翻页（`#mPrevBtn`/`#mNextBtn`）；桌面三列布局不变。移动端顶栏精简为 ☰ + 居中标题（`创世记 25章`）+ `#moreBtn`（⋮ 更多菜单：隐藏注号/反馈，`#moreMenu`）；隐藏桌面专属元素（视图模式/研读全屏/笔记按钮/顶栏翻页/拖拽调宽/纲目侧栏），`jumpToVerse`/`jumpToLr` 自动切回对应视图。移动端样式全部限定在 `@media (max-width: 900px)`，桌面 CSS 不受影响。
+**移动端（≤900px）单视图模型**：同一时刻只显示一个内容——读经（经文）或研读（注解/生命读经/我的笔记），底部导航 `#mobileNav` 切换（`setMobileView`，读经/研读二选一），导航两侧为章节翻页（`#mPrevBtn`/`#mNextBtn`）；桌面三列布局不变。移动端顶栏精简为 ☰ + 居中标题（`创世记 25章`）+ `#settingsBtn`（⚙️ 统一设置弹窗 `openSettingsModal`：云同步/隐藏注号/视图模式/反馈/关于，分组卡片 + Switch 开关，底部版本号）；隐藏桌面专属元素（视图模式/研读全屏/笔记按钮/顶栏翻页/拖拽调宽/纲目侧栏），`jumpToVerse`/`jumpToLr` 自动切回对应视图。移动端样式全部限定在 `@media (max-width: 900px)`，桌面 CSS 不受影响。
 
 ## 云同步
 
@@ -81,6 +84,25 @@
 - 同步失败静默降级为纯本地，不阻塞应用；`window.BIBLE_OFFLINE=true` 可跳过远程（测试用）
 - 服务器 CORS 白名单在 `/var/www/bible-reader/server.py` 的 `ALLOWED_ORIGINS`，新增域名用 server-ops 操作并重启 `bible-kv`
 - 同步状态指示：顶栏 `#syncStatus`（绿=已同步 / 橙=待同步 / 红=离线）
+
+## App 内更新
+
+APK 端检查 GitHub Releases 新版本 → 下载 APK → 触发系统安装（移植晨读 app 更新逻辑，见 `update.js` 与 `config/android/`）：
+
+| 项 | 值 |
+|----|-----|
+| 版本真相源 | `https://api.github.com/repos/all-the-day/bible-study/releases/tags/bible-study-main`（滚动 release，无鉴权 60 次/小时/IP） |
+| 本地版本 | `manifest.json` 的 `version`（`update.js` 读取；CI 构建 APK 时用 package.json 值重写 `www/manifest.json`） |
+| 远端版本 | Release `name`（CI 固定格式 `读经 v${VERSION} · 云同步版`），正则 `/v(\d+\.\d+\.\d+)/` 解析 |
+| 比较 | `compareVersion`：去 v 前缀 → split('.') → parseInt 逐位比较 |
+| 下载源 | 直连 GitHub + 公共镜像依次尝试（`github.com` → `gh-proxy.com` → `ghproxy.net`），失败切换下一个 |
+| 安装 | `Capacitor.Plugins.ApkInstaller.install({filePath})`（原生插件）→ FileProvider → 系统 `ACTION_VIEW` 安装器 |
+| 清理 | 成功后清理 CACHE/DATA `downloads/` 目录历史 `*.apk` |
+
+- **触发**：启动后 ~3s 静默 `check()`（10s 超时，失败静默）→ 发现新版给 `#settingsBtn` 加 `.update-dot` 红点角标 + 设置弹窗「检查更新」行显示状态；设置行点击开 `#updateModal`（独立 modal，非弹窗栈，下载过程不被关闭打断）
+- **平台分支**：原生（`Capacitor.isNativePlatform()`）→ 流式下载（ReadableStream 按 content-length 报进度 0-100%）→ `Filesystem.writeFile`（CACHE → EXTERNAL → DATA 依次尝试，写 CACHE 无需存储权限）→ 安装；PWA/浏览器 → 只提示跳转 Releases 页（网页内容走 SW 自动更新）
+- **原生插件注入**：仓库不建 `android/`（CI `cap add android` 全新建）；`scripts/patch-android.mjs` 在 cap sync 后拷贝 `config/android/` 的 Java/XML 并幂等改写 AndroidManifest（`REQUEST_INSTALL_PACKAGES` 权限 + `<queries>` VIEW apk + FileProvider authority `com.allday.biblestudy.fileprovider`）
+- **版本一致性守卫**：build-apk.yml 构建前校验 `package.json.version == manifest.json.version`，不一致直接失败——App 内更新依赖两处版本对齐，**每次发版两处都要同步升**
 
 ## 反馈闭环
 
@@ -117,12 +139,12 @@ vercel --prod --yes --archive=tgz
 
 ## APK 打包（GitHub Actions）
 
-- workflow `.github/workflows/build-apk.yml`：单一 job → 准备 web 资源 + 从 Vercel 下载 data（books/text/notes/xrefs/**outlines** + lifereading）→ `npm install` → `cap add android` → `cap sync` → `capacitor-assets generate`（图标）→ gradle 构建 debug APK → 上传 artifact
+- workflow `.github/workflows/build-apk.yml`：单一 job → 版本一致性守卫（package/manifest 版本对齐）→ 准备 web 资源（`www/manifest.json` 版本重写为 package.json）+ 从 Vercel 下载 data（books/text/notes/xrefs/**outlines** + lifereading）→ `npm install` → `cap add android` → `cap sync` → `capacitor-assets generate`（图标）→ `scripts/patch-android.mjs`（注入原生更新插件）→ gradle 构建 debug APK → 上传 artifact
   - **注意**：APK 数据只来自 Vercel 部署产物，不在 git 里；改 `data/` 后务必先 `vercel` 部署再让 APK 构建拉取，否则 APK 拿不到新数据。
-- 触发：push 到 **main** 且改动前端文件（`app.js`/`style.css`/`index.html` 等）或 `package.json`/`capacitor.config.json`/`resources/**`；`workflow_dispatch` 手动触发
+- 触发：push 到 **main** 且改动前端文件（`app.js`/`style.css`/`index.html`/`update.js` 等）或 `package.json`/`capacitor.config.json`/`resources/**`/`config/**`/`scripts/patch-android.mjs`；`workflow_dispatch` 手动触发
 - `scripts/export.py` 改动**不触发** APK 构建（数据走「重跑导出 → Vercel 部署 → APK 下次构建拉新数据」）
 - 产出单一 APK（appId `com.allday.biblestudy`，云同步为运行时可选功能）
-- **发布到 GitHub Releases**：滚动发布（`gh release delete --cleanup-tag` 后重建），tag `bible-study-main`，标题「读经 v{package.json version} · 云同步版」，releases 页始终只有最新一个；升版本号改 `package.json` 的 `version`
+- **发布到 GitHub Releases**：滚动发布（`gh release delete --cleanup-tag` 后重建），tag `bible-study-main`，标题「读经 v{package.json version} · 云同步版」，releases 页始终只有最新一个；升版本号改 `package.json` 的 `version` **和 `manifest.json` 的 `version`（两处必须一致，CI 守卫强制）**
 - 产物为 debug 签名，可安装测试，不能上架商店；正式发布需配 release 签名
 - JS 质量门槛：`.github/workflows/check-js.yml` 在改动 JS/JSON 时 `node --check` 全量检查（几秒），语法错误先于 APK 构建拦截
 
