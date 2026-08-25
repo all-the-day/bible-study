@@ -86,7 +86,95 @@ function updateSyncStatus() {
   else { el.className = 'sync-status offline'; el.title = '离线（本地保存）'; }
 }
 
-// 云同步设置弹窗：授权码启用 / 停用
+/* ============ 设置菜单 ============ */
+let _manifestVersion = null;
+
+function loadAppVersion() {
+  if (_manifestVersion !== null) return Promise.resolve(_manifestVersion);
+  return fetchJSON('manifest.json')
+    .then(m => { _manifestVersion = m.version || '1.0.0'; return _manifestVersion; })
+    .catch(() => { _manifestVersion = '1.0.0'; return _manifestVersion; });
+}
+
+function openSettingsModal() {
+  const enabled = syncActive();
+  const uid = state.account ? state.account.uid : '';
+  openPopup('设置', `
+    <div class="settings-group">同步</div>
+    <div class="settings-row" id="setSync">
+      <span class="settings-label">云同步</span>
+      <span class="settings-value ${enabled ? 'st-on' : 'st-off'}">${enabled ? `已启用（${escapeHtml(uid)}）` : '未启用（纯本地）'}</span>
+    </div>
+    <div class="settings-group">阅读</div>
+    <div class="settings-row" id="setHideMarks">
+      <span class="settings-label">隐藏注号</span>
+      <span class="settings-value">${state.hideMarks ? '开' : '关'}</span>
+    </div>
+    <div class="settings-row" id="setViewMode">
+      <span class="settings-label">视图模式</span>
+      <span class="settings-value">${VIEW_MODE_LABELS[state.viewMode] || '双页'}</span>
+    </div>
+    <div class="settings-group">其他</div>
+    <div class="settings-row" id="setFeedback">
+      <span class="settings-label">反馈</span>
+      <span class="settings-value">›</span>
+    </div>
+    <div class="settings-row" id="setAbout">
+      <span class="settings-label">关于</span>
+      <span class="settings-value" id="setVersion">读经 …</span>
+    </div>
+  `);
+  // 行点击走 document 委托（onSettingsRow），弹窗栈返回恢复 innerHTML 后监听不丢失
+  if (_manifestVersion !== null) {
+    const el = $('setVersion');
+    if (el) el.textContent = `读经 v${_manifestVersion}`;
+  }
+  loadAppVersion().then(v => {
+    const el = $('setVersion');
+    if (el) el.textContent = `读经 v${v}`;
+  });
+}
+
+// 设置行点击（事件委托：doc 级监听，兼容弹窗栈返回后的 innerHTML 恢复）
+function onSettingsRow(e) {
+  const row = e.target.closest('.settings-row');
+  if (!row) return;
+  const id = row.id;
+  const valueEl = () => row.querySelector('.settings-value');
+  if (id === 'setSync') {
+    openSyncModal();
+  } else if (id === 'setHideMarks') {
+    state.hideMarks = !state.hideMarks;
+    applyHideMarks();
+    save(LS_HIDE_MARKS, state.hideMarks);
+    const v = valueEl();
+    if (v) v.textContent = state.hideMarks ? '开' : '关';
+  } else if (id === 'setViewMode') {
+    state.studyFull = false;
+    const order = ['default', 'stacked', 'full'];
+    const i = order.indexOf(state.viewMode);
+    state.viewMode = order[(i + 1) % order.length];
+    applyLayout();
+    save(LS_VIEW_MODE, state.viewMode);
+    const v = valueEl();
+    if (v) v.textContent = VIEW_MODE_LABELS[state.viewMode] || '双页';
+  } else if (id === 'setFeedback') {
+    openFeedbackModal();
+  } else if (id === 'setAbout') {
+    openAboutModal();
+  }
+}
+
+function openAboutModal() {
+  openPopup('关于', `
+    <div class="fb-hint">读经研读 · PWA</div>
+    <div class="sync-row"><span>版本</span><b>v${_manifestVersion || '1.0.0'}</b></div>
+    <div class="sync-row"><span>数据</span><b>和合本圣经 + 注解 + 生命读经</b></div>
+    <div class="sync-row"><span>同步</span><b>duoban.xyz</b></div>
+  `);
+}
+
+/* ============ 云同步设置 ============ */
 function openSyncModal() {
   const enabled = syncActive();
   const uid = state.account ? state.account.uid : '';
@@ -159,7 +247,6 @@ function applyHideMarks() {
   const label = state.hideMarks ? '显示注号' : '隐藏注号';
   $('hideMarksBtn').textContent = label;
   $('hideMarksBtn').classList.toggle('active', state.hideMarks);
-  $('moreHideMarks').textContent = label;
 }
 
 const VIEW_MODE_LABELS = { default: '双页', stacked: '上下', full: '全屏' };
@@ -950,8 +1037,6 @@ let pendingRange = null;
 let editingAnnId = null;
 
 function bindEvents() {
-  // 云同步设置（点同步状态点）
-  $('syncStatus').addEventListener('click', openSyncModal);
   // 隐藏/显示注号
   $('hideMarksBtn').addEventListener('click', () => {
     state.hideMarks = !state.hideMarks;
@@ -1006,21 +1091,9 @@ function bindEvents() {
   $('mNextBtn').addEventListener('click', () => {
     if (state.currentChapter < state.currentBook.chapters) selectChapter(state.currentChapter + 1);
   });
-  // 移动端「更多」菜单：隐藏注号 / 反馈
-  $('moreBtn').addEventListener('click', (e) => {
-    e.stopPropagation();
-    $('moreMenu').hidden = !$('moreMenu').hidden;
-  });
-  $('moreHideMarks').addEventListener('click', () => {
-    state.hideMarks = !state.hideMarks;
-    applyHideMarks();
-    save(LS_HIDE_MARKS, state.hideMarks);
-    $('moreMenu').hidden = true;
-  });
-  $('moreFeedback').addEventListener('click', () => {
-    $('moreMenu').hidden = true;
-    openFeedbackModal();
-  });
+  // 设置菜单（⚙️）——行点击走委托，弹窗栈返回后依然有效
+  $('settingsBtn').addEventListener('click', openSettingsModal);
+  document.addEventListener('click', onSettingsRow);
   // 研读面板拖拽调宽
   bindResize();
   // 书卷搜索
@@ -1056,21 +1129,17 @@ function bindEvents() {
     if (!tool.hidden && !tool.contains(e.target)) hideFloatTool();
     const mk = $('markTool');
     if (!mk.hidden && !mk.contains(e.target)) hideMarkTool();
-    const more = $('moreMenu');
-    if (!more.hidden && !more.contains(e.target) && !$('moreBtn').contains(e.target)) more.hidden = true;
   });
   document.addEventListener('touchstart', (e) => {
     const tool = $('floatTool');
     if (!tool.hidden && !tool.contains(e.target)) hideFloatTool();
     const mk = $('markTool');
     if (!mk.hidden && !mk.contains(e.target)) hideMarkTool();
-    const more = $('moreMenu');
-    if (!more.hidden && !more.contains(e.target) && !$('moreBtn').contains(e.target)) more.hidden = true;
   }, { passive: true });
   // 滚动/键盘关闭菜单（移植晨读 §9）
-  window.addEventListener('scroll', () => { hideFloatTool(); hideMarkTool(); $('moreMenu').hidden = true; }, { passive: true });
+  window.addEventListener('scroll', () => { hideFloatTool(); hideMarkTool(); }, { passive: true });
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { hideFloatTool(); hideMarkTool(); $('moreMenu').hidden = true; cancelNoteEditor(); }
+    if (e.key === 'Escape') { hideFloatTool(); hideMarkTool(); cancelNoteEditor(); }
   });
   // 笔记编辑器
   $('noteSave').addEventListener('click', saveNoteEditor);
