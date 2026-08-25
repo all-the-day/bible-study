@@ -1,8 +1,0 @@
-{
-  "appId": "com.allday.biblestudy.offline",
-  "appName": "读经离线",
-  "webDir": "www",
-  "android": {
-    "allowMixedContent": true
-  }
-}

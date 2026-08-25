@@ -18,6 +18,7 @@ const LS_NAV_COLLAPSED = 'bible-study.navCollapsed';
 const LS_VIEW_MODE = 'bible-study.viewMode';
 const LS_STUDY_WIDTH = 'bible-study.studyWidth';
 const LS_LR_MAP = 'bible-study.lrMap';
+const LS_ACCOUNT = 'bible-study.account';
 
 // 反馈提交地址（bible-kv 服务器，Caddy /bible-api/ 反代）
 const FEEDBACK_API = 'https://duoban.xyz/bible-api';
@@ -41,6 +42,7 @@ const state = {
   studyWidth: load(LS_STUDY_WIDTH, 480),
   studyFull: false,
   activeTab: 'notes',
+  account: load(LS_ACCOUNT, null),  // {uid, token}；null = 未启用云同步（纯本地）
 };
 
 function load(key, fallback) {
@@ -49,18 +51,20 @@ function load(key, fallback) {
 }
 // 云同步客户端（sync.js 加载失败时静默降级为纯本地）
 const Sync = window.BibleStudySync || null;
+// 运行时门控：未启用同步（无 account）时即使 sync.js 存在也不参与云同步
+function syncActive() { return !!(Sync && state.account); }
 const SYNC_KEYS = [LS_ANNOTATIONS, LS_CHAPTER_NOTES];
 
 function save(key, val) {
   localStorage.setItem(key, JSON.stringify(val));
-  if (Sync && SYNC_KEYS.includes(key)) {
+  if (syncActive() && SYNC_KEYS.includes(key)) {
     Sync.putRemote(key, val);
   }
 }
 
 // 启动时后台同步：服务器为主，成功后覆盖本地；再重试离线未推送的改动
 async function syncFromRemote() {
-  if (!Sync) return;
+  if (!syncActive()) return;
   await Sync.pullAll(SYNC_KEYS);
   state.annotations = load(LS_ANNOTATIONS, []);
   state.chapterNotes = load(LS_CHAPTER_NOTES, {});
@@ -76,10 +80,45 @@ async function syncFromRemote() {
 function updateSyncStatus() {
   const el = $('syncStatus');
   if (!el) return;
-  if (!Sync) { el.className = 'sync-status'; el.title = '云同步不可用'; return; }
+  if (!syncActive()) { el.className = 'sync-status'; el.title = '未启用云同步（点击设置）'; return; }
   if (Sync.hasPending()) { el.className = 'sync-status pending'; el.title = '有改动待同步'; }
   else if (Sync.isRemoteOk()) { el.className = 'sync-status ok'; el.title = '已同步到云端'; }
   else { el.className = 'sync-status offline'; el.title = '离线（本地保存）'; }
+}
+
+// 云同步设置弹窗：启用/停用（授权码体系后续接入，当前为本机显式开启）
+function openSyncModal() {
+  const enabled = syncActive();
+  openPopup('云同步', `
+    <div class="fb-hint">标注与笔记跨设备同步。未启用时本设备完全本地保存。</div>
+    <div class="sync-row"><span>状态</span><b class="${enabled ? 'sync-st-on' : 'sync-st-off'}">${enabled ? '已启用' : '未启用（纯本地）'}</b></div>
+    ${enabled ? `
+    <div class="fb-actions">
+      <span id="fbMsg" class="fb-msg"></span>
+      <button class="popup-btn" id="syncDisable">停用同步</button>
+    </div>`
+    : `
+    <div class="fb-hint">启用后本设备将参与云同步；授权码体系将在后续版本接入。</div>
+    <div class="fb-actions">
+      <span id="fbMsg" class="fb-msg"></span>
+      <button class="popup-btn primary" id="syncEnable">启用同步</button>
+    </div>`}
+  `);
+  const en = $('syncEnable');
+  if (en) en.addEventListener('click', () => {
+    state.account = { uid: 'u1', token: 'local', activatedAt: Date.now() };
+    save(LS_ACCOUNT, state.account);
+    closePopupAll();
+    updateSyncStatus();
+    syncFromRemote();  // 启用后立即拉取云端数据
+  });
+  const dis = $('syncDisable');
+  if (dis) dis.addEventListener('click', () => {
+    state.account = null;
+    localStorage.removeItem(LS_ACCOUNT);
+    closePopupAll();
+    updateSyncStatus();
+  });
 }
 
 function applyHideMarks() {
@@ -878,6 +917,8 @@ let pendingRange = null;
 let editingAnnId = null;
 
 function bindEvents() {
+  // 云同步设置（点同步状态点）
+  $('syncStatus').addEventListener('click', openSyncModal);
   // 隐藏/显示注号
   $('hideMarksBtn').addEventListener('click', () => {
     state.hideMarks = !state.hideMarks;
