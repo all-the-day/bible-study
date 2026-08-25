@@ -15,6 +15,8 @@
   // 下载源：直连 GitHub + 公共代理镜像（失败依次切换）
   const SOURCES = ["https://github.com", "https://gh-proxy.com", "https://ghproxy.net"];
   const CHECK_TIMEOUT = 10000;
+  const CONNECT_TIMEOUT = 8000;   // 连接/首字节超时：超过则 abort 并切换下一个下载源
+  const STALL_TIMEOUT = 15000;    // 读取停滞超时：超过 N 秒无任何数据则 abort 并切换下载源
   const APK_FILE = "bible-study-update.apk";
   const MIME_APK = "application/vnd.android.package-archive";
 
@@ -86,18 +88,30 @@
       .catch(() => null);
   }
 
-  /* 流式下载（fetch + reader），按 content-length 上报进度 fraction 0..1 */
+  /* 流式下载（fetch + reader），按 content-length 上报进度 fraction 0..1。
+     连接与读取停滞均带超时：国内访问 GitHub 直连常「TCP 已连但数据 stalled」，
+     无超时会让 fetch 永久挂起、镜像 fallback 永远等不到（曾致进度卡 0%） */
   function fetchBinary(url, onProgress) {
-    return fetch(url, { headers: { Accept: MIME_APK } }).then((r) => {
+    const ctrl = new AbortController();
+    const connTimer = setTimeout(() => ctrl.abort(), CONNECT_TIMEOUT);
+    return fetch(url, { headers: { Accept: MIME_APK }, signal: ctrl.signal }).then((r) => {
       if (!r.ok) throw new Error("http " + r.status);
+      clearTimeout(connTimer);
       const total = parseInt(r.headers.get("content-length") || "0", 10) || 0;
       if (!r.body || !r.body.getReader) return r.blob();
       const reader = r.body.getReader();
       const chunks = [];
       let received = 0;
+      let stallTimer = null;
+      const resetStall = () => {
+        clearTimeout(stallTimer);
+        stallTimer = setTimeout(() => ctrl.abort(), STALL_TIMEOUT);
+      };
+      resetStall();
       function pump() {
         return reader.read().then(({ done, value }) => {
           if (done) {
+            clearTimeout(stallTimer);
             const blob = new Blob(chunks, { type: MIME_APK });
             if (onProgress) onProgress(1);
             return blob;
@@ -105,11 +119,20 @@
           chunks.push(value);
           received += value.length;
           if (onProgress && total) onProgress(Math.min(received / total, 0.95));
+          resetStall();
           return pump();
         });
       }
       return pump();
     });
+  }
+
+  /* 超时类错误 → 友好文案（用户可操作提示） */
+  function friendlyError(err) {
+    if (err && (err.name === "AbortError" || /timeout|timed ?out|超时/i.test(err.message || ""))) {
+      return "下载超时，请检查网络后重试";
+    }
+    return null;
   }
 
   function blobToBase64(blob) {
@@ -186,7 +209,7 @@
         if (r.ok) cleanupOldApks();
         return r;
       })
-      .catch((err) => ({ ok: false, msg: err && err.message ? err.message : "下载失败" }));
+      .catch((err) => ({ ok: false, msg: friendlyError(err) || (err && err.message ? err.message : "下载失败") }));
   }
 
   window.BibleStudyUpdate = {
