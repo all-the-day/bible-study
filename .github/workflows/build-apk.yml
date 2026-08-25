@@ -30,6 +30,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 完整历史：release notes 需要 git log
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -51,6 +53,23 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           node -e "const fs=require('fs');const f='www/manifest.json';const m=JSON.parse(fs.readFileSync(f));m.version=process.argv[1];fs.writeFileSync(f,JSON.stringify(m,null,2))" "$VERSION"
           echo "APK manifest version: $VERSION"
+
+      - name: 自动递增版本（release 版本与 package.json 相同时 patch+1）
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          RELEASE_NAME=$(gh release view bible-study-main --json name -q .name 2>/dev/null || echo "")
+          CURRENT=$(echo "$RELEASE_NAME" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "")
+          if [ "$CURRENT" = "v$VERSION" ]; then
+            NEW=$(echo "$VERSION" | awk -F. '{print $1"."$2"."($3+1)}')
+            echo "release 已是 v$VERSION，自动递增到 v$NEW"
+            node -e "const fs=require('fs');const a=JSON.parse(fs.readFileSync('package.json')),b=JSON.parse(fs.readFileSync('manifest.json'));a.version=process.argv[1];b.version=process.argv[1];fs.writeFileSync('package.json',JSON.stringify(a,null,2)+'\n');fs.writeFileSync('manifest.json',JSON.stringify(b,null,2)+'\n')" "$NEW"
+            echo "bumped=true" >> "$GITHUB_ENV"
+            echo "NEW_VERSION=$NEW" >> "$GITHUB_ENV"
+          else
+            echo "release ($CURRENT) 与 package.json ($VERSION) 不同，保持手动版本"
+          fi
 
       - name: 版本一致性守卫（package.json 与 manifest.json）
         run: |
@@ -90,6 +109,12 @@ jobs:
       - name: 注入原生更新插件（patch-android）
         run: node scripts/patch-android.mjs
 
+      - name: 注入固定签名 keystore（保证每次构建签名一致，覆盖安装/App 内更新不丢数据）
+        run: |
+          mkdir -p "$HOME/.android"
+          cp config/android/debug.keystore "$HOME/.android/debug.keystore"
+          echo "固定 debug keystore 注入完成（alias=androiddebugkey, storepass=android）"
+
       - name: 构建 debug APK
         run: |
           cd android
@@ -102,16 +127,35 @@ jobs:
           name: bible-study-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
 
-      - name: 发布到 GitHub Releases（滚动更新）
+      - name: 发布到 GitHub Releases（滚动更新，notes 取最近提交动态生成）
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION=$(node -p "require('./package.json').version")
           TAG="bible-study-main"
           cp android/app/build/outputs/apk/debug/app-debug.apk "bible-study.apk"
+          NOTES=$(cat <<EOF
+自动构建于 $(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M')。
+
+**本版更新（最近提交）：**
+$(git log -8 --format='* %s' HEAD)
+          EOF
+          )
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release delete "$TAG" --yes --cleanup-tag
           fi
           gh release create "$TAG" "bible-study.apk" \
             --title "读经 v${VERSION} · 云同步版" \
-            --notes "自动构建于 $(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M')。云同步为可选功能：点顶栏同步状态点启用；不启用则完全本地保存。"
+            --notes "$NOTES"
+
+      - name: 持久化自动递增的版本号（[skip ci] 防止再次触发构建）
+        if: env.bumped == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json manifest.json
+          git commit -m "[skip ci] chore: 自动递增版本 v$NEW_VERSION"
+          git push origin main
+          echo "已推送 v$NEW_VERSION 到 main"
