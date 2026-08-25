@@ -111,8 +111,10 @@ jobs:
 
       - name: 注入固定签名 keystore（保证每次构建签名一致，覆盖安装/App 内更新不丢数据）
         run: |
+          # AGP 默认路径 + Capacitor 模板的 android/app/debug.keystore 两处都注入
           mkdir -p "$HOME/.android"
           cp config/android/debug.keystore "$HOME/.android/debug.keystore"
+          cp config/android/debug.keystore android/app/debug.keystore
           echo "固定 debug keystore 注入完成（alias=androiddebugkey, storepass=android）"
 
       - name: 构建 debug APK
