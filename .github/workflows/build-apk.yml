@@ -44,16 +44,6 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: 准备 web 资源
-        run: |
-          mkdir -p www/data/lifereading
-          cp index.html app.js style.css manifest.json sw.js sync.js update.js www/
-          cp -r icons www/
-          # APK 内 manifest 版本用 package.json 值重写（App 内更新检查的本地版本依据）
-          VERSION=$(node -p "require('./package.json').version")
-          node -e "const fs=require('fs');const f='www/manifest.json';const m=JSON.parse(fs.readFileSync(f));m.version=process.argv[1];fs.writeFileSync(f,JSON.stringify(m,null,2))" "$VERSION"
-          echo "APK manifest version: $VERSION"
-
       - name: 自动递增版本（release 版本与 package.json 相同时 patch+1）
         env:
           GH_TOKEN: ${{ github.token }}
@@ -70,6 +60,17 @@ jobs:
           else
             echo "release ($CURRENT) 与 package.json ($VERSION) 不同，保持手动版本"
           fi
+
+      - name: 准备 web 资源
+        run: |
+          mkdir -p www/data/lifereading
+          cp index.html app.js style.css manifest.json sw.js sync.js update.js www/
+          cp -r icons www/
+          # APK 内 manifest 版本用 package.json 值重写（App 内更新检查的本地版本依据；
+          # 必须在自动递增版本之后执行，否则 APK 内版本号停留在递增前的旧值）
+          VERSION=$(node -p "require('./package.json').version")
+          node -e "const fs=require('fs');const f='www/manifest.json';const m=JSON.parse(fs.readFileSync(f));m.version=process.argv[1];fs.writeFileSync(f,JSON.stringify(m,null,2))" "$VERSION"
+          echo "APK manifest version: $VERSION"
 
       - name: 版本一致性守卫（package.json 与 manifest.json）
         run: |
