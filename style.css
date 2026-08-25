@@ -669,7 +669,7 @@ body.scroll-locked { overflow: hidden; }
     justify-content: center; gap: 4px; font-size: 16px; white-space: nowrap;
   }
   .crumb .crumb-nav { display: none; }   /* 翻页移至底部导航 */
-  .topbar-actions { gap: 2px; margin-left: auto; }   /* crumb 绝对定位后，把右侧操作推到最右 */
+  .topbar-actions { gap: 2px; margin-left: auto; position: relative; z-index: 2; }   /* crumb 绝对定位后：推到最右 + 盖在其上层避免拦截点击 */
   #menuBtn { width: 44px; height: 44px; margin-left: -6px; }
 
   /* 生命读经全屏：隐藏纲目侧栏，正文占满 */
