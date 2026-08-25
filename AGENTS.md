@@ -121,6 +121,7 @@ vercel --prod --yes --archive=tgz
 - 一次 push 产出两个 APK：online（云同步版，appId `com.allday.biblestudy`）、offline（离线版，appId `com.allday.biblestudy.offline`，无 sync.js，可共存安装）
 - **发布到 GitHub Releases**：两个 job 各自滚动发布（`gh release delete --cleanup-tag` 后重建），tag `bible-study-main` / `bible-study-offline`，标题「读经 v{package.json version} · 云同步版/离线版」，releases 页始终只有最新两个；升版本号改 `package.json` 的 `version`
 - 产物为 debug 签名，可安装测试，不能上架商店；正式发布需配 release 签名
+- JS 质量门槛：`.github/workflows/check-js.yml` 在改动 JS/JSON 时 `node --check` 全量检查（几秒），语法错误先于 APK 构建拦截
 
 ## 修改守则
 
