@@ -19,9 +19,8 @@
 ## 分支与构建
 
 - **单一 `main` 分支是唯一事实源**，部署 Vercel + 打包**单一 APK**（appId `com.allday.biblestudy`）
-- **云同步是运行时可选功能**，不再区分安装包变体：默认纯本地，点顶栏同步状态点 →「启用同步」（localStorage `bible-study.account`，`{uid,token}`，null=未启用）后才参与云同步；`syncActive()`（app.js）运行时门控，未启用时即使 sync.js 存在也完全本地
-- 授权码体系（服务器生成一次性码 → 兑换 `{uid,token}`）后续接入，当前启用为本机显式开启
-- 旧 `offline` 分支与离线变体构建已废弃（归档 tag `archive/offline` 保留历史）
+- **云同步是运行时可选功能**，不再区分安装包变体：默认纯本地，点顶栏同步状态点 → 输入授权码兑换 `{uid,token}`（localStorage `bible-study.account`，null=未启用）后才参与云同步；`syncActive()`（app.js）运行时门控，未启用时即使 sync.js 存在也完全本地
+- 授权码体系已上线（见「云同步」节）；旧 `offline` 分支与离线变体构建已废弃（归档 tag `archive/offline` 保留历史）
 
 ## 文件结构
 
@@ -68,10 +67,16 @@
 | 项 | 值 |
 |----|-----|
 | API | `https://duoban.xyz/bible-api/api/kv/{key}`（GET/PUT/DELETE） |
-| 服务器 key | `u1:bible-study:annotations`、`u1:bible-study:chapterNotes` |
+| 服务器 key | `u{uid}:bible-study:annotations`、`u{uid}:bible-study:chapterNotes`（uid 来自账号） |
 | 客户端 | `sync.js`（`window.BibleStudySync`） |
 | 策略 | 服务器为主：启动 `pullAll` 覆盖本地；写时 `putRemote` 防抖；失败标 pending，启动 `flushPending` 重试 |
 | 同步范围 | **只同步用户数据**（annotations / chapterNotes）；布局偏好（viewMode / hideMarks / studyWidth 等）保持设备本地 |
+
+**账号与授权（RFC 8628 简化版）**：
+- 同步是**运行时可选功能**：localStorage `bible-study.account`（`{uid, token}`，null=未启用纯本地）；`syncActive()`（app.js）门控；顶栏同步状态点打开设置弹窗
+- 启用流程 = 输入授权码 → `POST /api/account/claim` 兑换 `{uid, token}`；管理员用 `npm run account:code`（`--uid u1` 绑定已有账号 / 缺省新账号码）生成，码 10 分钟有效、一次性、每 IP claim 限流
+- **KV 权限**：`u{n}:bible-study:*` 命名空间读写必须带设备令牌（`Authorization: Bearer`），`sync.js` 自动附加；跨账号隔离（u2 token 访问 u1 → 401）；bible-reader 命名空间暂未纳入（`SECURED_PROJECTS` 可扩展）
+- owner 账号 `u1` 预置，既有数据命名空间不变；新账号从 u2 起
 
 - 同步失败静默降级为纯本地，不阻塞应用；`window.BIBLE_OFFLINE=true` 可跳过远程（测试用）
 - 服务器 CORS 白名单在 `/var/www/bible-reader/server.py` 的 `ALLOWED_ORIGINS`，新增域名用 server-ops 操作并重启 `bible-kv`
@@ -79,7 +84,7 @@
 
 ## 反馈闭环
 
-用户从 APP（在线版/离线 APK 顶栏「反馈」按钮）匿名提交 → 本地拉取开发 → 部署后标记完成：
+用户从 APP（网页/APK 顶栏「反馈」按钮）匿名提交 → 本地拉取开发 → 部署后标记完成：
 
 ```bash
 npm run feedback:pull            # 拉取未处理反馈 → scripts/feedback/inbox.md

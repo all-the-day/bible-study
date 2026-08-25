@@ -611,6 +611,11 @@ body.scroll-locked { overflow: hidden; }
 }
 .sync-row b.sync-st-on { color: #16a34a; }
 .sync-row b.sync-st-off { color: var(--text-soft); }
+.fb-input {
+  width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); background: var(--surface); color: var(--text);
+  font-size: 16px; letter-spacing: 2px; font-family: inherit;
+}
 
 /* ── 移动端 ── */
 @media (max-width: 900px) {

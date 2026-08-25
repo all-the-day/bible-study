@@ -7,9 +7,18 @@
   "use strict";
 
   const API_BASE = "https://duoban.xyz/bible-api";
-  const USER_PREFIX = "u1:"; // 单用户，后续多用户可替换前缀
 
   const OFFLINE = window.BIBLE_OFFLINE === true;
+
+  // 账号（localStorage 'bible-study.account'，app.js 授权码兑换后写入）：
+  // {uid: 'u1', token: '...'}；无账号时同步不启用（app.js 门控），此处只负责带上凭据
+  function account() {
+    try {
+      return JSON.parse(localStorage.getItem("bible-study.account")) || null;
+    } catch (e) {
+      return null;
+    }
+  }
 
   /* 本地 key → 服务器 key 映射 */
   const KEY_MAP = {
@@ -51,13 +60,18 @@
   function onStatus(fn) { listeners.push(fn); }
 
   function remoteKey(localKey) {
-    return USER_PREFIX + (KEY_MAP[localKey] || localKey);
+    const acct = account();
+    const uid = acct && acct.uid ? acct.uid : "u1";
+    return uid + ":" + (KEY_MAP[localKey] || localKey);
   }
 
   function http(path, method, body) {
+    const headers = body !== undefined ? { "Content-Type": "application/json" } : {};
+    const acct = account();
+    if (acct && acct.token) headers["Authorization"] = "Bearer " + acct.token;
     return fetch(API_BASE + path, {
       method,
-      headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
+      headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
     }).then((res) => {
       if (!res.ok) throw new Error("http " + res.status);

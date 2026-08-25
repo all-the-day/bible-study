@@ -8,7 +8,8 @@
     "cap:sync": "cap sync android",
     "cap:copy": "cap copy android",
     "feedback:pull": "node scripts/feedback/pull.mjs",
-    "feedback:close": "node scripts/feedback/close.mjs"
+    "feedback:close": "node scripts/feedback/close.mjs",
+    "account:code": "node scripts/account/code.mjs"
   },
   "dependencies": {
     "@capacitor/core": "^6.2.0",

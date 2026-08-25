@@ -86,32 +86,28 @@ function updateSyncStatus() {
   else { el.className = 'sync-status offline'; el.title = '离线（本地保存）'; }
 }
 
-// 云同步设置弹窗：启用/停用（授权码体系后续接入，当前为本机显式开启）
+// 云同步设置弹窗：授权码启用 / 停用
 function openSyncModal() {
   const enabled = syncActive();
+  const uid = state.account ? state.account.uid : '';
   openPopup('云同步', `
     <div class="fb-hint">标注与笔记跨设备同步。未启用时本设备完全本地保存。</div>
-    <div class="sync-row"><span>状态</span><b class="${enabled ? 'sync-st-on' : 'sync-st-off'}">${enabled ? '已启用' : '未启用（纯本地）'}</b></div>
+    <div class="sync-row"><span>状态</span><b class="${enabled ? 'sync-st-on' : 'sync-st-off'}">${enabled ? `已启用（${escapeHtml(uid)}）` : '未启用（纯本地）'}</b></div>
     ${enabled ? `
     <div class="fb-actions">
       <span id="fbMsg" class="fb-msg"></span>
       <button class="popup-btn" id="syncDisable">停用同步</button>
     </div>`
     : `
-    <div class="fb-hint">启用后本设备将参与云同步；授权码体系将在后续版本接入。</div>
+    <div class="fb-hint">输入授权码启用本设备同步（向管理员申请）。</div>
+    <input id="syncCode" class="fb-input" placeholder="8 位授权码" autocomplete="off" spellcheck="false">
     <div class="fb-actions">
       <span id="fbMsg" class="fb-msg"></span>
       <button class="popup-btn primary" id="syncEnable">启用同步</button>
     </div>`}
   `);
   const en = $('syncEnable');
-  if (en) en.addEventListener('click', () => {
-    state.account = { uid: 'u1', token: 'local', activatedAt: Date.now() };
-    save(LS_ACCOUNT, state.account);
-    closePopupAll();
-    updateSyncStatus();
-    syncFromRemote();  // 启用后立即拉取云端数据
-  });
+  if (en) en.addEventListener('click', claimAndEnable);
   const dis = $('syncDisable');
   if (dis) dis.addEventListener('click', () => {
     state.account = null;
@@ -119,6 +115,43 @@ function openSyncModal() {
     closePopupAll();
     updateSyncStatus();
   });
+}
+
+// 授权码兑换（RFC 8628 简化版）：POST /api/account/claim → {uid, token}
+async function claimAndEnable() {
+  const btn = $('syncEnable');
+  const msg = $('fbMsg');
+  const code = ($('syncCode').value || '').trim().toUpperCase();
+  if (!code) { msg.textContent = '请输入授权码'; return; }
+  btn.disabled = true;
+  msg.textContent = '验证中…';
+  try {
+    const res = await fetch(`${FEEDBACK_API}/api/account/claim`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      const err = data && data.error;
+      msg.textContent = err === 'used_code' ? '授权码已被使用'
+        : err === 'expired_code' ? '授权码已过期，请向管理员申请新码'
+        : err === 'rate_limited' ? '尝试太频繁，请稍后再试'
+        : err === 'invalid_code' ? '授权码无效'
+        : '启用失败，请稍后再试';
+      btn.disabled = false;
+      return;
+    }
+    const data = await res.json();
+    state.account = { uid: data.account.uid, token: data.device.token };
+    save(LS_ACCOUNT, state.account);
+    closePopupAll();
+    updateSyncStatus();
+    syncFromRemote();  // 启用后立即拉取云端数据
+  } catch {
+    msg.textContent = '网络错误，请稍后再试';
+    btn.disabled = false;
+  }
 }
 
 function applyHideMarks() {
