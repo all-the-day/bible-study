@@ -99,4 +99,35 @@ if (/storeFile\s+file\(/.test(gradle)) {
 writeFileSync(gradlePath, gradle);
 const shown = gradle.match(/signingConfigs\s*\{[\s\S]*?\n\s*\}/)?.[0] || "";
 console.log("✓ build.gradle 固定签名配置：\n" + shown);
+
+/* 5. 版本号：versionName = package.json 版本、versionCode = 语义版本转整数
+     （cap add 模板默认 versionCode=1/versionName='1.0'，不改写则系统「应用信息」
+      永远显示 1.0，且系统层无法区分新旧包；幂等） */
+const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
+const [maj, min, pat] = (pkg.version || "1.0.0").split(".").map((x) => parseInt(x, 10) || 0);
+const versionCode = maj * 10000 + min * 100 + pat;
+const versionName = pkg.version;
+
+// 5a. variables.gradle（Capacitor 模板：defaultConfig 引用 rootProject.ext.versionCode/versionName）
+const varsPath = join(ANDROID, "variables.gradle");
+if (existsSync(varsPath)) {
+  let vars = readFileSync(varsPath, "utf8");
+  vars = vars.replace(/versionCode\s*=\s*\d+/, `versionCode = ${versionCode}`);
+  vars = vars.replace(/versionName\s*=\s*'[^']*'/, `versionName = '${versionName}'`);
+  writeFileSync(varsPath, vars);
+  console.log(`✓ variables.gradle 版本号：versionCode=${versionCode} versionName=${versionName}`);
+}
+
+// 5b. app/build.gradle defaultConfig 内联 versionCode/versionName（非 ext 引用时兜底）
+let gradleV = readFileSync(gradlePath, "utf8");
+if (/versionCode\s+rootProject\.ext/.test(gradleV) || /versionName\s+rootProject\.ext/.test(gradleV)) {
+  console.log("✓ app/build.gradle 版本号：引用 variables.gradle（无需改写）");
+} else {
+  gradleV = gradleV.replace(/versionCode\s+\d+/, `versionCode ${versionCode}`);
+  gradleV = gradleV.replace(/versionName\s+"[^"]*"/, `versionName "${versionName}"`);
+  if (gradleV !== readFileSync(gradlePath, "utf8")) {
+    writeFileSync(gradlePath, gradleV);
+    console.log(`✓ app/build.gradle 版本号：versionCode=${versionCode} versionName=${versionName}`);
+  }
+}
 console.log("patch-android 完成");
