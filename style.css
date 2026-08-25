@@ -807,4 +807,14 @@ body.scroll-locked { overflow: hidden; }
   /* 生命读经全屏：隐藏纲目侧栏，正文占满 */
   .lr-full-wrap { grid-template-columns: 1fr !important; }
   .lr-outline { display: none !important; }
+
+  /* 划线工具条移动端紧凑化（5色+按钮单行放不下会 flex 收缩挤压文字）：
+     圆点/按钮不收缩，放不下时整体换行（不挤压文字） */
+  .floattool {
+    padding: 4px; gap: 4px; flex-wrap: wrap; justify-content: center;
+    max-width: calc(100vw - 16px);
+  }
+  .floattool .sw, .floattool .tool-btn, .floattool .tool-sep { flex-shrink: 0; }
+  .floattool .sw { width: 24px; height: 24px; }
+  .floattool .tool-btn { padding: 3px 7px; font-size: 13px; }
 }
