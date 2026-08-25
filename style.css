@@ -114,6 +114,9 @@ body {
 /* 移动端「读经|研读」模式切换 pill（桌面隐藏，见 @media max-width:900px） */
 .mode-pill { display: none; }
 
+/* 移动端底部导航：桌面端隐藏（否则以块级元素排在文档流末尾，滚到底可见） */
+.mobile-nav { display: none; }
+
 /* 轻提示 toast（底部弹出，自动消失） */
 .toast {
   position: fixed; left: 50%; bottom: calc(64px + env(safe-area-inset-bottom));
