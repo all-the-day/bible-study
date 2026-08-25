@@ -26,6 +26,11 @@
       <button id="feedbackBtn" class="top-btn" aria-label="反馈">反馈</button>
       <button id="notesBtn" class="icon-btn" aria-label="笔记汇总">✎</button>
     </div>
+    <button id="moreBtn" class="icon-btn more-btn" aria-label="更多">⋮</button>
+    <div id="moreMenu" class="more-menu" hidden>
+      <button id="moreHideMarks" class="more-item">隐藏注号</button>
+      <button id="moreFeedback" class="more-item">反馈</button>
+    </div>
   </header>
 
   <div class="layout">
@@ -75,10 +80,12 @@
     <div class="popup-body" id="popupBody"></div>
   </div>
 
-  <!-- 移动端底部导航：读经 / 研读 单视图切换 -->
+  <!-- 移动端底部导航：读经 / 研读 单视图切换 + 章节翻页 -->
   <nav class="mobile-nav" id="mobileNav" aria-label="视图切换">
+    <button class="mnav-btn mnav-ch" id="mPrevBtn" aria-label="上一章">‹</button>
     <button class="mnav-btn active" data-view="read">读经</button>
     <button class="mnav-btn" data-view="study">研读</button>
+    <button class="mnav-btn mnav-ch" id="mNextBtn" aria-label="下一章">›</button>
   </nav>
 
   <script src="sync.js"></script>

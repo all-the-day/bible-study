@@ -84,8 +84,10 @@ function updateSyncStatus() {
 
 function applyHideMarks() {
   document.body.classList.toggle('hide-marks', state.hideMarks);
-  $('hideMarksBtn').textContent = state.hideMarks ? '显示注号' : '隐藏注号';
+  const label = state.hideMarks ? '显示注号' : '隐藏注号';
+  $('hideMarksBtn').textContent = label;
   $('hideMarksBtn').classList.toggle('active', state.hideMarks);
+  $('moreHideMarks').textContent = label;
 }
 
 const VIEW_MODE_LABELS = { default: '双页', stacked: '上下', full: '全屏' };
@@ -238,7 +240,7 @@ async function selectBook(index, chapter) {
   renderChapterList();
   highlightNav();
   $('bookName').textContent = state.currentBook.name;
-  $('chapterLabel').textContent = `第 ${chapter} 章`;
+  $('chapterLabel').textContent = `${chapter}章`;
   save(LS_LAST, { book: index, chapter });
   await ensureBibleData();
   await selectChapter(chapter);
@@ -246,7 +248,7 @@ async function selectBook(index, chapter) {
 
 async function selectChapter(chapter) {
   state.currentChapter = chapter;
-  $('chapterLabel').textContent = `第 ${chapter} 章`;
+  $('chapterLabel').textContent = `${chapter}章`;
   highlightNav();
   renderChapter();
   renderChapterNav();
@@ -920,9 +922,30 @@ function bindEvents() {
   });
   // 反馈弹窗
   $('feedbackBtn').addEventListener('click', openFeedbackModal);
-  // 移动端底部导航：读经 / 研读
-  document.querySelectorAll('#mobileNav .mnav-btn').forEach(b => {
+  // 移动端底部导航：读经 / 研读 + 章节翻页
+  document.querySelectorAll('#mobileNav .mnav-btn[data-view]').forEach(b => {
     b.addEventListener('click', () => setMobileView(b.dataset.view));
+  });
+  $('mPrevBtn').addEventListener('click', () => {
+    if (state.currentChapter > 1) selectChapter(state.currentChapter - 1);
+  });
+  $('mNextBtn').addEventListener('click', () => {
+    if (state.currentChapter < state.currentBook.chapters) selectChapter(state.currentChapter + 1);
+  });
+  // 移动端「更多」菜单：隐藏注号 / 反馈
+  $('moreBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    $('moreMenu').hidden = !$('moreMenu').hidden;
+  });
+  $('moreHideMarks').addEventListener('click', () => {
+    state.hideMarks = !state.hideMarks;
+    applyHideMarks();
+    save(LS_HIDE_MARKS, state.hideMarks);
+    $('moreMenu').hidden = true;
+  });
+  $('moreFeedback').addEventListener('click', () => {
+    $('moreMenu').hidden = true;
+    openFeedbackModal();
   });
   // 研读面板拖拽调宽
   bindResize();
@@ -959,17 +982,21 @@ function bindEvents() {
     if (!tool.hidden && !tool.contains(e.target)) hideFloatTool();
     const mk = $('markTool');
     if (!mk.hidden && !mk.contains(e.target)) hideMarkTool();
+    const more = $('moreMenu');
+    if (!more.hidden && !more.contains(e.target) && !$('moreBtn').contains(e.target)) more.hidden = true;
   });
   document.addEventListener('touchstart', (e) => {
     const tool = $('floatTool');
     if (!tool.hidden && !tool.contains(e.target)) hideFloatTool();
     const mk = $('markTool');
     if (!mk.hidden && !mk.contains(e.target)) hideMarkTool();
+    const more = $('moreMenu');
+    if (!more.hidden && !more.contains(e.target) && !$('moreBtn').contains(e.target)) more.hidden = true;
   }, { passive: true });
   // 滚动/键盘关闭菜单（移植晨读 §9）
-  window.addEventListener('scroll', () => { hideFloatTool(); hideMarkTool(); }, { passive: true });
+  window.addEventListener('scroll', () => { hideFloatTool(); hideMarkTool(); $('moreMenu').hidden = true; }, { passive: true });
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { hideFloatTool(); hideMarkTool(); cancelNoteEditor(); }
+    if (e.key === 'Escape') { hideFloatTool(); hideMarkTool(); $('moreMenu').hidden = true; cancelNoteEditor(); }
   });
   // 笔记编辑器
   $('noteSave').addEventListener('click', saveNoteEditor);
