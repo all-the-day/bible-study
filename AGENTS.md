@@ -16,21 +16,23 @@
 
 离线 APK：Capacitor 6（`capacitor.config.json` + `package.json`），GitHub Actions 云构建（`.github/workflows/build-apk.yml`）。
 
-## 分支
+## 分支与构建变体
 
-- `main` — 云同步版：标注/笔记走 duoban.xyz 同步，部署 Vercel + 打包 APK（appId `com.allday.biblestudy`）
-- `offline` — 完全离线版：无 `sync.js`，标注纯 localStorage，appId `com.allday.biblestudy.offline`（可与云同步版共存）
-
-两个分支的 `app.js`/`export.py` 保持一致（同步逻辑靠 sync.js 有无自动切换），改动通过 cherry-pick 同步。推送后由 `.github/workflows/check-sync.yml` **自动对比两分支共享文件**（有意差异除外：`capacitor.config.json` 的 appId/appName、`index.html` 的 sync.js 行、`sync.js`、`scripts/feedback/inbox.md` 快照），漂移即标红，先 cherry-pick 再部署。
+- **单一 `main` 分支是唯一事实源**（云同步版），部署 Vercel + 打包 APK
+- **离线变体由 CI 生成**，不维护独立分支：`build-apk.yml` 矩阵构建两个 APK——
+  - `online`：云同步版（appId `com.allday.biblestudy`）→ release tag `bible-study-main`
+  - `offline`：离线版（无 sync.js、纯 localStorage、appId `com.allday.biblestudy.offline`，可与云同步版共存安装）→ release tag `bible-study-offline`
+  - 离线变体 = 主分支 + `scripts/prepare-offline.mjs`（去 `index.html` 的 sync.js 行、换 `config/offline/capacitor.config.json` 的 appId/appName），同步逻辑靠 sync.js 有无自动切换（`window.BibleStudySync` 缺失即纯本地）
+- 旧 `offline` 分支已归档（历史保留，不再使用、不再同步）
 
 ## 文件结构
 
 | 文件 | 职责 |
 |------|------|
 | `index.html` / `style.css` / `app.js` | 单页应用全部逻辑 |
-| `sync.js` | 标注/笔记云同步客户端（duoban.xyz 通用 KV API），仅 main 分支 |
+| `sync.js` | 标注/笔记云同步客户端（duoban.xyz 通用 KV API）；离线变体由 `scripts/prepare-offline.mjs` 在 CI 中移除其引用 |
 | `manifest.json` / `sw.js` | PWA 安装与离线缓存 |
-| `capacitor.config.json` / `package.json` | 离线 APK 打包配置（`resources/icon.png` 为图标源） |
+| `capacitor.config.json` / `package.json` | 在线版 APK 打包配置；离线版配置在 `config/offline/capacitor.config.json`（`resources/icon.png` 为图标源） |
 | `scripts/export.py` | 从 `../bible` 导出静态 JSON → `data/` |
 | `scripts/*-test.js` | puppeteer 端到端测试（e2e / 标注 / 生命读经标注） |
 | `data/books.json` | 66 卷目录 + 每卷章数 + 缩写 |
@@ -112,12 +114,12 @@ vercel --prod --yes --archive=tgz
 
 ## APK 打包（GitHub Actions）
 
-- workflow `.github/workflows/build-apk.yml`：checkout → 准备 web 资源 + 从 Vercel 下载 data（books/text/notes/xrefs/**outlines** + lifereading）→ `npm install` → `cap add android` → `cap sync` → `capacitor-assets generate`（图标）→ gradle 构建 debug APK → 上传 artifact
+- workflow `.github/workflows/build-apk.yml`：**矩阵两个 job**（online/offline，同一 checkout）→ 准备 web 资源 + 从 Vercel 下载 data（books/text/notes/xrefs/**outlines** + lifereading）→（offline 先跑 `node scripts/prepare-offline.mjs` 应用离线变体）→ `npm install` → `cap add android` → `cap sync` → `capacitor-assets generate`（图标）→ gradle 构建 debug APK → 上传 artifact
   - **注意**：APK 数据只来自 Vercel 部署产物，不在 git 里；改 `data/` 后务必先 `vercel` 部署再让 APK 构建拉取，否则 APK 拿不到新数据。
-- 触发：push 到 main/offline 分支且改动前端文件（`app.js`/`style.css`/`index.html` 等）或 `package.json`/`capacitor.config.json`/`resources/**`；`workflow_dispatch` 手动触发
+- 触发：push 到 **main** 且改动前端文件（`app.js`/`style.css`/`index.html` 等）或 `package.json`/`capacitor.config.json`/`resources/**`/`config/**`/`scripts/prepare-offline.mjs`；`workflow_dispatch` 手动触发
 - `scripts/export.py` 改动**不触发** APK 构建（数据走「重跑导出 → Vercel 部署 → APK 下次构建拉新数据」）
-- 两个分支两个 APK：main（云同步版，appId `com.allday.biblestudy`）、offline（离线版，appId `com.allday.biblestudy.offline`，无 sync.js）
-- **发布到 GitHub Releases**：main/offline 分支构建后自动滚动发布（`gh release delete --cleanup-tag` 后重建），tag `bible-study-main` / `bible-study-offline`，标题「读经 v{package.json version} · 云同步版/离线版（分支）」，releases 页始终只有最新两个；升版本号改 `package.json` 的 `version`
+- 一次 push 产出两个 APK：online（云同步版，appId `com.allday.biblestudy`）、offline（离线版，appId `com.allday.biblestudy.offline`，无 sync.js，可共存安装）
+- **发布到 GitHub Releases**：两个 job 各自滚动发布（`gh release delete --cleanup-tag` 后重建），tag `bible-study-main` / `bible-study-offline`，标题「读经 v{package.json version} · 云同步版/离线版」，releases 页始终只有最新两个；升版本号改 `package.json` 的 `version`
 - 产物为 debug 签名，可安装测试，不能上架商店；正式发布需配 release 签名
 
 ## 修改守则

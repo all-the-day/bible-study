@@ -1,9 +1,15 @@
+# 一次 push 构建两个 APK 变体：
+#   online  — 云同步版（appId com.allday.biblestudy）→ release tag bible-study-main
+#   offline — 离线版（appId com.allday.biblestudy.offline，无 sync.js）→ release tag bible-study-offline
+# 离线变体在 CI 中由 scripts/prepare-offline.mjs 生成（去 index.html 的 sync.js 行 + 换 capacitor 配置），
+# 仓库只维护 main 单一分支，offline 分支已归档不再使用。
+
 name: Build APK
 
 on:
   workflow_dispatch:
   push:
-    branches: ['**']
+    branches: [main]
     paths:
       - 'app.js'
       - 'style.css'
@@ -14,10 +20,17 @@ on:
       - 'capacitor.config.json'
       - 'package.json'
       - 'resources/**'
+      - 'config/**'
+      - 'scripts/prepare-offline.mjs'
       - '.github/workflows/build-apk.yml'
 
 jobs:
   build:
+    name: APK ${{ matrix.variant }}
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [online, offline]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -42,6 +55,10 @@ jobs:
           cp index.html app.js style.css manifest.json sw.js www/
           if [ -f sync.js ]; then cp sync.js www/; fi
           cp -r icons www/
+
+      - name: 应用离线变体（去 sync.js 引用 + 换 appId/appName）
+        if: matrix.variant == 'offline'
+        run: node scripts/prepare-offline.mjs
 
       - name: 下载数据（从 Vercel）
         run: |
@@ -77,23 +94,23 @@ jobs:
       - name: 上传 APK
         uses: actions/upload-artifact@v4
         with:
-          name: bible-study-debug-apk
+          name: bible-study-debug-apk-${{ matrix.variant }}
           path: android/app/build/outputs/apk/debug/app-debug.apk
 
-      - name: 发布到 GitHub Releases（仅 main/offline，滚动更新）
-        if: github.ref_name == 'main' || github.ref_name == 'offline'
+      - name: 发布到 GitHub Releases（滚动更新）
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          BRANCH="${{ github.ref_name }}"
-          LABEL="云同步版"
-          [ "$BRANCH" = "offline" ] && LABEL="离线版"
+          if [ "${{ matrix.variant }}" = "offline" ]; then
+            LABEL="离线版"; TAG="bible-study-offline"
+          else
+            LABEL="云同步版"; TAG="bible-study-main"
+          fi
           VERSION=$(node -p "require('./package.json').version")
-          TAG="bible-study-${BRANCH}"
-          cp android/app/build/outputs/apk/debug/app-debug.apk "bible-study-${BRANCH}.apk"
+          cp android/app/build/outputs/apk/debug/app-debug.apk "bible-study-${TAG#bible-study-}.apk"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release delete "$TAG" --yes --cleanup-tag
           fi
-          gh release create "$TAG" "bible-study-${BRANCH}.apk" \
-            --title "读经 v${VERSION} · ${LABEL}（${BRANCH}）" \
+          gh release create "$TAG" "bible-study-${TAG#bible-study-}.apk" \
+            --title "读经 v${VERSION} · ${LABEL}" \
             --notes "自动构建于 $(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M')。如需覆盖安装旧版本，请先在系统设置中允许安装未知来源应用。"
