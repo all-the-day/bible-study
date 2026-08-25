@@ -1,0 +1,49 @@
+# 发版辅助：手动触发填版本号 → 自动改 package.json + manifest.json → 提交推送
+# push 会命中 build-apk.yml 的 paths（package.json/manifest.json），自动触发 APK 构建 + 滚动发布
+# 用法：Actions 页 Run workflow 填 x.y.z，或 `gh workflow run release-bump.yml -f version=1.1.0`
+
+name: Release Bump
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 新版本号（x.y.z）
+        required: true
+        type: string
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 校验并更新版本号
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::版本号格式错误：$VERSION（应为 x.y.z，如 1.1.0）"
+            exit 1
+          fi
+          node -e "
+            const fs = require('fs');
+            const v = process.argv[1];
+            const p = JSON.parse(fs.readFileSync('package.json'));
+            if (p.version === v) { console.error('版本号未变化：' + v); process.exit(1); }
+            p.version = v;
+            fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');
+            const m = JSON.parse(fs.readFileSync('manifest.json'));
+            m.version = v;
+            fs.writeFileSync('manifest.json', JSON.stringify(m, null, 2) + '\n');
+            console.log('版本号已更新：' + p.version + ' → ' + v);
+          " "$VERSION"
+
+      - name: 提交并推送（触发 APK 构建）
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json manifest.json
+          git commit -m "release: bump version to $VERSION"
+          git push

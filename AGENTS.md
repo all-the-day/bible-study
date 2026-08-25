@@ -144,8 +144,8 @@ vercel --prod --yes --archive=tgz
 - 触发：push 到 **main** 且改动前端文件（`app.js`/`style.css`/`index.html`/`update.js` 等）或 `package.json`/`capacitor.config.json`/`resources/**`/`config/**`/`scripts/patch-android.mjs`；`workflow_dispatch` 手动触发
 - `scripts/export.py` 改动**不触发** APK 构建（数据走「重跑导出 → Vercel 部署 → APK 下次构建拉新数据」）
 - 产出单一 APK（appId `com.allday.biblestudy`，云同步为运行时可选功能）
-- **发布到 GitHub Releases**：滚动发布（`gh release delete --cleanup-tag` 后重建），tag `bible-study-main`，标题「读经 v{package.json version} · 云同步版」，releases 页始终只有最新一个；升版本号改 `package.json` 的 `version` **和 `manifest.json` 的 `version`（两处必须一致，CI 守卫强制）**
-- 产物为 debug 签名，可安装测试，不能上架商店；正式发布需配 release 签名
+- **发版流程（版本号自动升级）**：手动触发 `.github/workflows/release-bump.yml`（workflow_dispatch 填 `x.y.z`，或 `gh workflow run release-bump.yml -f version=1.1.0`）→ 自动同步改 `package.json` + `manifest.json` 并提交推送 → push 命中 build-apk.yml 的 paths 自动触发构建 + 滚动发布，release 标题「读经 v{version} · 云同步版」；不再手动改版本号
+- **签名**：`assembleDebug` debug 签名（模板固定 keystore，覆盖安装/App 内更新无碍）；**无上架需求，不配 release 签名**——产物仅限自装/小范围安装测试
 - JS 质量门槛：`.github/workflows/check-js.yml` 在改动 JS/JSON 时 `node --check` 全量检查（几秒），语法错误先于 APK 构建拦截
 
 ## 修改守则
