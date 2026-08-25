@@ -1,7 +1,7 @@
 {
   "name": "读经",
   "short_name": "读经",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "读经研读：选章、读原文注解生命读经、划线笔记",
   "start_url": "/",
   "display": "standalone",
