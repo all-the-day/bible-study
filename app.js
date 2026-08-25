@@ -100,37 +100,38 @@ function openSettingsModal() {
   const enabled = syncActive();
   const uid = state.account ? state.account.uid : '';
   openPopup('设置', `
-    <div class="settings-group">同步</div>
-    <div class="settings-row" id="setSync">
-      <span class="settings-label">云同步</span>
-      <span class="settings-value ${enabled ? 'st-on' : 'st-off'}">${enabled ? `已启用（${escapeHtml(uid)}）` : '未启用（纯本地）'}</span>
-    </div>
-    <div class="settings-group">阅读</div>
-    <div class="settings-row" id="setHideMarks">
-      <span class="settings-label">隐藏注号</span>
-      <span class="settings-value">${state.hideMarks ? '开' : '关'}</span>
-    </div>
-    <div class="settings-row" id="setViewMode">
-      <span class="settings-label">视图模式</span>
-      <span class="settings-value">${VIEW_MODE_LABELS[state.viewMode] || '双页'}</span>
-    </div>
-    <div class="settings-group">其他</div>
-    <div class="settings-row" id="setFeedback">
-      <span class="settings-label">反馈</span>
-      <span class="settings-value">›</span>
-    </div>
-    <div class="settings-row" id="setAbout">
-      <span class="settings-label">关于</span>
-      <span class="settings-value" id="setVersion">读经 …</span>
+    <div class="settings-wrap">
+      <div class="settings-card">
+        <div class="settings-group">同步</div>
+        <div class="settings-row" id="setSync">
+          <span class="settings-label">云同步</span>
+          <span class="settings-badge ${enabled ? 'on' : 'off'}">${enabled ? `已启用 ${escapeHtml(uid)}` : '未启用'}</span>
+        </div>
+      </div>
+      <div class="settings-card">
+        <div class="settings-group">阅读</div>
+        <div class="settings-row" id="setHideMarks">
+          <span class="settings-label">隐藏注号</span>
+          <span class="switch${state.hideMarks ? ' on' : ''}"></span>
+        </div>
+        <div class="settings-row" id="setViewMode">
+          <span class="settings-label">视图模式</span>
+          <span class="settings-value">${VIEW_MODE_LABELS[state.viewMode] || '双页'}</span>
+        </div>
+      </div>
+      <div class="settings-card">
+        <div class="settings-group">其他</div>
+        <div class="settings-row" id="setFeedback">
+          <span class="settings-label">反馈</span>
+          <span class="settings-arrow">›</span>
+        </div>
+      </div>
+      <div class="settings-footer" id="setAbout">读经 v${_manifestVersion !== null ? _manifestVersion : '…'}</div>
     </div>
   `);
   // 行点击走 document 委托（onSettingsRow），弹窗栈返回恢复 innerHTML 后监听不丢失
-  if (_manifestVersion !== null) {
-    const el = $('setVersion');
-    if (el) el.textContent = `读经 v${_manifestVersion}`;
-  }
   loadAppVersion().then(v => {
-    const el = $('setVersion');
+    const el = $('setAbout');
     if (el) el.textContent = `读经 v${v}`;
   });
 }
@@ -140,15 +141,14 @@ function onSettingsRow(e) {
   const row = e.target.closest('.settings-row');
   if (!row) return;
   const id = row.id;
-  const valueEl = () => row.querySelector('.settings-value');
   if (id === 'setSync') {
     openSyncModal();
   } else if (id === 'setHideMarks') {
     state.hideMarks = !state.hideMarks;
     applyHideMarks();
     save(LS_HIDE_MARKS, state.hideMarks);
-    const v = valueEl();
-    if (v) v.textContent = state.hideMarks ? '开' : '关';
+    const sw = row.querySelector('.switch');
+    if (sw) sw.classList.toggle('on', state.hideMarks);
   } else if (id === 'setViewMode') {
     state.studyFull = false;
     const order = ['default', 'stacked', 'full'];
@@ -156,22 +156,11 @@ function onSettingsRow(e) {
     state.viewMode = order[(i + 1) % order.length];
     applyLayout();
     save(LS_VIEW_MODE, state.viewMode);
-    const v = valueEl();
+    const v = row.querySelector('.settings-value');
     if (v) v.textContent = VIEW_MODE_LABELS[state.viewMode] || '双页';
   } else if (id === 'setFeedback') {
     openFeedbackModal();
-  } else if (id === 'setAbout') {
-    openAboutModal();
   }
-}
-
-function openAboutModal() {
-  openPopup('关于', `
-    <div class="fb-hint">读经研读 · PWA</div>
-    <div class="sync-row"><span>版本</span><b>v${_manifestVersion || '1.0.0'}</b></div>
-    <div class="sync-row"><span>数据</span><b>和合本圣经 + 注解 + 生命读经</b></div>
-    <div class="sync-row"><span>同步</span><b>duoban.xyz</b></div>
-  `);
 }
 
 /* ============ 云同步设置 ============ */
