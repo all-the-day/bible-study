@@ -591,16 +591,50 @@ body.scroll-locked { overflow: hidden; }
 
 /* ── 移动端 ── */
 @media (max-width: 900px) {
-  .layout { grid-template-columns: 1fr; }
+  /* 桌面视图模式（双页/上下/全屏）在移动端无意义：强制单列，中和残留的 view-* 类 */
+  .layout { grid-template-columns: 1fr !important; grid-template-rows: auto !important; }
+  .nav-col, .text-col, .study-col { grid-column: 1 !important; grid-row: auto !important; }
+  .layout.view-full .nav-col,
+  .layout.view-full .study-col { display: flex !important; }
+  .resize-handle { display: none !important; }
+
   .nav-col {
     position: fixed; left: 0; top: 52px; bottom: 0; width: 260px; z-index: 40;
     transform: translateX(-100%); transition: transform .2s;
   }
   .nav-col.open { transform: translateX(0); }
+
+  /* 底部导航：读经 / 研读 单视图切换 */
+  .mobile-nav {
+    display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 45;
+    height: 44px; background: var(--surface); border-top: 1px solid var(--border);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .mnav-btn {
+    flex: 1; height: 100%; border: none; background: transparent;
+    font-size: 14px; color: var(--text-soft); cursor: pointer;
+  }
+  .mnav-btn.active { color: var(--brand); font-weight: 600; }
+
+  /* 研读视图：全屏覆盖，默认藏起；切到「研读」显示（与读经二选一） */
   .study-col {
-    position: fixed; right: 0; top: 52px; bottom: 0; width: min(320px, 88vw); z-index: 40;
+    position: fixed; left: 0; right: 0; top: 52px; z-index: 40;
+    bottom: calc(44px + env(safe-area-inset-bottom));
+    width: auto; border-left: none;
     transform: translateX(100%); transition: transform .2s;
   }
-  .study-col.open { transform: translateX(0); }
-  .text-col { padding: 16px 16px 60px; }
+  .study-col.open { transform: translateX(0); }   /* 兼容旧逻辑（notesBtn 等） */
+  body.mobile-study .study-col { transform: translateX(0); }
+  body.mobile-study .text-col { display: none; }
+
+  .text-col { padding: 16px 16px calc(60px + env(safe-area-inset-bottom)); }
+
+  /* 顶栏精简：隐藏桌面专属按钮 */
+  #viewModeBtn, #studyFullBtn, #notesBtn { display: none !important; }
+  .crumb { font-size: 13px; }
+  .crumb-nav { font-size: 12px; padding: 2px 5px; }
+
+  /* 生命读经全屏：隐藏纲目侧栏，正文占满 */
+  .lr-full-wrap { grid-template-columns: 1fr !important; }
+  .lr-outline { display: none !important; }
 }
