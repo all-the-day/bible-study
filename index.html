@@ -19,7 +19,10 @@
       <button id="nextChBtn" class="crumb-nav">下一章</button>
     </div>
     <div class="topbar-actions">
-      <span id="syncStatus" class="sync-status" title="同步状态">●</span>
+      <div class="mode-pill" id="modePill">
+        <button class="mode-pill-btn active" data-view="read">读经</button>
+        <button class="mode-pill-btn" data-view="study">研读</button>
+      </div>
       <button id="viewModeBtn" class="top-btn" aria-label="视图模式">双页</button>
       <button id="hideMarksBtn" class="top-btn" aria-label="隐藏注号">隐藏注号</button>
       <button id="studyFullBtn" class="top-btn" aria-label="研读全屏">研读全屏</button>
@@ -93,12 +96,10 @@
     </div>
   </div>
 
-  <!-- 移动端底部导航：读经 / 研读 单视图切换 + 章节翻页 -->
-  <nav class="mobile-nav" id="mobileNav" aria-label="视图切换">
-    <button class="mnav-btn mnav-ch" id="mPrevBtn" aria-label="上一章">‹</button>
-    <button class="mnav-btn active" data-view="read">读经</button>
-    <button class="mnav-btn" data-view="study">研读</button>
-    <button class="mnav-btn mnav-ch" id="mNextBtn" aria-label="下一章">›</button>
+  <!-- 移动端底部导航：读经模式翻页（研读模式隐藏，沉浸阅读） -->
+  <nav class="mobile-nav" id="mobileNav" aria-label="章节翻页">
+    <button class="mnav-btn" id="mPrevBtn" aria-label="上一章">‹ 上一章</button>
+    <button class="mnav-btn" id="mNextBtn" aria-label="下一章">下一章 ›</button>
   </nav>
 
   <script src="sync.js"></script>

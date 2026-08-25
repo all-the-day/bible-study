@@ -111,10 +111,29 @@ body {
 }
 
 /* 同步状态指示 */
-.sync-status { font-size: 11px; color: rgba(255,255,255,.7); margin-right: 2px; cursor: pointer; }
-.sync-status.ok { color: #a5f3a5; }
-.sync-status.pending { color: #ffd28a; }
-.sync-status.offline { color: #ff9d9d; }
+/* 移动端「读经|研读」模式切换 pill（桌面隐藏，见 @media max-width:900px） */
+.mode-pill { display: none; }
+
+/* 轻提示 toast（底部弹出，自动消失） */
+.toast {
+  position: fixed; left: 50%; bottom: calc(64px + env(safe-area-inset-bottom));
+  transform: translateX(-50%) translateY(10px);
+  background: rgba(28,30,42,.92); color: #fff;
+  padding: 10px 20px; border-radius: 999px; font-size: 14px;
+  z-index: 90; opacity: 0; pointer-events: none;
+  transition: opacity .25s, transform .25s;
+  max-width: 86vw; text-align: center;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.on { color: #a5f3a5; }
+.toast.pending { color: #ffd28a; }
+.toast.offline { color: #ff9d9d; }
+
+/* 设置弹窗「同步状态」文字+颜色 */
+.settings-value.sync-val.on { color: #166534; }
+.settings-value.sync-val.pending { color: #b45309; }
+.settings-value.sync-val.offline { color: #b91c1c; }
+.settings-value.sync-val.off { color: var(--text-muted); }
 
 /* 隐藏注号（纯净阅读模式） */
 body.hide-marks sup.fn-ref,
@@ -626,6 +645,38 @@ body.scroll-locked { overflow: hidden; }
 .popup-verse .pv-text { font-size: 16px; line-height: 1.9; }
 .fn-body { white-space: pre-wrap; font-size: 15px; line-height: 1.9; }
 
+/* 章节选择弹窗（移动端 crumb 点击）：书卷横向切换 + 章网格 */
+.chp-books {
+  display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 8px;
+  -webkit-overflow-scrolling: touch;
+}
+.chp-book {
+  flex-shrink: 0; font-size: 13px; padding: 4px 10px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--surface-alt);
+  color: var(--text-soft); cursor: pointer;
+}
+.chp-book.active { background: var(--brand); border-color: var(--brand); color: #fff; }
+.chp-title { font-size: 15px; font-weight: 600; color: var(--heading); margin-bottom: 8px; }
+.chp-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+  gap: 6px; padding-bottom: 4px;
+}
+.chp-cell {
+  height: 40px; border: 1px solid var(--border); border-radius: 8px;
+  background: #fff; font-size: 15px; color: var(--text); cursor: pointer;
+}
+.chp-cell:active { background: var(--surface-alt); }
+.chp-cell.active { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
+
+/* 移动端生命读经导航（☰ 在研读+生命读经 tab）：篇目 + 纲目目录 */
+.lrn-group + .lrn-group { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border); }
+.lrn-group-title {
+  font-size: 15px; font-weight: 700; color: var(--heading);
+  padding: 4px 0 6px; cursor: pointer;
+}
+.lrn-group-title:hover { color: var(--brand); }
+.lrn-list .lr-toc-item { padding: 5px 0; }
+
 /* 生命读经手动指定篇目 */
 .lr-map-bar { margin-bottom: 10px; text-align: right; }
 .lr-map-btn {
@@ -695,23 +746,24 @@ body.scroll-locked { overflow: hidden; }
   }
   .nav-col.open { transform: translateX(0); }
 
-  /* 底部导航：读经 / 研读 单视图切换 */
+  /* 底部导航：读经模式翻页（研读模式隐藏，见 body.mobile-study 规则） */
   .mobile-nav {
     display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 45;
-    height: 44px; background: var(--surface); border-top: 1px solid var(--border);
+    height: 52px; background: var(--surface); border-top: 1px solid var(--border);
     padding-bottom: env(safe-area-inset-bottom);
   }
   .mnav-btn {
     flex: 1; height: 100%; border: none; background: transparent;
-    font-size: 14px; color: var(--text-soft); cursor: pointer;
+    font-size: 15px; color: var(--text); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
   }
-  .mnav-btn.active { color: var(--brand); font-weight: 600; }
-  .mnav-btn.mnav-ch { flex: 0 0 48px; font-size: 22px; color: var(--text-soft); }
+  .mnav-btn:active { background: var(--surface-alt); }
+  .mnav-btn:disabled { color: var(--text-muted); opacity: .45; cursor: default; }
 
   /* 研读视图：全屏覆盖，默认藏起；切到「研读」显示（与读经二选一） */
   .study-col {
     position: fixed; left: 0; right: 0; top: 52px; z-index: 40;
-    bottom: calc(44px + env(safe-area-inset-bottom));
+    bottom: calc(52px + env(safe-area-inset-bottom));
     width: auto; border-left: none;
     transform: translateX(100%); transition: transform .2s;
   }
@@ -719,18 +771,34 @@ body.scroll-locked { overflow: hidden; }
   body.mobile-study .study-col { transform: translateX(0); }
   body.mobile-study .text-col { display: none; }
 
-  .text-col { padding: 16px 16px calc(60px + env(safe-area-inset-bottom)); }
+  /* 研读模式沉浸化：无底部导航，内容延伸到屏幕底（safe-area 由 study-body 内边距兜底） */
+  body.mobile-study .mobile-nav { display: none; }
+  body.mobile-study .study-col { bottom: 0; }
+  body.mobile-study .study-body { padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
 
-  /* 顶栏重构：☰ 左 · 标题居中 · ●⚙️ 右；次要操作收进设置菜单 */
+  .text-col { padding: 16px 16px calc(68px + env(safe-area-inset-bottom)); }
+
+  /* 顶栏重构：☰ 左 · 标题(点击选章) 居中 · 读经|研读 pill + ⚙️ 右；次要操作收进设置菜单 */
   #viewModeBtn, #studyFullBtn, #notesBtn, #hideMarksBtn, #feedbackBtn { display: none !important; }
+  .mode-pill {
+    display: flex; background: rgba(255,255,255,.16);
+    border-radius: 999px; padding: 2px; margin-right: 2px;
+  }
+  .mode-pill-btn {
+    border: none; background: transparent; color: rgba(255,255,255,.85);
+    font-size: 13px; padding: 4px 12px; border-radius: 999px; cursor: pointer;
+  }
+  .mode-pill-btn.active { background: #fff; color: var(--brand-dark); font-weight: 600; }
   #settingsBtn {
     display: flex; align-items: center; justify-content: center;
     width: 44px; height: 44px; margin-right: -4px;
   }
   #setViewMode { display: none; }   /* 移动端无视图模式 */
   .crumb {
-    position: absolute; left: 44px; right: 44px; top: 0; bottom: 0;
+    position: absolute; left: 44px; right: 174px; top: 0; bottom: 0;   /* 右侧让位 pill + ⚙️ */
     justify-content: center; gap: 4px; font-size: 16px; white-space: nowrap;
+    overflow: hidden;   /* 超窄屏标题省略 */
+    cursor: pointer;   /* 移动端点击弹章节选择 */
   }
   .crumb .crumb-nav { display: none; }   /* 翻页移至底部导航 */
   .topbar-actions { gap: 2px; margin-left: auto; position: relative; z-index: 2; }   /* crumb 绝对定位后：推到最右 + 盖在其上层避免拦截点击 */

@@ -19,7 +19,7 @@
 ## 分支与构建
 
 - **单一 `main` 分支是唯一事实源**，部署 Vercel + 打包**单一 APK**（appId `com.allday.biblestudy`）
-- **云同步是运行时可选功能**，不再区分安装包变体：默认纯本地，点顶栏同步状态点 → 输入授权码兑换 `{uid,token}`（localStorage `bible-study.account`，null=未启用）后才参与云同步；`syncActive()`（app.js）运行时门控，未启用时即使 sync.js 存在也完全本地
+- **云同步是运行时可选功能**，不再区分安装包变体：默认纯本地，顶栏 ⚙️ 设置 →「云同步」行输入授权码兑换 `{uid,token}`（localStorage `bible-study.account`，null=未启用）后才参与云同步；`syncActive()`（app.js）运行时门控，未启用时即使 sync.js 存在也完全本地
 - 授权码体系已上线（见「云同步」节）；旧 `offline` 分支与离线变体构建已废弃（归档 tag `archive/offline` 保留历史）
 
 ## 文件结构
@@ -61,7 +61,7 @@
 
 **生命读经匹配**：自动按每篇 `verses` 的章节号（`X:Y` 开头的 `X`）匹配当前章；用户可手动指定（localStorage 键 `bible-study.lrMap`，`{键(如"创24"): [篇目id]}`，覆盖自动匹配，纯本地不参与云同步）。
 
-**移动端（≤900px）单视图模型**：同一时刻只显示一个内容——读经（经文）或研读（注解/生命读经/我的笔记），底部导航 `#mobileNav` 切换（`setMobileView`，读经/研读二选一），导航两侧为章节翻页（`#mPrevBtn`/`#mNextBtn`）；桌面三列布局不变。移动端顶栏精简为 ☰ + 居中标题（`创世记 25章`）+ `#settingsBtn`（⚙️ 统一设置弹窗 `openSettingsModal`：云同步/隐藏注号/视图模式/反馈/关于，分组卡片 + Switch 开关，底部版本号）；隐藏桌面专属元素（视图模式/研读全屏/笔记按钮/顶栏翻页/拖拽调宽/纲目侧栏），`jumpToVerse`/`jumpToLr` 自动切回对应视图。移动端样式全部限定在 `@media (max-width: 900px)`，桌面 CSS 不受影响。
+**移动端（≤900px）单视图模型**：同一时刻只显示一个内容——读经（经文）或研读（注解/生命读经/我的笔记），模式切换在顶栏右侧「读经|研读」pill（`#modePill`，`setMobileView` 维护 body.mobile-study）；桌面三列布局不变。移动端顶栏为 ☰ + 居中标题（`创世记 25章`，**点击弹章节选择** `openChapterPicker`：书卷横向切换 + 章网格）+ `#settingsBtn`（⚙️ 统一设置弹窗 `openSettingsModal`：同步/阅读/其他分组卡片 + Switch 开关，底部版本号）。**☰ 上下文导航**：读经视图开书卷抽屉；研读+生命读经 tab 开篇目/纲目导航 sheet（`openLrNavSheet`，点击滚动定位）；研读+注解/我的笔记 tab 为 no-op。**底部导航 `#mobileNav` 仅读经模式显示**（`mobileNavGo`/`updateMobileNav` 只翻章，边界禁用）；研读模式沉浸化：nav 隐藏、`.study-col` 延伸到底（`body.mobile-study` 规则），翻章/翻篇改走 crumb 选章 / ☰ 篇目导航。隐藏桌面专属元素（视图模式/研读全屏/笔记按钮/顶栏翻页/拖拽调宽/纲目侧栏），`jumpToVerse`/`jumpToLr` 自动切回对应视图。**同步状态指示**：顶栏圆点已移除，收进设置弹窗「同步」组的「同步状态」行（`syncStatusInfo` 文字+颜色），冷启动（新会话首次）启用同步时 toast 提示一次（`showStartupSyncToast`，sessionStorage 去重）。移动端样式全部限定在 `@media (max-width: 900px)`，桌面 CSS 不受影响。
 
 ## 云同步
 
@@ -76,14 +76,14 @@
 | 同步范围 | **只同步用户数据**（annotations / chapterNotes）；布局偏好（viewMode / hideMarks / studyWidth 等）保持设备本地 |
 
 **账号与授权（RFC 8628 简化版）**：
-- 同步是**运行时可选功能**：localStorage `bible-study.account`（`{uid, token}`，null=未启用纯本地）；`syncActive()`（app.js）门控；顶栏同步状态点打开设置弹窗
+- 同步是**运行时可选功能**：localStorage `bible-study.account`（`{uid, token}`，null=未启用纯本地）；`syncActive()`（app.js）门控；⚙️ 设置弹窗「云同步」行打开启用/管理弹窗
 - 启用流程 = 输入授权码 → `POST /api/account/claim` 兑换 `{uid, token}`；管理员用 `npm run account:code`（`--uid u1` 绑定已有账号 / 缺省新账号码）生成，码 10 分钟有效、一次性、每 IP claim 限流
 - **KV 权限**：`u{n}:bible-study:*` 命名空间读写必须带设备令牌（`Authorization: Bearer`），`sync.js` 自动附加；跨账号隔离（u2 token 访问 u1 → 401）；bible-reader 命名空间暂未纳入（`SECURED_PROJECTS` 可扩展）
 - owner 账号 `u1` 预置，既有数据命名空间不变；新账号从 u2 起
 
 - 同步失败静默降级为纯本地，不阻塞应用；`window.BIBLE_OFFLINE=true` 可跳过远程（测试用）
 - 服务器 CORS 白名单在 `/var/www/bible-reader/server.py` 的 `ALLOWED_ORIGINS`，新增域名用 server-ops 操作并重启 `bible-kv`
-- 同步状态指示：顶栏 `#syncStatus`（绿=已同步 / 橙=待同步 / 红=离线）
+- 同步状态指示：设置弹窗「同步状态」行（`syncStatusInfo`：绿=已同步 / 橙=待同步 / 红=离线 / 灰=未启用）+ 冷启动 toast（新会话首次，仅启用同步时提示）
 
 ## App 内更新
 

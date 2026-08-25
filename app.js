@@ -77,13 +77,29 @@ async function syncFromRemote() {
   renderStudy();
 }
 
+// 同步状态文案（设置弹窗「同步状态」行 + 冷启动 toast 共用）
+function syncStatusInfo() {
+  if (!syncActive()) return { text: '未启用云同步', cls: 'off' };
+  if (Sync.hasPending()) return { text: '有改动待同步', cls: 'pending' };
+  if (Sync.isRemoteOk()) return { text: '已同步到云端', cls: 'on' };
+  return { text: '离线，改动保存在本地', cls: 'offline' };
+}
+
 function updateSyncStatus() {
-  const el = $('syncStatus');
+  const el = $('setSyncStatusVal');
   if (!el) return;
-  if (!syncActive()) { el.className = 'sync-status'; el.title = '未启用云同步（点击设置）'; return; }
-  if (Sync.hasPending()) { el.className = 'sync-status pending'; el.title = '有改动待同步'; }
-  else if (Sync.isRemoteOk()) { el.className = 'sync-status ok'; el.title = '已同步到云端'; }
-  else { el.className = 'sync-status offline'; el.title = '离线（本地保存）'; }
+  const info = syncStatusInfo();
+  el.textContent = info.text;
+  el.className = `settings-value sync-val ${info.cls}`;
+}
+
+// 冷启动同步状态提示（sessionStorage 控制：每个新会话只弹一次；未启用云同步不打扰）
+function showStartupSyncToast() {
+  if (typeof sessionStorage === 'undefined' || sessionStorage.getItem('bible-study.syncToastShown')) return;
+  sessionStorage.setItem('bible-study.syncToastShown', '1');
+  if (!syncActive()) return;
+  const info = syncStatusInfo();
+  showToast(info.text, info.cls);
 }
 
 /* ============ 设置菜单 ============ */
@@ -106,6 +122,10 @@ function openSettingsModal() {
         <div class="settings-row" id="setSync">
           <span class="settings-label">云同步</span>
           <span class="settings-badge ${enabled ? 'on' : 'off'}">${enabled ? `已启用 ${escapeHtml(uid)}` : '未启用'}</span>
+        </div>
+        <div class="settings-row" id="setSyncStatus">
+          <span class="settings-label">同步状态</span>
+          <span class="settings-value sync-val" id="setSyncStatusVal">…</span>
         </div>
       </div>
       <div class="settings-card">
@@ -134,6 +154,7 @@ function openSettingsModal() {
     </div>
   `);
   // 行点击走 document 委托（onSettingsRow），弹窗栈返回恢复 innerHTML 后监听不丢失
+  updateSyncStatus();   // 填充「同步状态」行（Sync.onStatus 已绑定实时更新）
   loadAppVersion().then(v => {
     const el = $('setAbout');
     if (el) el.textContent = `读经 v${v}`;
@@ -327,6 +348,8 @@ async function init() {
   if (Sync) Sync.onStatus(updateSyncStatus);
   updateSyncStatus();
   syncFromRemote();
+  // 冷启动同步状态 toast（延迟等 pullAll 出结果）
+  setTimeout(showStartupSyncToast, 2500);
 }
 
 /* ============ 导航 ============ */
@@ -407,6 +430,7 @@ async function selectChapter(chapter) {
   renderChapter();
   renderChapterNav();
   renderStudy();
+  updateMobileNav();
   save(LS_LAST, { book: state.currentBook.index, chapter });
   // 生命读经懒加载
   if (!state.lifereading) {
@@ -986,12 +1010,134 @@ function annotationText(a) {
 function isMobile() { return window.innerWidth <= 900; }
 
 // 移动端同一时刻只显示一个视图：读经（经文）或研读（注解/生命读经/我的笔记）
-// 桌面端调用为 no-op（body 类无 CSS 效果，按钮也被媒体查询隐藏）
+// 模式切换在顶栏 crumb 右侧的「读经|研读」pill；桌面端调用为 no-op（pill 隐藏，body 类无 CSS 效果）
 function setMobileView(view) {
   if (!isMobile()) return;
   document.body.classList.toggle('mobile-study', view === 'study');
-  document.querySelectorAll('#mobileNav .mnav-btn').forEach(b =>
+  document.querySelectorAll('#modePill .mode-pill-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.view === view));
+  updateMobileNav();
+}
+
+// 当前章匹配的生命读经篇目（与 renderLifereading 同一套匹配：lrMap 手动覆盖 + autoMatch 自动）
+function matchedLrArticles() {
+  const articles = (state.lifereading && state.lifereading.articles) || [];
+  const acr = state.currentBook.acronym, ch = state.currentChapter;
+  const manual = state.lrMap[`${acr}${ch}`];
+  const ids = manual !== undefined ? manual : autoMatchLrIds(articles, ch);
+  return ids.map(id => articles.find(a => a.id === id)).filter(Boolean);
+}
+
+// 底部导航状态：读经模式专用（研读模式底部导航隐藏），按钮文字 + 边界禁用
+function updateMobileNav() {
+  if (!isMobile()) return;
+  const prev = $('mPrevBtn'), next = $('mNextBtn');
+  prev.textContent = '‹ 上一章';
+  next.textContent = '下一章 ›';
+  prev.disabled = state.currentChapter <= 1;
+  next.disabled = state.currentChapter >= state.currentBook.chapters;
+}
+
+// 底部翻页：仅读经模式翻章（研读模式无底部导航，翻章/翻篇走 crumb 选章 / ☰ 篇目导航）
+function mobileNavGo(dir) {
+  const ch = state.currentChapter + dir;
+  if (ch < 1 || ch > state.currentBook.chapters) return;
+  selectChapter(ch);
+}
+
+// 轻提示（底部弹出，自动消失；供同步状态、空状态等轻量提醒）
+function showToast(text, cls) {
+  let t = $('toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'toast';
+    t.className = 'toast';
+    document.body.appendChild(t);
+  }
+  t.textContent = text;
+  t.className = `toast show ${cls || ''}`;
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+// 移动端 crumb 点击 → 章节选择弹窗（章网格 + 顶部书卷横向切换）
+function openChapterPicker() {
+  let cur = state.currentBook.index;
+  const books = state.books;
+  const renderGrid = () => {
+    const book = books.find(b => b.index === cur);
+    let html = `<div class="chp-title">${escapeHtml(book.name)}</div><div class="chp-grid">`;
+    for (let i = 1; i <= book.chapters; i++) {
+      const act = (cur === state.currentBook.index && i === state.currentChapter) ? ' active' : '';
+      html += `<button class="chp-cell${act}" data-b="${cur}" data-c="${i}">${i}</button>`;
+    }
+    html += '</div>';
+    $('chpGrid').innerHTML = html;
+  };
+  openPopup('选择章节', `
+    <div class="chp-books" id="chpBooks">
+      ${books.map(b => `<button class="chp-book${b.index === cur ? ' active' : ''}" data-b="${b.index}">${escapeHtml(b.name)}</button>`).join('')}
+    </div>
+    <div id="chpGrid"></div>
+  `);
+  renderGrid();
+  const activeBook = document.querySelector('#chpBooks .chp-book.active');
+  if (activeBook) activeBook.scrollIntoView({ block: 'nearest', inline: 'center' });
+  $('chpBooks').addEventListener('click', (e) => {
+    const b = e.target.closest('.chp-book');
+    if (!b) return;
+    cur = +b.dataset.b;
+    document.querySelectorAll('#chpBooks .chp-book').forEach(x => x.classList.toggle('active', +x.dataset.b === cur));
+    renderGrid();
+  });
+  $('chpGrid').addEventListener('click', (e) => {
+    const c = e.target.closest('.chp-cell');
+    if (!c) return;
+    const b = +c.dataset.b, ch = +c.dataset.c;
+    closePopupAll();
+    if (b !== state.currentBook.index || ch !== state.currentChapter) selectBook(b, ch);
+  });
+}
+
+// 移动端研读+生命读经 tab 时 ☰ → 篇目 + 纲目导航（点击滚动定位）
+function openLrNavSheet() {
+  const matched = matchedLrArticles();
+  if (!matched.length) {
+    showToast('本章暂无相关生命读经');
+    return;
+  }
+  let html = '<div class="lrn-list">';
+  matched.forEach(a => {
+    const headings = extractLrHeadings(a.content || '');
+    html += `<div class="lrn-group" data-article="${a.id}">`;
+    html += `<div class="lrn-group-title" data-jump="${a.id}">${escapeHtml(a.title)}</div>`;
+    headings.forEach((h, i) => {
+      html += `<div class="lr-toc-item lr-toc-l${Math.min(h.level, 10)}" data-target="lrh-${a.id}-${i}">${escapeHtml(h.text)}</div>`;
+    });
+    html += '</div>';
+  });
+  html += '</div>';
+  openPopup('生命读经导航', html);
+  const list = document.querySelector('#popupBody .lrn-list');
+  if (!list) return;
+  list.addEventListener('click', (e) => {
+    const toc = e.target.closest('.lr-toc-item');
+    if (toc) {
+      const el = document.getElementById(toc.dataset.target);
+      if (!el) return;
+      closePopupAll();
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      el.classList.add('flash');
+      setTimeout(() => el.classList.remove('flash'), 1600);
+      return;
+    }
+    const g = e.target.closest('.lrn-group-title');
+    if (g) {
+      closePopupAll();
+      const content = document.querySelector(`.lr-content[data-article="${g.dataset.jump}"]`);
+      if (content) content.closest('.lr-item').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
 }
 
 function jumpToVerse(chapter, verse, half) {
@@ -1038,15 +1184,26 @@ function bindEvents() {
     applyHideMarks();
     save(LS_HIDE_MARKS, state.hideMarks);
   });
-  // 菜单：移动端开抽屉，桌面端折叠左栏
+  // 菜单：移动端上下文导航（读经=书卷抽屉 / 研读+生命读经=篇目纲目），桌面端折叠左栏
   $('menuBtn').addEventListener('click', () => {
     if (window.innerWidth <= 900) {
+      if (document.body.classList.contains('mobile-study')) {
+        // 研读视图：只有生命读经 tab 提供导航，注解/我的笔记 tab 不动作
+        if (state.activeTab === 'lifereading') openLrNavSheet();
+        return;
+      }
       $('navCol').classList.toggle('open');
     } else {
       state.navCollapsed = !state.navCollapsed;
       applyLayout();
       save(LS_NAV_COLLAPSED, state.navCollapsed);
     }
+  });
+  // 移动端 crumb 标题点击：弹出章节选择（章网格 + 书卷切换）
+  document.querySelector('.crumb').addEventListener('click', (e) => {
+    if (!isMobile()) return;
+    if (e.target.closest('button')) return;   // 不拦截 crumb 内按钮（桌面翻页按钮在移动端已隐藏，保险起见）
+    openChapterPicker();
   });
   // 视图模式：双页 → 上下 → 全屏 循环
   $('viewModeBtn').addEventListener('click', () => {
@@ -1076,16 +1233,13 @@ function bindEvents() {
   });
   // 反馈弹窗
   $('feedbackBtn').addEventListener('click', openFeedbackModal);
-  // 移动端底部导航：读经 / 研读 + 章节翻页
-  document.querySelectorAll('#mobileNav .mnav-btn[data-view]').forEach(b => {
+  // 移动端模式切换 pill（读经/研读，替代原底部导航按钮）
+  document.querySelectorAll('#modePill .mode-pill-btn').forEach(b => {
     b.addEventListener('click', () => setMobileView(b.dataset.view));
   });
-  $('mPrevBtn').addEventListener('click', () => {
-    if (state.currentChapter > 1) selectChapter(state.currentChapter - 1);
-  });
-  $('mNextBtn').addEventListener('click', () => {
-    if (state.currentChapter < state.currentBook.chapters) selectChapter(state.currentChapter + 1);
-  });
+  // 移动端底部导航：纯翻页（读经翻章 / 生命读经翻篇）
+  $('mPrevBtn').addEventListener('click', () => mobileNavGo(-1));
+  $('mNextBtn').addEventListener('click', () => mobileNavGo(1));
   // 设置菜单（⚙️）——行点击走委托，弹窗栈返回后依然有效
   $('settingsBtn').addEventListener('click', openSettingsModal);
   document.addEventListener('click', onSettingsRow);
