@@ -826,7 +826,20 @@ function annotationText(a) {
   return (a.text && slice !== a.text) ? a.text : slice;
 }
 
+/* ============ 移动端单视图切换（读经 / 研读） ============ */
+function isMobile() { return window.innerWidth <= 900; }
+
+// 移动端同一时刻只显示一个视图：读经（经文）或研读（注解/生命读经/我的笔记）
+// 桌面端调用为 no-op（body 类无 CSS 效果，按钮也被媒体查询隐藏）
+function setMobileView(view) {
+  if (!isMobile()) return;
+  document.body.classList.toggle('mobile-study', view === 'study');
+  document.querySelectorAll('#mobileNav .mnav-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.view === view));
+}
+
 function jumpToVerse(chapter, verse, half) {
+  setMobileView('read');
   if (chapter !== state.currentChapter) {
     selectChapter(chapter).then(() => scrollToVerse(verse, half));
   } else {
@@ -844,6 +857,7 @@ function scrollToVerse(verse, half) {
 }
 
 function jumpToLr(articleId) {
+  setMobileView('study');
   state.activeTab = 'lifereading';
   document.querySelectorAll('.study-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'lifereading'));
   renderStudy();
@@ -906,6 +920,10 @@ function bindEvents() {
   });
   // 反馈弹窗
   $('feedbackBtn').addEventListener('click', openFeedbackModal);
+  // 移动端底部导航：读经 / 研读
+  document.querySelectorAll('#mobileNav .mnav-btn').forEach(b => {
+    b.addEventListener('click', () => setMobileView(b.dataset.view));
+  });
   // 研读面板拖拽调宽
   bindResize();
   // 书卷搜索
