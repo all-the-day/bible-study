@@ -34,9 +34,7 @@ console.log("✓ file_paths.xml");
 
 /* 3. AndroidManifest.xml：权限 + queries + FileProvider（幂等） */
 const manifestPath = join(ANDROID, "app", "src", "main", "AndroidManifest.xml");
-let manifest = readFileSync(manifestPath, "utf8");
-
-const PERMISSION = '    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />';
+let manifest = readFileSync(manifestPath, "utf8");const PERMISSION = '    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />';
 const QUERIES = `    <queries>
         <intent>
             <action android:name="android.intent.action.VIEW" />
@@ -69,4 +67,36 @@ if (!manifest.includes("com.allday.biblestudy.fileprovider")) {
 }
 writeFileSync(manifestPath, manifest);
 console.log("✓ AndroidManifest.xml（权限/queries/provider）");
+
+/* 4. 固定 debug 签名：改写 app/build.gradle 的 signingConfigs.debug，
+     指向仓库内 keystore（绝对路径 + 显式密码，幂等）——CI 每次全新 runner，
+     不固定签名会导致每次构建 keystore 不同、覆盖安装必须卸载重装 */
+const gradlePath = join(ANDROID, "app", "build.gradle");
+const ksPath = join(ROOT, "config", "android", "debug.keystore").replace(/\\/g, "/");
+let gradle = readFileSync(gradlePath, "utf8");
+const debugSignBlock = `debug {
+            storeFile file("${ksPath}")
+            storePassword "android"
+            keyAlias "androiddebugkey"
+            keyPassword "android"
+        }`;
+if (/storeFile\s+file\(/.test(gradle)) {
+  // 已有 storeFile：替换路径 + 补全密码/别名
+  gradle = gradle.replace(/storeFile\s+file\([^)]*\)/, `storeFile file("${ksPath}")`);
+  if (!/storePassword/.test(gradle)) {
+    gradle = gradle.replace(
+      /storeFile\s+file\([^)]*\)/,
+      `storeFile file("${ksPath}")\n            storePassword "android"\n            keyAlias "androiddebugkey"\n            keyPassword "android"`
+    );
+  }
+} else if (gradle.includes("signingConfigs")) {
+  // 有 signingConfigs 但无 storeFile：插入 debug 条目
+  gradle = gradle.replace(/signingConfigs\s*\{/, `signingConfigs {\n        ${debugSignBlock}`);
+} else {
+  // 无 signingConfigs：在 android 块内插入
+  gradle = gradle.replace(/android\s*\{/, `android {\n    signingConfigs {\n        ${debugSignBlock}\n    }`);
+}
+writeFileSync(gradlePath, gradle);
+const shown = gradle.match(/signingConfigs\s*\{[\s\S]*?\n\s*\}/)?.[0] || "";
+console.log("✓ build.gradle 固定签名配置：\n" + shown);
 console.log("patch-android 完成");
