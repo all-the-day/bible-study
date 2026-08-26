@@ -63,7 +63,7 @@ jobs:
 
       - name: 准备 web 资源
         run: |
-          mkdir -p www/data/lifereading
+          mkdir -p www/data/lifereading www/data/books www/data/morning
           cp index.html app.js style.css manifest.json sw.js sync.js update.js www/
           cp -r icons www/
           # APK 内 manifest 版本用 package.json 值重写（App 内更新检查的本地版本依据；
@@ -95,7 +95,20 @@ jobs:
             code=$(curl -sL --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 15 --max-time 240 -4 -w "%{http_code}" -o "www/data/lifereading/$acr.json" "$BASE/lifereading/$acr.json")
             if [ "$code" != "200" ]; then rm -f "www/data/lifereading/$acr.json"; fi
           done
-          echo "lifereading 文件数: $(ls www/data/lifereading/ | wc -l)"
+          # 书报：系列索引 → 各系列元数据 → 各辑内容（倪柝声文集等，系列自动扩展）
+          $CURL "$BASE/books/index.json" -o "www/data/books/index.json"
+          for sid in $(python3 -c "import json; print(' '.join(s['id'] for s in json.load(open('www/data/books/index.json'))['series']))"); do
+            $CURL "$BASE/books/$sid.json" -o "www/data/books/$sid.json"
+            for v in $(python3 -c "import json; print(' '.join(str(i) for i in range(1, len(json.load(open('www/data/books/$sid.json')).get('volumes', [])) + 1)))"); do
+              $CURL "$BASE/books/$sid-$v.json" -o "www/data/books/$sid-$v.json"
+            done
+          done
+          # 听抄：期索引 → 各期内容
+          $CURL "$BASE/morning/index.json" -o "www/data/morning/index.json"
+          for pid in $(python3 -c "import json; print(' '.join(t['id'] for t in json.load(open('www/data/morning/index.json'))['trainings']))"); do
+            $CURL "$BASE/morning/$pid.json" -o "www/data/morning/$pid.json"
+          done
+          echo "lifereading: $(ls www/data/lifereading/ | wc -l) | books: $(ls www/data/books/ | wc -l) | morning: $(ls www/data/morning/ | wc -l)"
           du -sh www/data
 
       - name: 安装依赖
