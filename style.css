@@ -796,8 +796,8 @@ body.home .mobile-nav { display: none; }
 .lr-art-cell:hover { background: var(--surface-alt); }
 .lr-art-cell:last-child { border-bottom: none; }
 
-/* ── 阅读器模块容器切换（默认 bible；body-mod-lifereading / body-mod-books 切换） ── */
-#lrNav, #lrMain, #lrSide, #bookNav, #bookMain, #bookSide { display: none; }
+/* ── 阅读器模块容器切换（默认 bible；body-mod-lifereading / body-mod-books / body-mod-morning 切换） ── */
+#lrNav, #lrMain, #lrSide, #bookNav, #bookMain, #bookSide, #morningNav, #morningMain, #morningSide { display: none; }
 .body-mod-lifereading .nav-search,
 .body-mod-lifereading #bookList, .body-mod-lifereading #chapterList { display: none; }
 .body-mod-lifereading #chapterTheme, .body-mod-lifereading #verseContainer { display: none; }
@@ -812,13 +812,23 @@ body.home .mobile-nav { display: none; }
 .body-mod-books #bookNav  { display: flex; flex-direction: column; min-height: 0; flex: 1; }
 .body-mod-books #bookMain { display: block; }
 .body-mod-books #bookSide { display: flex; flex-direction: column; min-height: 0; }
-/* 生命读经/书报模块：顶栏只留 ⚙️（双页/隐藏注号/研读全屏/笔记/反馈 隐藏；翻章按钮无意义） */
+.body-mod-morning .nav-search,
+.body-mod-morning #bookList, .body-mod-morning #chapterList { display: none; }
+.body-mod-morning #chapterTheme, .body-mod-morning #verseContainer { display: none; }
+.body-mod-morning #studyTabs, .body-mod-morning #studyBody { display: none; }
+.body-mod-morning #morningNav  { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.body-mod-morning #morningMain { display: block; }
+.body-mod-morning #morningSide { display: flex; flex-direction: column; min-height: 0; }
+/* 生命读经/书报/晨兴模块：顶栏只留 ⚙️（双页/隐藏注号/研读全屏/笔记/反馈 隐藏；翻章按钮无意义） */
 .body-mod-lifereading #viewModeBtn, .body-mod-lifereading #hideMarksBtn, .body-mod-lifereading #studyFullBtn,
 .body-mod-lifereading #feedbackBtn, .body-mod-lifereading #notesBtn { display: none !important; }
 .body-mod-lifereading .crumb-nav { display: none; }
 .body-mod-books #viewModeBtn, .body-mod-books #hideMarksBtn, .body-mod-books #studyFullBtn,
 .body-mod-books #feedbackBtn, .body-mod-books #notesBtn { display: none !important; }
 .body-mod-books .crumb-nav { display: none; }
+.body-mod-morning #viewModeBtn, .body-mod-morning #hideMarksBtn, .body-mod-morning #studyFullBtn,
+.body-mod-morning #feedbackBtn, .body-mod-morning #notesBtn { display: none !important; }
+.body-mod-morning .crumb-nav { display: none; }
 
 /* 生命读经阅读器：左栏两级导航（卷条 + 篇目列表） */
 .lr-vol-strip {
@@ -906,6 +916,35 @@ body.home .mobile-nav { display: none; }
 }
 .bk-toc-item:hover { background: var(--surface-alt); }
 .bk-toc-item.active { background: rgba(102,126,234,.1); color: var(--brand); font-weight: 600; }
+
+/* 晨兴阅读器：左栏（期条 + 篇列表）+ 主区 + 右栏 */
+.morning-period-strip {
+  display: flex; gap: 6px; overflow-x: auto; padding: 8px;
+  border-bottom: 1px solid var(--border); flex: none;
+}
+.morning-period-btn {
+  flex: none; padding: 4px 10px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--surface);
+  font-size: 13px; cursor: pointer; color: var(--text-soft);
+}
+.morning-period-btn:hover { border-color: var(--brand); }
+.morning-period-btn.active { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
+.morning-nav-chapters { flex: 1; overflow-y: auto; min-height: 0; padding: 6px; }
+.morning-nav-art {
+  display: block; width: 100%; text-align: left; padding: 8px 10px;
+  border: none; background: transparent; border-bottom: 1px solid var(--border);
+  cursor: pointer; font-size: 13px; color: var(--text); line-height: 1.5;
+}
+.morning-nav-art:hover { background: var(--surface-alt); }
+.morning-nav-art.active { background: rgba(102,126,234,.1); color: var(--brand); font-weight: 600; }
+.morning-main { padding: 16px 20px; }
+.morning-title { font-size: 17px; font-weight: 700; color: var(--heading); margin-bottom: 8px; }
+.morning-scripture { font-size: 13px; color: var(--text-muted); margin-bottom: 12px; }
+.morning-para { font-size: 15px; line-height: 2; color: var(--text); margin-bottom: 6px; }
+.morning-head { font-weight: 600; color: var(--heading); margin-top: 10px; line-height: 1.8; }
+.morning-head.lr-h1 { font-size: 16px; }
+.morning-head.lr-h2, .morning-head.lr-h3 { font-size: 15px; }
+.morning-head.lr-h4 { font-weight: 500; }
 
 /* ── 移动端 ── */
 @media (max-width: 900px) {

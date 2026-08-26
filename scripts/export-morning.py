@@ -17,11 +17,10 @@
   python export-morning.py --all                  # 导出全部期（含往年）
 
 每 chapter（一篇信息）：
-  {number, title, hymn_number, scripture,
-   outline:  [{level, title}] 扁平纲目,
-   detail:   [{level, title, paragraphs}] 信息正文,
-   morning_revivals: [{day, outline: [{level,title}], morning_feeding, message_reading, ref_reading}],
-   content:  纯文本（标题+纲目+正文+六天晨兴），供标注坐标系与阅读渲染}
+  {number, title, scripture,
+   content: 纯文本（信息正文「听抄」：detail_sections 树形层级标题 + 段落，
+            供标注坐标系与阅读渲染）}
+（只保留听抄数据；纲目 outline_sections / 六天晨兴 morning_revivals 不导出）
 """
 import argparse
 import datetime
@@ -33,40 +32,21 @@ PUBLIC = r"d:/迅雷下载/晨读appRes/resources/assets/public"
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "morning")
 
 
-def flatten_outline(nodes, out):
-    """纲目树 → 扁平 [{level, title}]（保留层级顺序）"""
-    for n in nodes or []:
-        out.append({"level": n.get("level", ""), "title": n.get("title", "")})
-        flatten_outline(n.get("children") or [], out)
-
-
 def flatten_detail(nodes, out):
-    """detail_sections 树 → 扁平 [{level, title, paragraphs}]"""
+    """detail_sections 树 → 扁平 [{level, title, paragraphs}]（听抄层级）"""
     for n in nodes or []:
         paragraphs = [p for p in (n.get("content") or []) if isinstance(p, str) and p.strip()]
         out.append({"level": n.get("level", ""), "title": n.get("title", ""), "paragraphs": paragraphs})
         flatten_detail(n.get("children") or [], out)
 
 
-def build_content(ch):
-    """整篇拼纯文本（供标注坐标系，与 lifereading 的 content 同模式）"""
+def build_content(detail):
+    """听抄纯文本：层级标题行 + 段落（标题前缀如「壹」「一」「1」（一）《一》等）"""
     lines = []
-    lines.append(ch.get("title", ""))
-    if ch.get("scripture"):
-        lines.append("经文：" + ch["scripture"])
-    for o in ch.get("_outline", []):
-        if o["title"].strip():
-            lines.append(o["title"].strip())
-    for d in ch.get("_detail", []):
+    for d in detail:
         if d["title"].strip():
             lines.append(d["title"].strip())
         lines.extend(p.strip() for p in d["paragraphs"] if p.strip())
-    for m in ch.get("_mr", []):
-        lines.append(m["_header"])
-        for field, label in (("morning_feeding", "晨兴喂养"), ("message_reading", "信息选读"), ("ref_reading", "参考阅读")):
-            text = m.get(field)
-            if text and str(text).strip():
-                lines.append(label + "：" + str(text).strip())
     return "\n".join(l for l in lines if l)
 
 
@@ -103,36 +83,14 @@ def export():
             data = json.load(f)
         chapters = []
         for ch in data.get("chapters") or []:
-            outline = []
-            flatten_outline(ch.get("outline_sections") or [], outline)
             detail = []
             flatten_detail(ch.get("detail_sections") or [], detail)
-            mrs = []
-            for mr in ch.get("morning_revivals") or []:
-                m_outline = []
-                flatten_outline(mr.get("outline") or [], m_outline)
-                mrs.append({
-                    "day": mr.get("day", ""),
-                    "outline": m_outline,
-                    "feeding_scriptures": mr.get("feeding_scriptures") or [],
-                    "morning_feeding": mr.get("morning_feeding") or "",
-                    "message_reading": mr.get("message_reading") or "",
-                    "ref_reading": mr.get("ref_reading") or "",
-                })
             ch_out = {
                 "number": ch.get("number"),
                 "title": ch.get("title", ""),
-                "hymn_number": ch.get("hymn_number", ""),
                 "scripture": ch.get("scripture", ""),
-                "outline": outline,
-                "detail": detail,
-                "morning_revivals": mrs,
+                "content": build_content(detail),
             }
-            ch_out["_outline"] = outline
-            ch_out["_detail"] = detail
-            ch_out["_mr"] = [{"_header": m["day"], **m} for m in mrs]
-            ch_out["content"] = build_content(ch_out)
-            del ch_out["_outline"], ch_out["_detail"], ch_out["_mr"]
             chapters.append(ch_out)
 
         period = {
