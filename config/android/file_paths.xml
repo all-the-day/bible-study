@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
+    <!-- root-path 兜底：部分设备 /data/user/0 为符号链接，getCacheDir() 返回字面
+         /data/user/0/... 而 FileProvider 用 canonical 路径匹配（解析成 /data/data/...），
+         cache-path 字面根不匹配 → Failed to find configured root；root-path 匹配任意路径 -->
+    <root-path name="root" path="." />
     <cache-path name="downloads" path="downloads/" />
     <external-path name="downloads" path="Download/" />
     <files-path name="downloads" path="downloads/" />

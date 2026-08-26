@@ -62,7 +62,11 @@ if (!manifest.includes("REQUEST_INSTALL_PACKAGES")) {
 if (!manifest.includes("<queries>")) {
   manifest = insertBefore(manifest, "<application", QUERIES + "\n");
 }
-if (!manifest.includes("com.allday.biblestudy.fileprovider")) {
+// 模板自带 FileProvider（${applicationId}.fileprovider + @xml/file_paths）时不再插入，
+// 避免同 manifest 重复 provider（当前靠 merger 恰好合并，属侥幸）；file_paths.xml 由
+// 第 2 步无条件覆盖，模板 provider 引用的 @xml/file_paths 即我们注入的版本
+const HAS_PROVIDER = manifest.includes("androidx.core.content.FileProvider") && manifest.includes("FILE_PROVIDER_PATHS");
+if (!HAS_PROVIDER && !manifest.includes("com.allday.biblestudy.fileprovider")) {
   manifest = manifest.replace("</application>", PROVIDER + "\n    </application>");
 }
 writeFileSync(manifestPath, manifest);
