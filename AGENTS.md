@@ -28,13 +28,13 @@
 |------|------|
 | `index.html` / `style.css` / `app.js` | 单页应用全部逻辑 |
 | `sync.js` | 标注/笔记云同步客户端（duoban.xyz 通用 KV API） |
-| `update.js` | App 内检查更新客户端（GitHub Releases 查版本 + 镜像下载 APK + 安装，移植晨读 app 更新逻辑） |
+| `update.js` | App 内检查更新客户端（GitHub Releases 查版本 + 原生下载 APK + 安装；下载走 ApkInstallerPlugin 原生 HTTP，不用 WebView fetch——CORS 根因见「App 内更新」节） |
 | `manifest.json` / `sw.js` | PWA 安装与离线缓存 |
 | `capacitor.config.json` / `package.json` | APK 打包配置（`resources/icon.png` 为图标源） |
-| `config/android/` | 原生更新插件源码（ApkInstallerPlugin/MainActivity/file_paths.xml），CI 注入 android/ 工程，不入本地构建 |
+| `config/android/` | 原生更新插件源码（ApkInstallerPlugin：download 原生下载 + install 安装；MainActivity/file_paths.xml），CI 注入 android/ 工程，不入本地构建 |
 | `scripts/export.py` | 从 `../bible` 导出静态 JSON → `data/` |
 | `scripts/patch-android.mjs` | CI 帮手：注入原生插件 + AndroidManifest 权限/FileProvider（幂等） |
-| `scripts/*-test.js` | puppeteer 端到端测试（e2e / 标注 / 生命读经标注） |
+| `scripts/*-test.js` | puppeteer 端到端测试（e2e / 标注 / 生命读经标注）；`download-sim-test.js` 验证 WebView fetch 下载被 CORS 拦截（根因留档），`update-logic-test.js` mock 原生插件验证 download() fallback/进度/监听清理 |
 | `data/books.json` | 66 卷目录 + 每卷章数 + 缩写 |
 | `data/bible-text.json` | 原文，键 `创1:1` / `创1:2上`，值含 `{N}`（注脚）/`[a]`（串珠）标记 |
 | `data/bible-notes.json` | 注解，键 → `{seq: 注脚文本}`（seq 为节内连续编号，可复用同一文本、跨半节连续） |
@@ -95,12 +95,14 @@ APK 端检查 GitHub Releases 新版本 → 下载 APK → 触发系统安装（
 | 本地版本 | `manifest.json` 的 `version`（`update.js` 读取；CI 构建 APK 时用 package.json 值重写 `www/manifest.json`） |
 | 远端版本 | Release `name`（CI 固定格式 `读经 v${VERSION} · 云同步版`），正则 `/v(\d+\.\d+\.\d+)/` 解析 |
 | 比较 | `compareVersion`：去 v 前缀 → split('.') → parseInt 逐位比较 |
-| 下载源 | 直连 GitHub + 公共镜像依次尝试（`github.com` → `gh-proxy.com` → `ghproxy.net`），失败切换下一个 |
+| 下载源 | 直连 GitHub + 公共镜像依次尝试（`github.com` → `gh-proxy.com` → `ghproxy.net`），失败切换下一个；候选源按域名去重（API 的 downloadUrl 即 github.com 直连） |
+| 下载方式 | **原生 `HttpURLConnection`**（`ApkInstallerPlugin.download`，不受 WebView CORS 限制）→ cacheDir `downloads/`；进度经插件 `progress` 事件（fraction 0..1，原生节流 500ms）转发 JS 进度条 |
 | 安装 | `Capacitor.Plugins.ApkInstaller.install({filePath})`（原生插件）→ FileProvider → 系统 `ACTION_VIEW` 安装器 |
 | 清理 | 成功后清理 CACHE/DATA `downloads/` 目录历史 `*.apk` |
 
 - **触发**：启动后 ~3s 静默 `check()`（10s 超时，失败静默）→ 发现新版给 `#settingsBtn` 加 `.update-dot` 红点角标 + 设置弹窗「检查更新」行显示状态；设置行点击开 `#updateModal`（独立 modal，非弹窗栈，下载过程不被关闭打断）
-- **平台分支**：原生（`Capacitor.isNativePlatform()`）→ 流式下载（ReadableStream 按 content-length 报进度 0-100%）→ `Filesystem.writeFile`（CACHE → EXTERNAL → DATA 依次尝试，写 CACHE 无需存储权限）→ 安装；PWA/浏览器 → 只提示跳转 Releases 页（网页内容走 SW 自动更新）
+- **平台分支**：原生（`Capacitor.isNativePlatform()`）→ `download()`（update.js）依次调插件 `download({url})`，失败（超时/HTTP 错误）切下一源 → 成功后 `install`；PWA/浏览器 → 只提示跳转 Releases 页（网页内容走 SW 自动更新）
+- **⚠️ 不要退回 WebView fetch 下载**：GitHub release 资产域（`release-assets.githubusercontent.com`）与公共镜像都不带 `Access-Control-Allow-Origin`，Capacitor WebView（origin `https://localhost`）里 fetch 跨域下载被 CORS 拦截，稳定复现 `Failed to fetch`（开 VPN 无效）——2026-08-26 实测根因，已改用原生下载
 - **原生插件注入**：仓库不建 `android/`（CI `cap add android` 全新建）；`scripts/patch-android.mjs` 在 cap sync 后拷贝 `config/android/` 的 Java/XML 并幂等改写 AndroidManifest（`REQUEST_INSTALL_PACKAGES` 权限 + `<queries>` VIEW apk + FileProvider authority `com.allday.biblestudy.fileprovider`）
 - **版本一致性守卫**：build-apk.yml 构建前校验 `package.json.version == manifest.json.version`，不一致直接失败——App 内更新依赖两处版本对齐，**每次发版两处都要同步升**
 

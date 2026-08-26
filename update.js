@@ -15,10 +15,7 @@
   // 下载源：直连 GitHub + 公共代理镜像（失败依次切换）
   const SOURCES = ["https://github.com", "https://gh-proxy.com", "https://ghproxy.net"];
   const CHECK_TIMEOUT = 10000;
-  const CONNECT_TIMEOUT = 8000;   // 连接/首字节超时：超过则 abort 并切换下一个下载源
-  const STALL_TIMEOUT = 15000;    // 读取停滞超时：超过 N 秒无任何数据则 abort 并切换下载源
   const APK_FILE = "bible-study-update.apk";
-  const MIME_APK = "application/vnd.android.package-archive";
 
   function fetchJSON(url, timeout) {
     const ctrl = new AbortController();
@@ -88,44 +85,10 @@
       .catch(() => null);
   }
 
-  /* 流式下载（fetch + reader），按 content-length 上报进度 fraction 0..1。
-     连接与读取停滞均带超时：国内访问 GitHub 直连常「TCP 已连但数据 stalled」，
-     无超时会让 fetch 永久挂起、镜像 fallback 永远等不到（曾致进度卡 0%） */
-  function fetchBinary(url, onProgress) {
-    const ctrl = new AbortController();
-    const connTimer = setTimeout(() => ctrl.abort(), CONNECT_TIMEOUT);
-    return fetch(url, { headers: { Accept: MIME_APK }, signal: ctrl.signal }).then((r) => {
-      if (!r.ok) throw new Error("http " + r.status);
-      clearTimeout(connTimer);
-      const total = parseInt(r.headers.get("content-length") || "0", 10) || 0;
-      if (!r.body || !r.body.getReader) return r.blob();
-      const reader = r.body.getReader();
-      const chunks = [];
-      let received = 0;
-      let stallTimer = null;
-      const resetStall = () => {
-        clearTimeout(stallTimer);
-        stallTimer = setTimeout(() => ctrl.abort(), STALL_TIMEOUT);
-      };
-      resetStall();
-      function pump() {
-        return reader.read().then(({ done, value }) => {
-          if (done) {
-            clearTimeout(stallTimer);
-            const blob = new Blob(chunks, { type: MIME_APK });
-            if (onProgress) onProgress(1);
-            return blob;
-          }
-          chunks.push(value);
-          received += value.length;
-          if (onProgress && total) onProgress(Math.min(received / total, 0.95));
-          resetStall();
-          return pump();
-        });
-      }
-      return pump();
-    });
-  }
+  /* 流式下载已废弃：WebView fetch 跨域下载 GitHub release 资产被 CORS 拦截
+   * （release-assets.githubusercontent.com 无 Access-Control-Allow-Origin），
+   * 手机上稳定复现 "Failed to fetch"。改用原生 HttpURLConnection 下载
+   * （ApkInstallerPlugin.download，不受 CORS 限制），见下方 download()。 */
 
   /* 超时类错误 → 友好文案（用户可操作提示） */
   function friendlyError(err) {
@@ -135,45 +98,79 @@
     return null;
   }
 
-  function blobToBase64(blob) {
-    return new Promise((resolve, reject) => {
-      const fr = new FileReader();
-      fr.onload = () => resolve(String(fr.result).split(",")[1]);
-      fr.onerror = () => reject(fr.error || new Error("读取文件失败"));
-      fr.readAsDataURL(blob);
-    });
-  }
-
-  /* 依次尝试各下载源，第一个成功即用 */
-  function downloadWithFallback(candidates, onProgress) {
+  /* 依次尝试各下载源：原生下载，第一个成功即用（失败如超时/HTTP 错误 → 切下一个源）。
+     每轮尝试前清理历史进度监听，结束时整体移除（不持有 handle，避免 addListener
+     异步返回导致监听泄漏） */
+  function downloadWithFallback(candidates, plugin) {
     let idx = 0;
+    const resetListeners = () => {
+      if (plugin.removeAllListeners) plugin.removeAllListeners();
+      if (plugin.addListener) {
+        plugin.addListener("progress", (e) => {
+          if (_progressCb && e && typeof e.fraction === "number") _progressCb(e.fraction);
+        });
+      }
+    };
+    const finish = () => {
+      if (plugin.removeAllListeners) plugin.removeAllListeners();
+    };
+    resetListeners();
     function next() {
-      if (idx >= candidates.length) return Promise.reject(new Error("所有下载源均失败"));
+      if (idx >= candidates.length) {
+        finish();
+        return Promise.reject(new Error("所有下载源均失败"));
+      }
       const url = candidates[idx++];
-      return fetchBinary(url, onProgress)
-        .then((blob) => ({ blob, url }))
-        .catch((err) => next().catch(() => Promise.reject(err)));
+      return plugin.download({ url }).then(
+        (res) => {
+          finish();
+          return res;
+        },
+        (err) => next().catch(() => Promise.reject(err))
+      );
     }
     return next();
   }
 
-  /* 写入 Filesystem（CACHE → EXTERNAL → DATA 依次尝试），返回 uri */
-  function saveApk(blob) {
-    const dirs = [
-      { directory: "CACHE", path: "downloads/" + APK_FILE },
-      { directory: "EXTERNAL", path: "Download/" + APK_FILE },
-      { directory: "DATA", path: "downloads/" + APK_FILE },
-    ];
-    return blobToBase64(blob).then((b64) => {
-      function tryWrite(i) {
-        if (i >= dirs.length) return Promise.reject(new Error("写入 APK 文件失败"));
-        const d = dirs[i];
-        return Capacitor.Filesystem.writeFile({ directory: d.directory, path: d.path, data: b64 })
-          .then((res) => res.uri || (d.directory + "/" + d.path))
-          .catch(() => tryWrite(i + 1));
-      }
-      return tryWrite(0);
+  /* 候选源：API 给的 downloadUrl 优先 + 镜像拼接；downloadUrl 通常就是
+     github.com 直连地址，与 SOURCES 首个域名重复，按域名去重避免直连失败时白等两次 */
+  function buildCandidates(latest) {
+    const byHost = new Map();
+    if (latest && latest.downloadUrl) {
+      try { byHost.set(new URL(latest.downloadUrl).host, latest.downloadUrl); } catch (e) {}
+    }
+    SOURCES.forEach((s) => {
+      const u = s + APK_PATH;
+      try {
+        const host = new URL(u).host;
+        if (!byHost.has(host)) byHost.set(host, u);
+      } catch (e) {}
     });
+    return Array.from(byHost.values());
+  }
+
+  /* 原生下载 + 安装。onProgress(fraction 0..1)。返回 {ok, msg} */
+  let _progressCb = null;
+  function download(latest, onProgress) {
+    const candidates = buildCandidates(latest);
+    const plugin = Capacitor.Plugins.ApkInstaller;
+    if (!isNative() || !plugin || !plugin.download) {
+      return Promise.reject(new Error("当前环境不支持原生下载"));
+    }
+    _progressCb = onProgress || null;
+    return downloadWithFallback(candidates, plugin)
+      .then(({ uri }) => plugin.install({ filePath: uri }).then(
+        (res) => ({ ok: true, msg: (res && res.message) || "安装程序已打开" }),
+        (err) => ({ ok: false, msg: (err && err.message) || "打开安装程序失败", filePath: uri })
+      ))
+      .then((r) => {
+        if (r.ok) cleanupOldApks();
+        return r;
+      })
+      .finally(() => {
+        _progressCb = null;
+      })
+      .catch((err) => ({ ok: false, msg: friendlyError(err) || (err && err.message ? err.message : "下载失败") }));
   }
 
   /* 清理历史 APK（不删当前要装的） */
@@ -190,26 +187,6 @@
         })
         .catch(() => {});
     });
-  }
-
-  /* 原生下载 + 安装。onProgress(fraction 0..1)。返回 {ok, msg} */
-  function download(latest, onProgress) {
-    const candidates = [];
-    if (latest && latest.downloadUrl) candidates.push(latest.downloadUrl);
-    SOURCES.forEach((s) => candidates.push(s + APK_PATH));
-    return downloadWithFallback(candidates, onProgress)
-      .then(({ blob }) => saveApk(blob))
-      .then((uri) =>
-        Capacitor.Plugins.ApkInstaller.install({ filePath: uri }).then(
-          (res) => ({ ok: true, msg: (res && res.message) || "安装程序已打开" }),
-          (err) => ({ ok: false, msg: (err && err.message) || "打开安装程序失败", filePath: uri })
-        )
-      )
-      .then((r) => {
-        if (r.ok) cleanupOldApks();
-        return r;
-      })
-      .catch((err) => ({ ok: false, msg: friendlyError(err) || (err && err.message ? err.message : "下载失败") }));
   }
 
   window.BibleStudyUpdate = {
