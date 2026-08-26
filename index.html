@@ -12,6 +12,8 @@
 <body>
   <header class="topbar">
     <button id="homeBtn" class="icon-btn" aria-label="首页">⌂</button>
+    <button id="histBackBtn" class="icon-btn hist-btn" aria-label="后退" disabled>‹</button>
+    <button id="histFwdBtn" class="icon-btn hist-btn" aria-label="前进" disabled>›</button>
     <button id="menuBtn" class="icon-btn" aria-label="菜单">☰</button>
     <div class="crumb">
       <span id="bookName">—</span>
@@ -49,6 +51,11 @@
     </aside>
 
     <main class="text-col" id="textCol">
+      <div id="sourceChain" class="source-chain" hidden>
+        <span class="sc-icon">↗</span>
+        <span class="sc-text" id="sourceChainText"></span>
+        <button class="sc-back" id="sourceChainBack">返回来源</button>
+      </div>
       <div id="chapterTheme" class="chapter-theme"></div>
       <div id="verseContainer" class="verses"></div>
       <!-- 生命读经模块主区（body-mod-lifereading 时显示） -->

@@ -74,16 +74,21 @@ const state = {
   morningPeriod: null,       // 当前期（如 '2026-04'）
   morningChapterId: null,    // 当前篇（篇 number，1 基）
   morningNotes: load(LS_MORNING_NOTES, {}),
+  // 导航（P0）：历史栈 + 来源链 + 滚动缓存
+  histStack: [],             // 跨模块/关联跳转位置快照（[初始, 跳转1前, ...]）
+  histPos: -1,               // 当前在栈中的位置（-1=未初始化）
+  source: null,              // 来源链：{module, ..., label} 上一跳的来源位置（跨模块关联跳转时设置）
+  scrollCache: {},           // {locKey: scrollTop} 各位置滚动缓存（历史/来源跳转恢复用）
 };
 
 /* 合集注册表（数据驱动）：首页块列表，点击 = 直接进入对应阅读器模块。
    晨兴/书报数据导出后各加一行即可上块，UI 零改动 */
 const COLLECTIONS = [
-  { id: 'bible', title: '读经', icon: '📖', entry: () => enterModule('bible') },
-  { id: 'lifereading', title: '生命读经', icon: '📗', entry: () => enterModule('lifereading') },
-  { id: 'notes', title: '我的笔记', icon: '📝', entry: () => { enterModule('bible'); enterNotesGlobal(); } },
-  { id: 'morning', title: '听抄', icon: '🌅', entry: () => enterModule('morning') },
-  { id: 'books', title: '书报', icon: '📚', entry: () => enterModule('books') },
+  { id: 'bible', title: '读经', icon: '📖', entry: () => enterModuleFromHome('bible') },
+  { id: 'lifereading', title: '生命读经', icon: '📗', entry: () => enterModuleFromHome('lifereading') },
+  { id: 'notes', title: '我的笔记', icon: '📝', entry: () => { enterModuleFromHome('bible'); enterNotesGlobal(); } },
+  { id: 'morning', title: '听抄', icon: '🌅', entry: () => enterModuleFromHome('morning') },
+  { id: 'books', title: '书报', icon: '📚', entry: () => enterModuleFromHome('books') },
 ];
 
 function load(key, fallback) {
@@ -395,6 +400,8 @@ async function init() {
   } else {
     await selectBook(1, 1);
   }
+  pushHist(snapshotLoc());   // 初始位置入历史栈（‹ 后退禁用基线）
+  updateHistBtns();
   bindEvents();
   // 云同步：状态指示 + 后台拉取服务器数据
   if (Sync) Sync.onStatus(updateSyncStatus);
@@ -422,6 +429,7 @@ function showHome() {
   document.body.classList.add('home');
   document.body.classList.remove('mobile-study');
   closePopupAll();
+  clearSource();   // 回首页重置导航状态（来源链/历史上下文随视图退出）
   const hb = $('homeBtn');
   if (hb) hb.classList.add('active');
   renderHome();
@@ -599,6 +607,141 @@ async function enterModule(id, opts) {
   }
 }
 
+/* ============ 导航：历史栈 + 来源链（P0） ============ */
+// 当前模块位置快照（label 为跳转前生成的位置描述，供来源链/历史展示）
+function snapshotLoc() {
+  const m = state.activeModule;
+  let label = '';
+  if (m === 'bible') label = `读经 · ${bookName(state.currentBook.index)} 第${state.currentChapter}章`;
+  else if (m === 'lifereading') {
+    const vol = state.lrVolumes[state.lrBookIndex];
+    label = `生命读经 · ${(vol && vol.name) || ''} 第${state.lrArticleId}篇`;
+  } else if (m === 'books') {
+    const mv = state.bookMeta && state.bookMeta.volumes[state.bookVolume - 1];
+    const b = mv && mv.books[state.bookBook];
+    label = `书报 · ${(b && b.title) || ''} 第${state.bookChapter + 1}章`;
+  } else if (m === 'morning') {
+    const t = state.morningIndex && state.morningIndex.trainings.find(x => x.id === state.morningPeriod);
+    label = `听抄 · ${(t && (t.title || t.season)) || ''} 第${state.morningChapterId}篇`;
+  }
+  return {
+    module: m, label,
+    book: state.currentBook ? state.currentBook.index : null, chapter: state.currentChapter,
+    lrBook: state.lrBookIndex, lrArticle: state.lrArticleId,
+    series: state.bookSeries, volume: state.bookVolume, book: state.bookBook, bchapter: state.bookChapter,
+    period: state.morningPeriod, mchapter: state.morningChapterId,
+  };
+}
+// 位置滚动 key
+function locKeyOf(e) {
+  switch (e.module) {
+    case 'bible': return `bible:${e.book || 0}:${e.chapter}`;
+    case 'lifereading': return `lr:${e.lrBook || 0}:${e.lrArticle}`;
+    case 'books': return `books:${e.series || ''}:${e.volume || 0}:${e.book ?? -1}:${e.bchapter ?? -1}`;
+    case 'morning': return `morning:${e.period || ''}:${e.mchapter}`;
+  }
+  return '';
+}
+function locKeyNow() { return locKeyOf(snapshotLoc()); }
+function saveScroll() {
+  const k = locKeyNow();
+  if (k) state.scrollCache[k] = $('textCol').scrollTop;
+}
+function restoreScroll(key) {
+  if (!key) return;
+  setTimeout(() => { $('textCol').scrollTop = state.scrollCache[key] || 0; }, 60);
+}
+function sameLoc(a, b) { return a.module === b.module && locKeyOf(a) === locKeyOf(b); }
+// 首页块/搜索等"从外部进入"模块：先记录当前快照（‹ 可回退），再进入
+function enterModuleFromHome(id, opts) {
+  pushHist(snapshotLoc());
+  return enterModule(id, opts);
+}
+// 历史栈：只记跨模块/关联跳转（跳转前位置入栈），同位置去重，栈长上限 100
+function pushHist(e) {
+  const stack = state.histStack;
+  const top = stack[state.histPos];
+  if (top && sameLoc(top, e)) { stack[state.histPos] = e; }
+  else {
+    stack.splice(state.histPos + 1);
+    stack.push(e);
+    if (stack.length > 100) stack.shift();
+    state.histPos = stack.length - 1;
+  }
+  updateHistBtns();
+}
+function updateHistBtns() {
+  $('histBackBtn').disabled = state.histPos <= 0;
+  $('histFwdBtn').disabled = state.histPos >= state.histStack.length - 1;
+}
+// 统一跳转：按快照跳目标位置（跨模块 enterModule / 模块内 select），并恢复目标滚动
+async function jumpToLoc(e) {
+  saveScroll();
+  switch (e.module) {
+    case 'bible': {
+      if (state.activeModule !== 'bible') await enterModule('bible');
+      if (e.book && e.book !== (state.currentBook && state.currentBook.index)) await selectBook(e.book, e.chapter || 1, { keepSource: true });
+      else if (e.chapter && e.chapter !== state.currentChapter) await selectChapter(e.chapter, { keepSource: true });
+      break;
+    }
+    case 'lifereading': {
+      if (state.activeModule !== 'lifereading') await enterModule('lifereading', { bookIndex: e.lrBook, articleId: e.lrArticle });
+      else {
+        if (e.lrBook !== state.lrBookIndex) await selectLrVolume(e.lrBook, { keepSource: true });
+        if (e.lrArticle !== state.lrArticleId) await selectLrArticle(e.lrArticle, { keepSource: true });
+      }
+      break;
+    }
+    case 'books': {
+      if (state.activeModule !== 'books') await enterModule('books', { series: e.series, volume: e.volume, book: e.book, chapter: e.bchapter });
+      else await selectBookChapter(e.volume, e.book, e.bchapter, { keepSource: true });
+      break;
+    }
+    case 'morning': {
+      if (state.activeModule !== 'morning') await enterModule('morning', { period: e.period, chapterId: e.mchapter });
+      else {
+        if (e.period !== state.morningPeriod) await selectMorningPeriod(e.period, { keepSource: true });
+        if (e.mchapter !== state.morningChapterId) await selectMorningChapter(e.mchapter, { keepSource: true });
+      }
+      break;
+    }
+  }
+  restoreScroll(locKeyOf(e));
+}
+// 顶栏历史按钮：前进/后退按栈位置恢复（含滚动）
+function bindHistButtons() {
+  $('histBackBtn').addEventListener('click', () => {
+    if (state.histPos <= 0) return;
+    state.histPos--;
+    updateHistBtns();
+    jumpToLoc(state.histStack[state.histPos]);
+  });
+  $('histFwdBtn').addEventListener('click', () => {
+    if (state.histPos >= state.histStack.length - 1) return;
+    state.histPos++;
+    updateHistBtns();
+    jumpToLoc(state.histStack[state.histPos]);
+  });
+}
+// 来源链：跨合集/关联跳转设置，返回来源后清除（只记上一跳）
+function setSource(loc) { state.source = loc; renderSourceChain(); }
+function clearSource() { if (state.source) { state.source = null; renderSourceChain(); } }
+// 关联/跨模块跳转的统一记录：设置来源 + 当前快照入历史栈（跳转前调用）
+function rememberNav() { setSource(snapshotLoc()); pushHist(snapshotLoc()); }
+function renderSourceChain() {
+  const el = $('sourceChain');
+  if (!el) return;
+  if (!state.source) { el.hidden = true; return; }
+  el.hidden = false;
+  $('sourceChainText').textContent = `从「${state.source.label || ''}」进入`;
+}
+async function goBackSource() {
+  const s = state.source;
+  if (!s) return;
+  clearSource();
+  await jumpToLoc(s);
+}
+
 // 桌面 ☰ 折叠左栏（读经/生命读经共用）
 function toggleNavCollapsed() {
   state.navCollapsed = !state.navCollapsed;
@@ -649,7 +792,7 @@ function homeSearch(q) {
       const b = state.books.find(x => x.index === idx);
       out.push({
         key: 'bible-' + idx + '-' + m[2], loc: `${b.name} ${m[2]}章`, text: '读经',
-        go: () => { enterModule('bible'); selectBook(idx, parseInt(m[2], 10)); setMobileView('read'); },
+        go: () => { enterModuleFromHome('bible'); selectBook(idx, parseInt(m[2], 10)); setMobileView('read'); },
       });
     }
   }
@@ -669,7 +812,7 @@ function homeSearch(q) {
         out.push({
           key: 'lr-' + v.bookIndex + '-' + art.id,
           loc: `${v.name} · 生命读经`, text: art.title,
-          go: () => openLrArticle(v.bookIndex, art),
+          go: () => { pushHist(snapshotLoc()); openLrArticle(v.bookIndex, art); },
         });
       }
     });
@@ -683,7 +826,7 @@ function homeSearch(q) {
             out.push({
               key: 'bk-' + vi + '-' + bi + '-' + ci,
               loc: `${state.bookMeta.name} · ${v.title} · ${b.title}`, text: String(ct),
-              go: () => openBookChapter(vi + 1, bi, ci, state.bookSeries),
+              go: () => { pushHist(snapshotLoc()); openBookChapter(vi + 1, bi, ci, state.bookSeries); },
             });
           }
         });
@@ -698,7 +841,7 @@ function homeSearch(q) {
         out.push({
           key: 'mr-' + pid + '-' + ch.number,
           loc: `${(data.title || pid)} · 听抄`, text: ch.title,
-          go: () => openMorningArticle(pid, ch.number),
+          go: () => { pushHist(snapshotLoc()); openMorningArticle(pid, ch.number); },
         });
       }
     });
@@ -781,7 +924,7 @@ function renderChapterNav() {
   next.onclick = () => { if (ch < total) selectChapter(ch + 1); };
 }
 
-async function selectBook(index, chapter) {
+async function selectBook(index, chapter, opts) {
   state.currentBook = state.books.find(b => b.index === index);
   state.currentChapter = chapter;
   state.lifereading = null; // 重新加载新书卷生命读经
@@ -791,10 +934,10 @@ async function selectBook(index, chapter) {
   $('chapterLabel').textContent = `${chapter}章`;
   save(LS_LAST, { book: index, chapter });
   await ensureBibleData();
-  await selectChapter(chapter);
+  await selectChapter(chapter, opts);
 }
 
-async function selectChapter(chapter) {
+async function selectChapter(chapter, opts) {
   state.currentChapter = chapter;
   $('chapterLabel').textContent = `${chapter}章`;
   highlightNav();
@@ -802,6 +945,7 @@ async function selectChapter(chapter) {
   renderChapterNav();
   renderStudy();
   updateMobileNav();
+  if (!(opts && opts.keepSource)) clearSource();   // 用户手动翻章/选章时来源链失效（程序化跳转 keepSource）
   save(LS_LAST, { book: state.currentBook.index, chapter });
   // 生命读经懒加载（结果同时缓存到 lrVolumes，供首页篇目列表/全局笔记复用）
   if (!state.lifereading) {
@@ -1670,8 +1814,9 @@ function jumpToLr(articleId) {
 async function navigateToAnnotation(a) {
   if (a.type === 'lr' && state.activeModule === 'lifereading') {
     if (a.book !== state.lrBookIndex || a.articleId !== state.lrArticleId) {
-      await selectLrVolume(a.book);
-      await selectLrArticle(a.articleId);
+      rememberNav();
+      await selectLrVolume(a.book, { keepSource: true });
+      await selectLrArticle(a.articleId, { keepSource: true });
     }
     // 已在本篇：滚动到标注位置
     const mark = document.querySelector(`#lrMain mark[data-ann-id="${a.id}"]`);
@@ -1680,23 +1825,25 @@ async function navigateToAnnotation(a) {
   }
   if (a.type === 'book' && state.activeModule === 'books') {
     if (a.volume !== state.bookVolume || a.book !== state.bookBook || a.chapter !== state.bookChapter) {
-      await selectBookChapter(a.volume, a.book, a.chapter);
+      rememberNav();
+      await selectBookChapter(a.volume, a.book, a.chapter, { keepSource: true });
     }
     const mark = document.querySelector(`#bookMain mark[data-ann-id="${a.id}"]`);
     if (mark) mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
     return;
   }
+  rememberNav();
   await enterModule('bible');
   if (a.type === 'verse') {
-    if (a.book !== state.currentBook.index) await selectBook(a.book, a.chapter);
-    else if (a.chapter !== state.currentChapter) await selectChapter(a.chapter);
+    if (a.book !== state.currentBook.index) await selectBook(a.book, a.chapter, { keepSource: true });
+    else if (a.chapter !== state.currentChapter) await selectChapter(a.chapter, { keepSource: true });
     jumpToVerse(a.chapter, a.verse, a.half);
   } else if (a.type === 'lr') {
-    if (a.book !== state.currentBook.index) await selectBook(a.book, 1);
+    if (a.book !== state.currentBook.index) await selectBook(a.book, 1, { keepSource: true });
     const art = ((state.lifereading && state.lifereading.articles) || []).find(x => x.id === a.articleId)
       || ((state.lrVolumes[a.book] || { articles: [] }).articles || []).find(x => x.id === a.articleId);
     const ch = art && art.verses && art.verses.length ? (parseInt(String(art.verses[0])) || 1) : 1;
-    if (ch !== state.currentChapter) await selectChapter(ch);
+    if (ch !== state.currentChapter) await selectChapter(ch, { keepSource: true });
     jumpToLr(a.articleId);
   } else if (a.type === 'book') {
     await enterModule('books', { series: a.series, volume: a.volume, book: a.book, chapter: a.chapter });
@@ -1786,7 +1933,7 @@ function renderLrSide() {
   side.innerHTML = '';
   const tabs = document.createElement('div');
   tabs.className = 'lr-side-tabs';
-  [['outline', '纲目'], ['notes', '笔记']].forEach(([v, label]) => {
+  [['outline', '纲目'], ['rel', '关联'], ['notes', '笔记']].forEach(([v, label]) => {
     const b = document.createElement('button');
     b.className = 'lr-side-tab' + (state.lrSideTab === v ? ' active' : '');
     b.textContent = label;
@@ -1796,9 +1943,53 @@ function renderLrSide() {
   const body = document.createElement('div');
   body.className = 'lr-side-body';
   if (state.lrSideTab === 'outline') renderLrOutline(body);
+  else if (state.lrSideTab === 'rel') renderLrRel(body);
   else renderLrNotes(body);
   side.appendChild(tabs);
   side.appendChild(body);
+}
+
+// 右栏关联（篇 → 章 反向）：解析本篇 verses 涉及章节，点击回典籍对应章（记来源 + 历史）
+function renderLrRel(body) {
+  if (_lrSpy) { $('textCol').removeEventListener('scroll', _lrSpy); _lrSpy = null; }   // 离开纲目解绑滚动高亮
+  const vol = state.lrVolumes[state.lrBookIndex];
+  const art = vol && vol.articles.find(a => a.id === state.lrArticleId);
+  if (!art || !art.verses || !art.verses.length) {
+    body.innerHTML = '<div class="empty-hint">本篇未关联章节</div>';
+    return;
+  }
+  const seen = new Map();
+  for (const v of art.verses) {
+    const m = String(v).match(/^(\d+):(\d+)(?:-(\d+))?/);
+    if (!m) continue;
+    const ch = +m[1], from = +m[2], to = m[3] ? +m[3] : +m[2];
+    if (!seen.has(ch)) seen.set(ch, { ch, from, to });
+    else { const s = seen.get(ch); s.from = Math.min(s.from, from); s.to = Math.max(s.to, to); }
+  }
+  if (!seen.size) { body.innerHTML = '<div class="empty-hint">本篇未关联章节</div>'; return; }
+  const wrap = document.createElement('div');
+  wrap.className = 'lr-rel-list';
+  [...seen.values()].forEach(p => {
+    const card = document.createElement('button');
+    card.className = 'lr-rel-card';
+    card.innerHTML = `
+      <span class="lr-rel-head">
+        <span class="lr-rel-badge">典籍</span>
+        <span class="lr-rel-title">${escapeHtml(vol.name)} 第${p.ch}章</span>
+        <span class="lr-rel-arrow">→</span>
+      </span>
+      <span class="lr-rel-sub">涉及 ${p.ch}:${p.from}${p.to > p.from ? '-' + p.to : ''}</span>`;
+    card.addEventListener('click', () => followChapterFromLr(state.lrBookIndex, p.ch));
+    wrap.appendChild(card);
+  });
+  body.appendChild(wrap);
+}
+
+// 生命读经 → 典籍（关联跳转）：记来源 + 历史，再跳转
+async function followChapterFromLr(book, chapter) {
+  setSource(snapshotLoc());
+  pushHist(snapshotLoc());
+  await jumpToLoc({ module: 'bible', book, chapter });
 }
 
 // 右栏纲目：extractLrHeadings 生成 toc，点击滚动定位 + 正文滚动高亮
@@ -1849,7 +2040,7 @@ function renderLrNotes(body) {
 }
 
 // 同卷切篇：重渲染主区 + 右栏 + crumb + 左栏 active，正文滚顶
-async function selectLrArticle(articleId) {
+async function selectLrArticle(articleId, opts) {
   state.lrArticleId = articleId;
   save(LS_LR_LAST, { book: state.lrBookIndex, articleId });
   document.querySelectorAll('.lr-nav-art').forEach(x => x.classList.toggle('active', +x.dataset.id === articleId));
@@ -1857,11 +2048,12 @@ async function selectLrArticle(articleId) {
   await mod.renderMain();
   mod.renderSide();
   mod.renderCrumb();
+  if (!(opts && opts.keepSource)) clearSource();   // 用户手动切换时来源链失效（程序化跳转 keepSource）
   $('textCol').scrollTop = 0;
 }
 
 // 切卷 → 该卷第一篇
-async function selectLrVolume(bookIndex) {
+async function selectLrVolume(bookIndex, opts) {
   state.lrBookIndex = bookIndex;
   const vol = await ensureLrVolume(bookIndex);
   if (!vol) { showToast('该卷生命读经数据缺失'); return; }
@@ -1872,6 +2064,7 @@ async function selectLrVolume(bookIndex) {
   await mod.renderMain();
   mod.renderSide();
   mod.renderCrumb();
+  if (!(opts && opts.keepSource)) clearSource();   // 用户手动切卷时来源链失效（程序化跳转 keepSource）
   $('textCol').scrollTop = 0;
 }
 
@@ -2042,7 +2235,7 @@ function renderBookNotes(body) {
 }
 
 // 切系列 → 第 1 辑第 1 本第 1 章（系列条点击）
-async function selectBookSeries(series) {
+async function selectBookSeries(series, opts) {
   if (series === state.bookSeries) return;
   state.bookSeries = series;
   state.bookMeta = null;   // 换系列重载元数据
@@ -2058,10 +2251,11 @@ async function selectBookSeries(series) {
   mod.renderSide();
   mod.renderCrumb();
   $('textCol').scrollTop = 0;
+  if (!(opts && opts.keepSource)) clearSource();   // 用户手动切换时来源链失效（程序化跳转 keepSource）
 }
 
 // 选辑 → 第 1 本第 1 章
-async function selectBookVolume(volume) {
+async function selectBookVolume(volume, opts) {
   state.bookVolume = volume;
   state.bookBook = 0;
   state.bookChapter = 0;
@@ -2074,10 +2268,11 @@ async function selectBookVolume(volume) {
   mod.renderSide();
   mod.renderCrumb();
   $('textCol').scrollTop = 0;
+  if (!(opts && opts.keepSource)) clearSource();   // 用户手动切换时来源链失效（程序化跳转 keepSource）
 }
 
 // 选书 → 第 1 章
-async function selectBookItem(book) {
+async function selectBookItem(book, opts) {
   state.bookBook = book;
   state.bookChapter = 0;
   save(LS_BOOK_LAST, { series: state.bookSeries, volume: state.bookVolume, book, chapter: 0 });
@@ -2087,10 +2282,11 @@ async function selectBookItem(book) {
   mod.renderSide();
   mod.renderCrumb();
   $('textCol').scrollTop = 0;
+  if (!(opts && opts.keepSource)) clearSource();   // 用户手动切换时来源链失效（程序化跳转 keepSource）
 }
 
 // 切章（同书内）
-async function selectBookChapter(volume, book, chapter) {
+async function selectBookChapter(volume, book, chapter, opts) {
   state.bookVolume = volume; state.bookBook = book; state.bookChapter = chapter;
   save(LS_BOOK_LAST, { series: state.bookSeries, volume, book, chapter });
   document.querySelectorAll('.bk-vol-strip-btn').forEach(x => x.classList.toggle('active', +x.dataset.v === volume));
@@ -2100,6 +2296,7 @@ async function selectBookChapter(volume, book, chapter) {
   mod.renderSide();
   mod.renderCrumb();
   $('textCol').scrollTop = 0;
+  if (!(opts && opts.keepSource)) clearSource();   // 用户手动切换时来源链失效（程序化跳转 keepSource）
 }
 
 // 统一入口（首页块 / 搜索 / 全局笔记）：模块内切章，模块外进模块
@@ -2219,7 +2416,7 @@ function renderMorningSide() {
 }
 
 // 同期切篇
-async function selectMorningChapter(chapterId) {
+async function selectMorningChapter(chapterId, opts) {
   state.morningChapterId = chapterId;
   save(LS_MORNING_LAST, { period: state.morningPeriod, chapterId });
   document.querySelectorAll('.morning-nav-art').forEach(x => x.classList.toggle('active', +x.dataset.n === chapterId));
@@ -2227,10 +2424,11 @@ async function selectMorningChapter(chapterId) {
   renderMorningSide();
   READER_MODULES.morning.renderCrumb();
   $('textCol').scrollTop = 0;
+  if (!(opts && opts.keepSource)) clearSource();   // 用户手动切换时来源链失效（程序化跳转 keepSource）
 }
 
 // 切期 → 该期第 1 篇
-async function selectMorningPeriod(periodId) {
+async function selectMorningPeriod(periodId, opts) {
   state.morningPeriod = periodId;
   state.morningChapterId = 1;
   const data = await ensureMorningData(periodId);
@@ -2242,6 +2440,7 @@ async function selectMorningPeriod(periodId) {
   renderMorningSide();
   mod.renderCrumb();
   $('textCol').scrollTop = 0;
+  if (!(opts && opts.keepSource)) clearSource();   // 用户手动切换时来源链失效（程序化跳转 keepSource）
 }
 
 // 统一入口（首页块 / 搜索 / 全局笔记）：模块内切篇，模块外进模块
@@ -2277,6 +2476,9 @@ let editingAnnId = null;
 function bindEvents() {
   // 首页：合集块点击 + 顶部搜索 + ⌂ 回首页
   bindHomeEvents();
+  // 导航（P0）：顶栏历史 ‹ › + 来源链返回
+  bindHistButtons();
+  $('sourceChainBack').addEventListener('click', goBackSource);
   // 隐藏/显示注号
   $('hideMarksBtn').addEventListener('click', () => {
     state.hideMarks = !state.hideMarks;

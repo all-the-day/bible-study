@@ -38,7 +38,7 @@ async function main() {
   console.log('2. 纲目点击定位:', r2 ? '✓' : '✗', '| active:', r2);
 
   // 3. 右栏笔记 tab：输入 → 持久化
-  await page.evaluate(() => { document.querySelectorAll('.lr-side-tab')[1].click(); });
+  await page.evaluate(() => { document.querySelectorAll('.lr-side-tab')[2].click(); });
   await new Promise((r) => setTimeout(r, 300));
   await page.type('.lr-note-ta', '阅读器测试笔记');
   await new Promise((r) => setTimeout(r, 400));

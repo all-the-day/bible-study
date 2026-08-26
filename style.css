@@ -50,6 +50,29 @@ body {
   border-radius: var(--radius-sm);
 }
 .icon-btn:hover { background: rgba(255,255,255,.15); }
+/* 顶栏历史按钮（P0 导航）：禁用态半透明不可点 */
+.hist-btn { font-size: 18px; font-weight: 700; line-height: 1; }
+.hist-btn:disabled { opacity: .3; cursor: not-allowed; }
+.hist-btn:disabled:hover { background: transparent; }
+
+/* 来源链（P0 导航）：主区顶部黄条，sticky 不随正文滚动 */
+.source-chain {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 18px;
+  background: #fff9df; border-bottom: 1px solid #eedc9a;
+  font-size: 13px;
+}
+.source-chain[hidden] { display: none; }
+.sc-icon { color: #b8860b; }
+.sc-text { color: #6b5b1e; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-back {
+  flex: 0 0 auto; border: 1px solid #eedc9a; background: #fff;
+  color: var(--brand); font-size: 13px; font-weight: 600;
+  padding: 4px 14px; border-radius: var(--radius-sm); cursor: pointer;
+}
+.sc-back:hover { background: #f2ecff; }
+
 .crumb { flex: 1; display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 600; }
 .crumb #chapterLabel { font-weight: 400; opacity: .9; }
 .topbar-actions { display: flex; gap: 4px; align-items: center; }
@@ -869,6 +892,22 @@ body.home .mobile-nav { display: none; }
   border-radius: var(--radius-sm); padding: 8px; font-size: 14px;
   resize: vertical; font-family: inherit; color: var(--text); background: var(--surface);
 }
+/* 右栏关联（篇→章 反向）：卡片列表 */
+.lr-rel-card {
+  display: block; width: 100%; text-align: left;
+  border: 1px solid var(--border); background: var(--surface);
+  border-radius: var(--radius-sm); padding: 9px 12px; margin-bottom: 8px;
+  cursor: pointer; font: inherit; color: var(--text);
+}
+.lr-rel-card:hover { border-color: var(--brand); background: var(--surface-alt); }
+.lr-rel-head { display: flex; align-items: center; gap: 6px; }
+.lr-rel-badge {
+  flex: 0 0 auto; font-size: 11px; padding: 1px 8px; border-radius: 999px;
+  background: rgba(var(--brand-rgb), .12); color: var(--brand-dark); font-weight: 600;
+}
+.lr-rel-title { flex: 1; min-width: 0; font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lr-rel-arrow { flex: 0 0 auto; color: var(--text-soft); }
+.lr-rel-sub { font-size: 12px; color: var(--text-soft); }
 .lr-main { padding: 16px 20px; }
 .lr-main .lr-item { margin-bottom: 8px; }
 
