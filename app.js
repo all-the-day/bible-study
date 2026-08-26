@@ -2851,7 +2851,11 @@ function rerenderAnn(ann) {
       if (state.activeTab === 'mynotes') renderStudy();
     });
   } else if (ann.type === 'lr') {
-    withScrollPreserved(['#studyBody', '#textCol', '.lr-full-content'], renderStudy);
+    // 生命读经模块内：重渲染 #lrMain；读经模块研读列：重渲染 studyBody
+    withScrollPreserved(['#textCol', '#studyBody', '.lr-full-content'], () => {
+      if (state.activeModule === 'lifereading') READER_MODULES.lifereading.renderMain();
+      else renderStudy();
+    });
   } else if (ann.type === 'book') {
     // 书报模块内标注：重渲染主区保持高亮
     withScrollPreserved(['#textCol'], () => {
