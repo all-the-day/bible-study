@@ -86,7 +86,7 @@ async function main() {
   console.log('5. 切卷切篇:', r5.book === '罗马书' ? '✓' : '✗', '|', r5.crumb, '| active:', r5.activeArt);
 
   // 6. 右栏纲目 tab 存在 + 切笔记 tab
-  await page.evaluate(() => { document.querySelectorAll('.lr-side-tab')[2].click(); });
+  await page.evaluate(() => { document.querySelectorAll('.lr-side-tab')[1].click(); });
   await new Promise((r) => setTimeout(r, 300));
   const r6 = await page.evaluate(() => ({
     ta: !!document.querySelector('.lr-note-ta'),
