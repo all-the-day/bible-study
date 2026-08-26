@@ -39,3 +39,4 @@ builds/
 
 # 反馈收件箱本地快照（pull 生成，不入库）
 scripts/feedback/inbox.md
+case/

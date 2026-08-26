@@ -1,5 +1,5 @@
-/* 晨兴阅读器专项测试：直进第一篇、期条切期、篇列表切篇、六天晨兴渲染、
- * 晨兴划线标注、全局笔记晨兴分组跳转、回首页再进恢复 */
+/* 听抄阅读器专项测试：直进第一篇、期条切期、篇列表切篇、六天晨兴渲染、
+ * 听抄划线标注、全局笔记听抄分组跳转、回首页再进恢复 */
 const { spawn } = require('child_process');
 const ROOT = require('path').resolve(__dirname, '..');
 const PORT = 8765;
@@ -95,7 +95,7 @@ async function main() {
     tabs: [...document.querySelectorAll('.hl-tab')].map(t => t.textContent).join('|'),
     groups: [...document.querySelectorAll('.hl-group')].map(g => g.textContent).join('|'),
   }));
-  console.log('6. 全局笔记:', r6.tabs.includes('晨兴') ? '✓' : '✗', '| 分组:', r6.groups);
+  console.log('6. 全局笔记:', r6.tabs.includes('听抄') ? '✓' : '✗', '| 分组:', r6.groups);
   await page.evaluate(() => { document.querySelectorAll('.hl-item')[0].click(); });
   await new Promise((r) => setTimeout(r, 2500));
   const r6b = await page.evaluate(() => ({
