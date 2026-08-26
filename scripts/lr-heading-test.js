@@ -13,6 +13,7 @@ const puppeteer = require('D:/coder/aiWorkSpace/bible-reader/node_modules/puppet
 
   await page.goto('http://localhost:8765/', { waitUntil: 'networkidle0', timeout: 30000 });
   await page.waitForSelector('.verse .vtext', { timeout: 15000 });
+  await page.evaluate(() => enterWork());   // 启动先进首页（body.home 隐藏工作区），测试需先切回工作区
 
   // 切到创世记 11 章（第八篇「终极的完成」经文范围含 11 章）
   await page.evaluate(() => selectChapter(11));

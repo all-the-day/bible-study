@@ -34,7 +34,7 @@
 | `config/android/` | 原生更新插件源码（ApkInstallerPlugin：download 原生下载 + install 安装；MainActivity/file_paths.xml），CI 注入 android/ 工程，不入本地构建 |
 | `scripts/export.py` | 从 `../bible` 导出静态 JSON → `data/` |
 | `scripts/patch-android.mjs` | CI 帮手：注入原生插件 + AndroidManifest 权限/FileProvider（幂等） |
-| `scripts/*-test.js` | puppeteer 端到端测试（e2e / 标注 / 生命读经标注）；`download-sim-test.js` 验证 WebView fetch 下载被 CORS 拦截（根因留档），`update-logic-test.js` mock 原生插件验证 download() fallback/进度/监听清理 |
+| `scripts/*-test.js` | puppeteer 端到端测试（e2e / 标注 / 生命读经标注）；`download-sim-test.js` 验证 WebView fetch 下载被 CORS 拦截（根因留档），`update-logic-test.js` mock 原生插件验证 download() fallback/进度/监听清理，`home-test.js` / `home-test-mobile.js` 首页+合集链路冒烟，`lr-reader-test.js` 生命读经阅读器专项（直进/切卷/切篇/纲目/笔记/折叠/划线/恢复） |
 | `data/books.json` | 66 卷目录 + 每卷章数 + 缩写 |
 | `data/bible-text.json` | 原文，键 `创1:1` / `创1:2上`，值含 `{N}`（注脚）/`[a]`（串珠）标记 |
 | `data/bible-notes.json` | 注解，键 → `{seq: 注脚文本}`（seq 为节内连续编号，可复用同一文本、跨半节连续） |
@@ -55,13 +55,29 @@
 - **位置自愈（TextQuoteSelector，移植自晨读 app highlight.js）**：保存时记录选中文本快照 `text` + 前后各 25 字上下文 `prefix`/`suffix`（快照取自定义 `plain` 切片而非 `range.toString()`，与渲染坐标系严格一致）；渲染时（`renderChapter`/`renderLifereading`）校验偏移，失效则按文本匹配 + 上下文打分重定位并写回。旧数据无 `text` 字段则跳过自愈
 - 颜色沿用 bible-reader 5 色语义：c1黄=重要句子 / c2绿=「耶和华我的神」等 / c3紫=「我是耶和华」 / c4蓝=神所喜愛讚賞的 / c5红=神所恨惡審判禁止的
 - 标注 + 笔记 + 下划线 三种形态：高亮（背景色）、下划线、笔记（附加文字）
-- 「我的笔记」的划线汇总**跟随当前章篇目对应**：只列本章经文标注 + 当前章对应生命读经篇目（自动匹配或手动 `lrMap`）上的标注；按来源分 tab（全部/经文/生命读经），点击跳回原文
+- 「我的笔记」的划线汇总**跟随当前章篇目对应**：只列本章经文标注 + 当前章对应生命读经篇目（自动匹配或手动 `lrMap`）上的标注；按来源分 tab（全部/经文/生命读经），点击跳回原文。**双模式**（`state.notesScope`）：研读列顶部「本章|全部」切换——`chapter` = 当前章聚合（默认），`global` = 全量标注按书卷→章分组（`groupHlGlobal`，label「创世记 · 第24章」/「创世记 · 生命读经」），跨书卷点击走 `navigateToAnnotation`（先选书再定位）。首页「我的笔记」块 = 进读经模块研读列 global 模式（`enterNotesGlobal`）
+- **`annotationText` 跨书卷注意**：经文取文本必须用标注自己的 `a.book` 查 books.json 取缩写（全局模式下当前书卷≠标注书卷），生命读经跨书卷查 `state.lrVolumes[a.book]` 缓存兜底，无则回退 `a.text` 快照
 
 **纲目**（`data/bible-outlines.json`）：每章 `theme`（level 1-2 上级纲目，跨章游走，渲染章首）+ `items`（level 1-6 分段标题，按 `section`/`flag` 锚点穿插在经文卡片之间）。
 
 **生命读经匹配**：自动按每篇 `verses` 的章节号（`X:Y` 开头的 `X`）匹配当前章；用户可手动指定（localStorage 键 `bible-study.lrMap`，`{键(如"创24"): [篇目id]}`，覆盖自动匹配，纯本地不参与云同步）。
 
-**移动端（≤900px）单视图模型**：同一时刻只显示一个内容——读经（经文）或研读（注解/生命读经/我的笔记），模式切换在顶栏右侧「读经|研读」pill（`#modePill`，`setMobileView` 维护 body.mobile-study）；桌面三列布局不变。移动端顶栏为 ☰ + 居中标题（`创世记 25章`，**点击弹章节选择** `openChapterPicker`：书卷横向切换 + 章网格）+ `#settingsBtn`（⚙️ 统一设置弹窗 `openSettingsModal`：同步/阅读/其他分组卡片 + Switch 开关，底部版本号）。**☰ 上下文导航**：读经视图开书卷抽屉；研读+生命读经 tab 开篇目/纲目导航 sheet（`openLrNavSheet`，点击滚动定位）；研读+注解/我的笔记 tab 为 no-op。**底部导航 `#mobileNav` 仅读经模式显示**（`mobileNavGo`/`updateMobileNav` 只翻章，边界禁用）；研读模式沉浸化：nav 隐藏、`.study-col` 延伸到底（`body.mobile-study` 规则），翻章/翻篇改走 crumb 选章 / ☰ 篇目导航。隐藏桌面专属元素（视图模式/研读全屏/笔记按钮/顶栏翻页/拖拽调宽/纲目侧栏），`jumpToVerse`/`jumpToLr` 自动切回对应视图。**同步状态指示**：顶栏圆点已移除，收进设置弹窗「同步」组的「同步状态」行（`syncStatusInfo` 文字+颜色），冷启动（新会话首次）启用同步时 toast 提示一次（`showStartupSyncToast`，sessionStorage 去重）。移动端样式全部限定在 `@media (max-width: 900px)`，桌面 CSS 不受影响。
+**移动端（≤900px）单视图模型**：同一时刻只显示一个内容——读经（经文）或研读（注解/生命读经/我的笔记），模式切换在顶栏右侧「读经|研读」pill（`#modePill`，`setMobileView` 维护 body.mobile-study）；桌面三列布局不变。**首页是第三种态（`body.home`）**：启动先进首页（见「首页 + 合集块」节），首页时 pill/☰/底部导航/工作区按钮全部隐藏。**生命读经阅读器（body-mod-lifereading 三列）移动端暂未适配**：保证不崩溃、正文可读（textCol 显示 #lrMain），☰/crumb/侧栏交互延后。移动端顶栏为 ⌂ + ☰ + 居中标题（`创世记 25章`，**点击弹章节选择** `openChapterPicker`：书卷横向切换 + 章网格）+ `#settingsBtn`（⚙️ 统一设置弹窗 `openSettingsModal`：同步/阅读/其他分组卡片 + Switch 开关，底部版本号）。**☰ 上下文导航**：读经视图开书卷抽屉；研读+生命读经 tab 开篇目/纲目导航 sheet（`openLrNavSheet`，点击滚动定位）；研读+注解/我的笔记 tab 为 no-op。**底部导航 `#mobileNav` 仅读经模式显示**（`mobileNavGo`/`updateMobileNav` 只翻章，边界禁用）；研读模式沉浸化：nav 隐藏、`.study-col` 延伸到底（`body.mobile-study` 规则），翻章/翻篇改走 crumb 选章 / ☰ 篇目导航。隐藏桌面专属元素（视图模式/研读全屏/笔记按钮/顶栏翻页/拖拽调宽/纲目侧栏），`jumpToVerse`/`jumpToLr` 自动切回对应视图。**同步状态指示**：顶栏圆点已移除，收进设置弹窗「同步」组的「同步状态」行（`syncStatusInfo` 文字+颜色），冷启动（新会话首次）启用同步时 toast 提示一次（`showStartupSyncToast`，sessionStorage 去重）。移动端样式全部限定在 `@media (max-width: 900px)`，桌面 CSS 不受影响。
+
+## 首页 + 合集块（2026-08 阶段 1）
+
+**启动先进首页**（PC/移动端通用，浏览器启动页风格）：顶部通用检索 + 正方形合集块网格。首页是全屏层 `#homeView`，与工作区 `.layout` **正交**（CSS 切换：`body.home .layout{display:none}` + `body:not(.home) #homeView{display:none}`，无 JS 频繁切 hidden）；顶栏新增常驻 `#homeBtn`（⌂）回首页。
+
+- **状态**：`state.screen`（'home'|'work'，唯一视图正交开关）、`state.activeModule`（当前阅读器模块：'bible'|'lifereading'）、`state.notesScope`（'chapter'|'global'）、`state.lrVolumes`（生命读经卷懒加载缓存，`selectChapter` 懒加载与阅读器共用）、`state.lrBookIndex/lrArticleId/lrSideTab`（生命读经阅读器位置与右栏 tab）
+- **切换函数**（顶层声明，e2e 测试 `page.evaluate(() => enterWork())` 直接调用）：`showHome()`（加 body.home + 移除 mobile-study + closePopupAll + 刷新块计数）、`enterWork()`（移除 body.home，幂等）
+- **合集注册表 `COLLECTIONS`（app.js 顶部，数据驱动）**：`{id, title, icon, entry}` 数组（**无 sub 副标题**）→ `renderHome()` 遍历生成 `.home-block` tile，点击委托分发。**晨兴/书报数据导出后各加一行即可上块，UI 零改动**（注册表已留注释占位）
+- **阅读器外壳 + 模块注册表 `READER_MODULES`（app.js，核心抽象）**：每个合集模块 = 一套三列阅读器配置 `{id, title, enter(opts), renderNav(), renderMain(), renderSide(), renderCrumb(), onMenu(), onCrumbClick()}`。`enterModule(id, opts)` 是唯一入口（首页块/搜索/全局笔记都走它）：旧模块 onLeave → activeModule 切换 → `applyModuleBodyClass`（body-mod-{id} 类驱动三列容器归属，CSS 见 style.css「阅读器模块容器切换」节）→ enterWork → 首次进入时 enter + 四渲染（**同模块幂等不重渲染**）。☰ 桌面 = `toggleNavCollapsed()` 折叠当前模块左栏；crumb 点击 = 模块分发（读经=选章弹窗 / 生命读经=篇目弹窗）
+- **读经模块（bible）**：entry 直接进上次章节（`LS_LAST`，无则 1,1），不再弹选章；左栏=书卷+章网格、主区=经文、右栏=注解|生命读经|我的笔记、actions=双页/隐藏注号/研读全屏/笔记/反馈/设置（现状）
+- **生命读经模块（lifereading，方案 A 三列）**：entry 直接进上次篇目（`LS_LR_LAST`，无则第一卷第一篇）；左栏=卷条（66 卷横向 `.lr-vol-strip`）+ 当前卷篇目列表（`.lr-nav-articles`），☰ 折叠与读经一致；主区=篇目正文（`renderLrArticle(art, bookIndex)` 渲染到 `#lrMain`，标注坐标系不变）；右栏=`#lrSide`「纲目|笔记」tab（纲目在前：`extractLrHeadings` + 滚动高亮 `bindLrOutlineSpy` 句柄化监听 `#textCol`；笔记：篇级 textarea `state.lrNotes` + 本篇标注汇总）；crumb=`卷名 · 第{id}篇 {标题}` 点击弹篇目列表；actions 只留 ⚙️（`body-mod-lifereading` CSS 隐藏其余）；切篇/切卷 `selectLrArticle/selectLrVolume` 持久化 LS_LR_LAST + 正文滚顶；统一入口 `openLrArticle(bookIndex, art)`（模块内切篇/模块外进模块）
+- **模块感知标注**：`renderLrArticle` 输出 `data-book`；`findAnnotatable` 加 `data-article` 守卫（**修复 renderFootnotes 注解容器误标 .lr-content 致 articleId=NaN 的隐患**）；`handleSelection` 按 data-book 定位卷取源文本；`navigateToAnnotation` 模块感知（lr 模块内就地跳转，跨模块回 bible）
+- **顶部搜索 `homeSearch(q)`**（轻量三条过滤，**不做全文**）：① 书卷+章正则走 `REF_ALIASES`/`resolveBookAlias` → `enterModule('bible')` 进工作区选章；② 标注 note/text 包含匹配（截 20 条，`navigateToAnnotation` 跳转）；③ 生命读经篇目标题（仅 `state.lrVolumes` 已缓存卷，不建全量索引）→ `openLrArticle` 直进阅读器
+- **测试**：e2e 类测试启动后需 `enterWork()` 切回工作区（init 后台预渲染使 DOM 存在但被 body.home 隐藏，直接 page.click 隐藏元素会抛错）；`home-test.js`（直进版冒烟）/ `home-test-mobile.js` / `lr-reader-test.js`（阅读器专项：直进/切卷/切篇/纲目/笔记/折叠/划线/恢复）为首页+阅读器链路测试
+- **数据源规划（阶段 3/4）**：晨兴 = 反编译晨读 APK 资源 `d:/迅雷下载/晨读appRes/resources/assets/public/`（`trainings.json` + 每月 `{期}/training.json`：chapters → outline_sections/detail_sections/morning_revivals 周一~周六），导出 `data/morning/`（`scripts/export-morning.py`）；书报 = `../bible/data/raw/spiritual_food/`（倪柝声文集 3 辑 62 本 1325 章 md + 目录索引 json，另 30 个系列渐进），导出 `data/books/`（`scripts/export-spiritual.py`）。标注 type 扩展 `'morning'`/`'book'` 向后兼容（旧 verse/lr 照常），模块注册表各加一行
 
 ## 云同步
 
@@ -70,10 +86,10 @@
 | 项 | 值 |
 |----|-----|
 | API | `https://duoban.xyz/bible-api/api/kv/{key}`（GET/PUT/DELETE） |
-| 服务器 key | `u{uid}:bible-study:annotations`、`u{uid}:bible-study:chapterNotes`（uid 来自账号） |
+| 服务器 key | `u{uid}:bible-study:annotations`、`u{uid}:bible-study:chapterNotes`、`u{uid}:bible-study:lrNotes`（uid 来自账号） |
 | 客户端 | `sync.js`（`window.BibleStudySync`） |
 | 策略 | 服务器为主：启动 `pullAll` 覆盖本地；写时 `putRemote` 防抖；失败标 pending，启动 `flushPending` 重试 |
-| 同步范围 | **只同步用户数据**（annotations / chapterNotes）；布局偏好（viewMode / hideMarks / studyWidth 等）保持设备本地 |
+| 同步范围 | **只同步用户数据**（annotations / chapterNotes / lrNotes）；布局偏好（viewMode / hideMarks / studyWidth 等）保持设备本地 |
 
 **账号与授权（RFC 8628 简化版）**：
 - 同步是**运行时可选功能**：localStorage `bible-study.account`（`{uid, token}`，null=未启用纯本地）；`syncActive()`（app.js）门控；⚙️ 设置弹窗「云同步」行打开启用/管理弹窗

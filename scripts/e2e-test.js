@@ -14,6 +14,7 @@ const puppeteer = require('D:/coder/aiWorkSpace/bible-reader/node_modules/puppet
 
   await page.goto('http://localhost:8765/', { waitUntil: 'networkidle0', timeout: 30000 });
   await page.waitForSelector('.verse', { timeout: 15000 });
+  await page.evaluate(() => enterWork());   // 启动先进首页（body.home 隐藏工作区），测试需先切回工作区
 
   // 1. 默认创世记第1章，检查首节文本
   const firstVerse = await page.$eval('.verse .vtext', el => el.textContent);

@@ -13,6 +13,7 @@ const puppeteer = require('D:/coder/aiWorkSpace/bible-reader/node_modules/puppet
 
   await page.goto('http://localhost:8765/', { waitUntil: 'networkidle0', timeout: 30000 });
   await page.waitForSelector('.verse .vtext', { timeout: 15000 });
+  await page.evaluate(() => enterWork());   // 启动先进首页（body.home 隐藏工作区），测试需先切回工作区
 
   // 1. 选中首节「起初」二字（前 2 个文本字符）
   await page.evaluate(() => {
@@ -44,9 +45,10 @@ const puppeteer = require('D:/coder/aiWorkSpace/bible-reader/node_modules/puppet
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('bible-study.annotations') || '[]'));
   console.log('存储标注数:', stored.length, '| 首条:', stored[0] && JSON.stringify({ book: stored[0].book, chapter: stored[0].chapter, verse: stored[0].verse, start: stored[0].start, end: stored[0].end, colorId: stored[0].colorId }));
 
-  // 4. 刷新后标注是否回放
+  // 4. 刷新后标注是否回放（刷新后回到首页，同样先切回工作区）
   await page.reload({ waitUntil: 'networkidle0' });
   await page.waitForSelector('.verse .vtext', { timeout: 15000 });
+  await page.evaluate(() => enterWork());
   await new Promise((r) => setTimeout(r, 300));
   const markAfterReload = await page.$$eval('mark.c1', els => els.length);
   console.log('刷新后 c1 标注数量:', markAfterReload);

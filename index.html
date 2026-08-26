@@ -11,6 +11,7 @@
 </head>
 <body>
   <header class="topbar">
+    <button id="homeBtn" class="icon-btn" aria-label="首页">⌂</button>
     <button id="menuBtn" class="icon-btn" aria-label="菜单">☰</button>
     <div class="crumb">
       <span id="bookName">—</span>
@@ -39,11 +40,15 @@
       </div>
       <div class="nav-list" id="bookList"></div>
       <div class="nav-chapters" id="chapterList"></div>
+      <!-- 生命读经模块左栏：卷条 + 篇目列表（body-mod-lr 时显示） -->
+      <div class="lr-nav" id="lrNav"></div>
     </aside>
 
     <main class="text-col" id="textCol">
       <div id="chapterTheme" class="chapter-theme"></div>
       <div id="verseContainer" class="verses"></div>
+      <!-- 生命读经模块主区（body-mod-lr 时显示） -->
+      <div id="lrMain" class="lr-main"></div>
     </main>
 
     <aside class="study-col" id="studyCol">
@@ -54,7 +59,21 @@
         <button class="study-tab" data-tab="mynotes">我的笔记</button>
       </div>
       <div class="study-body" id="studyBody"></div>
+      <!-- 生命读经模块右栏：纲目|笔记（body-mod-lr 时显示） -->
+      <div class="lr-side" id="lrSide"></div>
     </aside>
+  </div>
+
+  <!-- 首页：启动默认视图，合集块网格（读经/生命读经/我的笔记；晨兴/书报数据到位后加块）
+       显示由 body.home 类控制（body:not(.home) #homeView 隐藏） -->
+  <div id="homeView" class="home-view">
+    <div class="home-wrap">
+      <div class="home-search">
+        <input id="homeSearch" placeholder="搜索书卷 / 章（如 创24）/ 生命读经篇目 / 笔记…" autocomplete="off">
+        <div id="homeSearchResults"></div>
+      </div>
+      <div class="home-grid" id="homeGrid"></div>
+    </div>
   </div>
 
   <div id="floatTool" class="floattool" hidden></div>

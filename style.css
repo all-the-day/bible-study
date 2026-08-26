@@ -734,6 +734,124 @@ body.scroll-locked { overflow: hidden; }
   font-size: 16px; letter-spacing: 2px; font-family: inherit;
 }
 
+/* ── 首页（合集块）── 启动默认视图，与工作区正交：body.home 时隐藏 .layout */
+body:not(.home) #homeView { display: none; }   /* 工作区时隐藏首页 */
+body.home .layout { display: none; }
+body.home .crumb { display: none; }                    /* 首页不显示章节 crumb */
+body.home #menuBtn { display: none; }                  /* ☰ 只服务工作区导航 */
+body.home #modePill { display: none; }                 /* 首页是第三种态，隐藏读经|研读 pill */
+body.home #viewModeBtn, body.home #hideMarksBtn,
+body.home #studyFullBtn, body.home #notesBtn { display: none !important; }
+body.home .mobile-nav { display: none; }
+#homeView {
+  position: fixed; inset: 52px 0 0; z-index: 20;       /* 顶栏 z30 之上、popup z60 之下 */
+  background: var(--page-bg); overflow-y: auto; padding: 24px 16px 40px;
+}
+.home-wrap { max-width: 640px; margin: 0 auto; }
+.home-search { position: relative; }
+.home-search input {
+  width: 100%; padding: 12px 16px; border: 1px solid var(--border);
+  border-radius: 999px; font-size: 16px; background: var(--surface);
+  color: var(--text); outline: none;
+}
+.home-search input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(var(--brand-rgb), .15); }
+#homeSearchResults {
+  margin-top: 8px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-md); overflow: hidden; display: none;
+}
+#homeSearchResults:not(:empty) { display: block; }
+.home-sr-item {
+  padding: 10px 14px; cursor: pointer; font-size: 14px; color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+.home-sr-item:last-child { border-bottom: none; }
+.home-sr-item:hover { background: var(--surface-alt); }
+.home-sr-item .sr-loc { color: var(--text-muted); margin-right: 8px; font-size: 13px; }
+.home-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; margin-top: 24px; }
+.home-block {
+  aspect-ratio: 1/1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 10px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 18px; box-shadow: var(--shadow-sm); cursor: pointer;
+  transition: border-color .15s, transform .15s;
+}
+.home-block:hover { border-color: var(--brand); transform: translateY(-2px); }
+.home-block-icon { font-size: 40px; line-height: 1; }
+.home-block-title { font-size: 16px; font-weight: 600; color: var(--heading); }
+
+/* 我的笔记：本章|全部 范围切换 */
+.note-scope { display: flex; gap: 8px; margin: 2px 0 10px; }
+.note-scope-btn {
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-soft);
+  padding: 4px 14px; border-radius: 999px; font-size: 13px; cursor: pointer;
+}
+.note-scope-btn.active { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
+
+/* 生命读经篇目弹窗（crumb 点击） */
+.lr-art-list { display: flex; flex-direction: column; padding: 8px 0; }
+.lr-art-cell {
+  text-align: left; padding: 10px 12px; border: none; background: transparent;
+  border-bottom: 1px solid var(--border); cursor: pointer; font-size: 14px; color: var(--text);
+}
+.lr-art-cell:hover { background: var(--surface-alt); }
+.lr-art-cell:last-child { border-bottom: none; }
+
+/* ── 阅读器模块容器切换（默认 bible；body-mod-lifereading 时换生命读经三列） ── */
+#lrNav, #lrMain, #lrSide { display: none; }
+.body-mod-lifereading .nav-search,
+.body-mod-lifereading #bookList, .body-mod-lifereading #chapterList { display: none; }
+.body-mod-lifereading #chapterTheme, .body-mod-lifereading #verseContainer { display: none; }
+.body-mod-lifereading #studyTabs, .body-mod-lifereading #studyBody { display: none; }
+.body-mod-lifereading #lrNav  { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.body-mod-lifereading #lrMain { display: block; }
+.body-mod-lifereading #lrSide { display: flex; flex-direction: column; min-height: 0; }
+/* 生命读经模块：顶栏只留 ⚙️（双页/隐藏注号/研读全屏/笔记/反馈 隐藏；翻章按钮无意义） */
+.body-mod-lifereading #viewModeBtn, .body-mod-lifereading #hideMarksBtn, .body-mod-lifereading #studyFullBtn,
+.body-mod-lifereading #feedbackBtn, .body-mod-lifereading #notesBtn { display: none !important; }
+.body-mod-lifereading .crumb-nav { display: none; }
+
+/* 生命读经阅读器：左栏两级导航（卷条 + 篇目列表） */
+.lr-vol-strip {
+  display: flex; gap: 6px; overflow-x: auto; padding: 8px;
+  border-bottom: 1px solid var(--border); flex: none;
+}
+.lr-vol-strip-btn {
+  flex: none; padding: 4px 10px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--surface);
+  font-size: 13px; cursor: pointer; color: var(--text-soft);
+}
+.lr-vol-strip-btn:hover { border-color: var(--brand); }
+.lr-vol-strip-btn.active { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
+.lr-nav-articles { flex: 1; overflow-y: auto; min-height: 0; padding: 6px; }
+.lr-nav-art {
+  display: block; width: 100%; text-align: left; padding: 8px 10px;
+  border: none; background: transparent; border-bottom: 1px solid var(--border);
+  cursor: pointer; font-size: 13px; color: var(--text); line-height: 1.5;
+}
+.lr-nav-art:hover { background: var(--surface-alt); }
+.lr-nav-art.active { background: rgba(102,126,234,.1); color: var(--brand); font-weight: 600; }
+
+/* 生命读经阅读器：右栏（纲目|笔记） */
+.lr-side-tabs { display: flex; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--border); flex: none; }
+.lr-side-tab {
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-soft);
+  padding: 4px 14px; border-radius: 999px; font-size: 13px; cursor: pointer;
+}
+.lr-side-tab.active { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
+.lr-side-body { flex: 1; overflow-y: auto; min-height: 0; padding: 12px; }
+.lr-side-body .lr-outline-group { margin-bottom: 12px; }
+.lr-side-body .lr-toc-item { padding: 5px 8px; font-size: 13px; color: var(--text); cursor: pointer; border-radius: 6px; line-height: 1.6; }
+.lr-side-body .lr-toc-item:hover { background: var(--surface-alt); }
+.lr-side-body .lr-toc-item.active { color: var(--brand); font-weight: 600; }
+.lr-side-body .lr-toc-l1 { font-weight: 600; }
+.lr-note-ta {
+  width: 100%; min-height: 140px; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 8px; font-size: 14px;
+  resize: vertical; font-family: inherit; color: var(--text); background: var(--surface);
+}
+.lr-main { padding: 16px 20px; }
+.lr-main .lr-item { margin-bottom: 8px; }
+
 /* ── 移动端 ── */
 @media (max-width: 900px) {
   /* 桌面视图模式（双页/上下/全屏）在移动端无意义：强制单列，中和残留的 view-* 类 */
@@ -806,6 +924,15 @@ body.scroll-locked { overflow: hidden; }
   .crumb .crumb-nav { display: none; }   /* 翻页移至底部导航 */
   .topbar-actions { gap: 2px; margin-left: auto; position: relative; z-index: 2; }   /* crumb 绝对定位后：推到最右 + 盖在其上层避免拦截点击 */
   #menuBtn { width: 44px; height: 44px; margin-left: -6px; }
+  #homeBtn { width: 44px; height: 44px; margin-left: -6px; }
+  .crumb { left: 88px; }   /* 原 44px：让位给常驻 ⌂ 首页按钮 */
+
+  /* 首页移动端：合集块缩小（360px 约 3 列），底部留安全区 */
+  #homeView { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
+  .home-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 12px; margin-top: 20px; }
+  .home-block { border-radius: 14px; gap: 6px; }
+  .home-block-icon { font-size: 30px; }
+  .home-block-title { font-size: 14px; }
 
   /* 生命读经全屏：隐藏纲目侧栏，正文占满 */
   .lr-full-wrap { grid-template-columns: 1fr !important; }

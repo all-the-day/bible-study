@@ -19,6 +19,8 @@ const LS_VIEW_MODE = 'bible-study.viewMode';
 const LS_STUDY_WIDTH = 'bible-study.studyWidth';
 const LS_LR_MAP = 'bible-study.lrMap';
 const LS_ACCOUNT = 'bible-study.account';
+const LS_LR_LAST = 'bible-study.lrLast';    // {book, articleId} 生命读经阅读器上次位置
+const LS_LR_NOTES = 'bible-study.lrNotes';  // {"bookIndex:articleId": text} 篇级笔记
 
 // 反馈提交地址（bible-kv 服务器，Caddy /bible-api/ 反代）
 const FEEDBACK_API = 'https://duoban.xyz/bible-api';
@@ -43,7 +45,26 @@ const state = {
   studyFull: false,
   activeTab: 'notes',
   account: load(LS_ACCOUNT, null),  // {uid, token}；null = 未启用云同步（纯本地）
+  // 首页 + 合集（2026-08 阶段 1）：screen 是唯一视图正交开关
+  screen: 'home',        // 'home' | 'work' —— 首页全屏层 / 工作区
+  activeModule: 'bible', // 当前阅读器模块：'bible' | 'lifereading'（晨兴/书报后续）
+  notesScope: 'chapter', // 'chapter' | 'global' —— 我的笔记聚合范围（研读列内）
+  lrVolumes: {},         // { bookIndex: {name,acronym,articles} } 生命读经卷懒加载缓存
+  lrBookIndex: null,     // 生命读经阅读器当前卷（null=未进入过）
+  lrArticleId: null,     // 生命读经阅读器当前篇
+  lrSideTab: 'outline',  // 生命读经右栏 tab：'outline' | 'notes'
+  lrNotes: load(LS_LR_NOTES, {}),
 };
+
+/* 合集注册表（数据驱动）：首页块列表，点击 = 直接进入对应阅读器模块。
+   晨兴/书报数据导出后各加一行即可上块，UI 零改动 */
+const COLLECTIONS = [
+  { id: 'bible', title: '读经', icon: '📖', entry: () => enterModule('bible') },
+  { id: 'lifereading', title: '生命读经', icon: '📗', entry: () => enterModule('lifereading') },
+  { id: 'notes', title: '我的笔记', icon: '📝', entry: () => { enterModule('bible'); enterNotesGlobal(); } },
+  // 阶段 2：{ id: 'morning', title: '晨兴', icon: '🌅', entry: openMorningList }
+  // 阶段 3：{ id: 'books', title: '书报', icon: '📚', entry: openBookList }
+];
 
 function load(key, fallback) {
   try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
@@ -53,7 +74,7 @@ function load(key, fallback) {
 const Sync = window.BibleStudySync || null;
 // 运行时门控：未启用同步（无 account）时即使 sync.js 存在也不参与云同步
 function syncActive() { return !!(Sync && state.account); }
-const SYNC_KEYS = [LS_ANNOTATIONS, LS_CHAPTER_NOTES];
+const SYNC_KEYS = [LS_ANNOTATIONS, LS_CHAPTER_NOTES, LS_LR_NOTES];
 
 function save(key, val) {
   localStorage.setItem(key, JSON.stringify(val));
@@ -68,9 +89,11 @@ async function syncFromRemote() {
   await Sync.pullAll(SYNC_KEYS);
   state.annotations = load(LS_ANNOTATIONS, []);
   state.chapterNotes = load(LS_CHAPTER_NOTES, {});
+  state.lrNotes = load(LS_LR_NOTES, {});
   Sync.flushPending((key) => {
     if (key === LS_ANNOTATIONS) return state.annotations;
     if (key === LS_CHAPTER_NOTES) return state.chapterNotes;
+    if (key === LS_LR_NOTES) return state.lrNotes;
     return undefined;
   });
   renderChapter();
@@ -337,11 +360,16 @@ async function init() {
   applyHideMarks();
   applyLayout();
   bindViewport();
+  state.activeModule = 'bible';
+  applyModuleBodyClass('bible');
+  renderHome();
+  showHome();   // 启动先进首页（body.home 隐藏工作区，合集块可点）
+  // 后台预渲染工作区：DOM 就绪，点合集块秒开（LS_LAST 保留用于「继续上次」）
   const last = load(LS_LAST, null);
   if (last && state.books.some(b => b.index === last.book)) {
-    selectBook(last.book, last.chapter);
+    await selectBook(last.book, last.chapter);
   } else {
-    selectBook(1, 1);
+    await selectBook(1, 1);
   }
   bindEvents();
   // 云同步：状态指示 + 后台拉取服务器数据
@@ -350,6 +378,218 @@ async function init() {
   syncFromRemote();
   // 冷启动同步状态 toast（延迟等 pullAll 出结果）
   setTimeout(showStartupSyncToast, 2500);
+}
+
+/* ============ 首页 + 合集块 ============ */
+// 渲染合集块网格（COLLECTIONS 注册表数据驱动；sub 为动态副标题）
+function renderHome() {
+  const grid = $('homeGrid');
+  if (!grid) return;
+  grid.innerHTML = COLLECTIONS.map(c => `
+    <div class="home-block" data-entry="${c.id}" role="button" tabindex="0">
+      <div class="home-block-icon">${c.icon}</div>
+      <div class="home-block-title">${c.title}</div>
+    </div>`).join('');
+}
+
+// 进首页：body.home 隐藏工作区（CSS 驱动），清掉研读 overlay 残留与弹窗
+function showHome() {
+  state.screen = 'home';
+  document.body.classList.add('home');
+  document.body.classList.remove('mobile-study');
+  closePopupAll();
+  const hb = $('homeBtn');
+  if (hb) hb.classList.add('active');
+  renderHome();
+  const res = $('homeSearchResults');
+  if (res) res.innerHTML = '';
+}
+
+// 进工作区：移除 body.home，.layout 恢复显示。幂等，任何工作区入口调用
+function enterWork() {
+  state.screen = 'work';
+  document.body.classList.remove('home');
+  const hb = $('homeBtn');
+  if (hb) hb.classList.remove('active');
+}
+
+/* ============ 阅读器外壳 + 模块注册表 ============ */
+/* 每个合集模块 = 一套三列阅读器配置。模块切换只发生在首页（⌂ → 点合集块 → enterModule）。 */
+const READER_MODULES = {
+  bible: {
+    id: 'bible',
+    title: '读经',
+    enter() { setMobileView('read'); },
+    renderNav() { renderBookList(); renderChapterList(); highlightNav(); },
+    renderMain() { renderChapter(); },
+    renderSide() { renderStudy(); },
+    renderCrumb() { renderChapterNav(); },
+    onMenu() { toggleNavCollapsed(); },
+    onCrumbClick() { openChapterPicker(); },
+  },
+  lifereading: {
+    id: 'lifereading',
+    title: '生命读经',
+    // 直接进上次篇目（LS_LR_LAST），无记录则第一卷第一篇；读经专属布局态归一化
+    async enter(opts) {
+      const last = load(LS_LR_LAST, null) || {};
+      state.lrBookIndex = (opts && opts.bookIndex) || last.book || 1;
+      state.lrArticleId = (opts && opts.articleId) || last.articleId || null;
+      const vol = await ensureLrVolume(state.lrBookIndex);
+      if (!vol) { showToast('该卷生命读经数据缺失'); return; }
+      if (!vol.articles.some(a => a.id === state.lrArticleId)) state.lrArticleId = (vol.articles[0] || {}).id;
+      state.studyFull = false;
+      state.viewMode = 'default';
+      applyLayout();
+    },
+    async renderNav() {
+      renderLrVolStrip(state.lrBookIndex);
+      const vol = await ensureLrVolume(state.lrBookIndex);
+      renderLrArticleList(state.lrBookIndex, vol);
+    },
+    async renderMain() {
+      const vol = await ensureLrVolume(state.lrBookIndex);
+      const art = vol && vol.articles.find(a => a.id === state.lrArticleId);
+      if (!art) return;
+      // 渲染前自愈该篇标注（坐标系 = 源 content 全文）
+      const anns = state.annotations.filter(x => x.type === 'lr' && x.book === state.lrBookIndex && x.articleId === art.id);
+      if (healAnnotations(anns, art.content || '')) save(LS_ANNOTATIONS, state.annotations);
+      const main = $('lrMain');
+      main.innerHTML = '';
+      main.appendChild(renderLrArticle(art, state.lrBookIndex));
+    },
+    renderSide() { renderLrSide(); },
+    renderCrumb() {
+      const vol = state.lrVolumes[state.lrBookIndex];
+      const art = vol && vol.articles.find(a => a.id === state.lrArticleId);
+      $('bookName').textContent = (vol && vol.name) || '';
+      $('chapterLabel').textContent = art ? `第${art.id}篇 ${art.title}` : '';
+    },
+    onMenu() { toggleNavCollapsed(); },
+    onCrumbClick() { openLrArticleList(state.lrBookIndex); },
+    // 切走前解绑 #textCol 滚动高亮监听（防读经模块残留无效 listener）
+    onLeave() {
+      if (_lrSpy) { $('textCol').removeEventListener('scroll', _lrSpy); _lrSpy = null; }
+    },
+  },
+};
+
+// body-mod-{id} 类控制三列容器归属（bible 容器默认显示，lr 容器由 CSS 切换）
+function applyModuleBodyClass(id) {
+  document.body.classList.remove('body-mod-bible', 'body-mod-lifereading');
+  if (id) document.body.classList.add('body-mod-' + id);
+}
+
+// 进入模块阅读器：状态初始化 + 三列渲染 + crumb（同模块再进入幂等，不重渲染）
+async function enterModule(id, opts) {
+  const mod = READER_MODULES[id];
+  if (!mod) return;
+  const firstEnter = state.activeModule !== id;
+  if (firstEnter && state.activeModule && READER_MODULES[state.activeModule].onLeave) {
+    READER_MODULES[state.activeModule].onLeave();
+  }
+  state.activeModule = id;
+  applyModuleBodyClass(id);
+  enterWork();
+  if (firstEnter) {
+    await mod.enter(opts);
+    await Promise.all([mod.renderNav(), mod.renderMain(), mod.renderSide(), mod.renderCrumb()]);
+  }
+}
+
+// 桌面 ☰ 折叠左栏（读经/生命读经共用）
+function toggleNavCollapsed() {
+  state.navCollapsed = !state.navCollapsed;
+  applyLayout();
+  save(LS_NAV_COLLAPSED, state.navCollapsed);
+}
+
+// 首页合集块点击委托 + 顶部搜索
+function bindHomeEvents() {
+  $('homeGrid').addEventListener('click', (e) => {
+    const tile = e.target.closest('.home-block');
+    if (!tile) return;
+    const c = COLLECTIONS.find(x => x.id === tile.dataset.entry);
+    if (c && c.entry) c.entry();
+  });
+  $('homeBtn').addEventListener('click', showHome);
+  const input = $('homeSearch');
+  const results = $('homeSearchResults');
+  let timer = null;
+  const render = () => {
+    const q = input.value.trim();
+    if (!q) { results.innerHTML = ''; return; }
+    results.innerHTML = homeSearch(q).map(r => `
+      <div class="home-sr-item" data-k="${r.key}">
+        <span class="sr-loc">${escapeHtml(r.loc)}</span>${escapeHtml(r.text)}
+      </div>`).join('');
+  };
+  input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(render, 150); });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { const first = results.querySelector('.home-sr-item'); if (first) first.click(); }
+  });
+  results.addEventListener('click', (e) => {
+    const item = e.target.closest('.home-sr-item');
+    if (!item) return;
+    const r = homeSearch(input.value.trim()).find(x => x.key === item.dataset.k);
+    if (r) { r.go(); results.innerHTML = ''; }
+  });
+}
+
+// 顶部搜索（轻量三条过滤；不做全文搜索）
+function homeSearch(q) {
+  const out = [];
+  // 1. 书卷 + 章（如 创24 / 创世记24）→ 进工作区选章
+  const m = q.match(/^([\u4e00-\u9fa5]{1,5})(\d+)$/);
+  if (m) {
+    const idx = resolveBookAlias(m[1]);
+    if (idx) {
+      const b = state.books.find(x => x.index === idx);
+      out.push({
+        key: 'bible-' + idx + '-' + m[2], loc: `${b.name} ${m[2]}章`, text: '读经',
+        go: () => { enterModule('bible'); selectBook(idx, parseInt(m[2], 10)); setMobileView('read'); },
+      });
+    }
+  }
+  // 2. 笔记文本（note / 选中文本快照）
+  state.annotations.filter(a => (a.note || '').includes(q) || (a.text || '').includes(q)).slice(0, 20).forEach(a => {
+    out.push({
+      key: 'ann-' + a.id,
+      loc: a.type === 'verse' ? `${bookName(a.book)} ${a.chapter}:${a.verse}` : `${bookName(a.book)} 生命读经`,
+      text: (a.note || a.text || '').slice(0, 30),
+      go: () => { enterModule('bible'); navigateToAnnotation(a); },
+    });
+  });
+  // 3. 生命读经篇目标题（仅已缓存卷，阶段 1 不建全量索引）
+  Object.values(state.lrVolumes).forEach(v => {
+    (v.articles || []).forEach(art => {
+      if (art.title.includes(q)) {
+        out.push({
+          key: 'lr-' + v.bookIndex + '-' + art.id,
+          loc: `${v.name} · 生命读经`, text: art.title,
+          go: () => openLrArticle(v.bookIndex, art),
+        });
+      }
+    });
+  });
+  return out.slice(0, 25);
+}
+
+// 书卷名/缩写 → book index（复用 REF_ALIASES 全名/简称/缩写映射）
+function resolveBookAlias(name) {
+  for (const alias of _refAliasesSorted) {
+    if (name.startsWith(alias)) {
+      const acr = REF_ALIASES[alias];
+      const b = state.books.find(x => x.acronym === acr);
+      if (b) return b.index;
+    }
+  }
+  return null;
+}
+
+function bookName(index) {
+  const b = state.books.find(x => x.index === index);
+  return b ? b.name : `第${index}卷`;
 }
 
 /* ============ 导航 ============ */
@@ -432,12 +672,15 @@ async function selectChapter(chapter) {
   renderStudy();
   updateMobileNav();
   save(LS_LAST, { book: state.currentBook.index, chapter });
-  // 生命读经懒加载
+  // 生命读经懒加载（结果同时缓存到 lrVolumes，供首页篇目列表/全局笔记复用）
   if (!state.lifereading) {
     const acr = state.currentBook.acronym;
     try {
       state.lifereading = await fetchJSON(`data/lifereading/${acr}.json`);
     } catch (e) { state.lifereading = { articles: [] }; }
+    state.lifereading.bookIndex = state.currentBook.index;
+    state.lifereading.name = state.currentBook.name;
+    state.lrVolumes[state.currentBook.index] = state.lifereading;
     if (state.currentChapter === chapter) renderStudy();
   }
 }
@@ -757,7 +1000,9 @@ function showLrMapPicker() {
 }
 
 // 渲染单篇生命读经（标题 + 经文引用 + 正文），返回 DOM 节点
-function renderLrArticle(a) {
+// bookIndex：该篇所属书卷（默认当前卷；独立阅读器模块传 state.lrBookIndex）
+function renderLrArticle(a, bookIndex) {
+  const bi = bookIndex !== undefined ? bookIndex : state.currentBook.index;
   const div = document.createElement('div');
   div.className = 'lr-item';
   const title = document.createElement('div');
@@ -771,8 +1016,9 @@ function renderLrArticle(a) {
   const content = document.createElement('div');
   content.className = 'lr-content';
   content.dataset.article = a.id;
+  content.dataset.book = bi;   // 模块感知标注：选区→偏移换算时定位所属卷
   const lrAnns = state.annotations.filter(x =>
-    x.type === 'lr' && x.book === state.currentBook.index && x.articleId === a.id);
+    x.type === 'lr' && x.book === bi && x.articleId === a.id);
   renderLrContent(content, a.content || '', lrAnns, `lrh-${a.id}`);
   div.appendChild(content);
   return div;
@@ -828,8 +1074,9 @@ function renderLrFullscreen(body, matched) {
 }
 
 // 纲目联动（scroll-spy）：内容滚动时，把最接近视口顶部的标题对应的纲目项置为 active
+// 绑定纲目滚动高亮，返回监听函数句柄（调用方可 removeEventListener 防堆积）
 function bindLrOutlineSpy(contentArea, outline) {
-  contentArea.addEventListener('scroll', () => {
+  const listener = () => {
     const items = outline.querySelectorAll('.lr-toc-item');
     if (!items.length) return;
     // 活跃判定线：内容区顶部往下 80px（标题滚入该区域即视为当前小节）
@@ -844,7 +1091,9 @@ function bindLrOutlineSpy(contentArea, outline) {
     // 让 active 项在左侧栏内保持可见
     const act = outline.querySelector('.lr-toc-item.active');
     if (act) act.scrollIntoView({ block: 'nearest' });
-  });
+  };
+  contentArea.addEventListener('scroll', listener);
+  return listener;
 }
 
 // 把纲目高亮切到指定 target（清除其他 active）
@@ -856,6 +1105,24 @@ function setLrOutlineActive(outline, targetId) {
 
 function renderMyNotes() {
   const body = $('studyBody');
+  // 范围切换：本章（当前章聚合）/ 全部（跨书卷按模块分类）
+  const scopeBar = document.createElement('div');
+  scopeBar.className = 'note-scope';
+  [['chapter', '本章'], ['global', '全部']].forEach(([s, label]) => {
+    const btn = document.createElement('button');
+    btn.className = 'note-scope-btn' + (state.notesScope === s ? ' active' : '');
+    btn.textContent = label;
+    btn.addEventListener('click', () => {
+      state.notesScope = s;
+      renderStudy();
+    });
+    scopeBar.appendChild(btn);
+  });
+  body.appendChild(scopeBar);
+  if (state.notesScope === 'global') {
+    body.appendChild(renderMyNotesGlobal());
+    return;
+  }
   const key = `${state.currentBook.index}:${state.currentChapter}`;
   // 章级笔记
   const noteDiv = document.createElement('div');
@@ -884,6 +1151,43 @@ function renderMyNotes() {
   body.appendChild(renderHighlights(highlights));
 }
 
+// 全局笔记：全部标注按 type 分 tab，跨书卷分组（groupHlGlobal）
+function renderMyNotesGlobal() {
+  return renderHighlights(state.annotations, groupHlGlobal);
+}
+
+// 全局分组：经文按 书卷→章 两级；生命读经按书卷（label：创世记 · 第24章 / 创世记 · 生命读经）
+function groupHlGlobal(list) {
+  const groups = [];
+  const verseByBook = {};
+  const lrByBook = {};
+  list.forEach(a => {
+    if (a.type === 'verse') {
+      const m = (verseByBook[a.book] = verseByBook[a.book] || {});
+      (m[a.chapter] = m[a.chapter] || []).push(a);
+    } else {
+      (lrByBook[a.book] = lrByBook[a.book] || []).push(a);
+    }
+  });
+  const books = [...new Set([...Object.keys(verseByBook), ...Object.keys(lrByBook)])].map(Number).sort((a, b) => a - b);
+  books.forEach(b => {
+    const name = bookName(b);
+    Object.keys(verseByBook[b] || {}).map(Number).sort((x, y) => x - y).forEach(ch => {
+      groups.push({
+        label: `${name} · 第${ch}章`,
+        items: verseByBook[b][ch].sort((x, y) => (x.verse - y.verse) || (x.start - y.start)),
+      });
+    });
+    if ((lrByBook[b] || []).length) {
+      groups.push({
+        label: `${name} · 生命读经`,
+        items: lrByBook[b].sort((x, y) => (x.articleId - y.articleId) || (x.start - y.start)),
+      });
+    }
+  });
+  return groups;
+}
+
 function groupHl(list) {
   const groups = [];
   const vs = list.filter(a => a.type === 'verse');
@@ -899,7 +1203,7 @@ function groupHl(list) {
   return groups;
 }
 
-function renderHighlights(anns) {
+function renderHighlights(anns, groupFn) {
   const section = document.createElement('div');
   section.className = 'hl-section';
   const header = document.createElement('div');
@@ -915,13 +1219,14 @@ function renderHighlights(anns) {
   }
   const verseItems = anns.filter(a => a.type === 'verse');
   const lrItems = anns.filter(a => a.type === 'lr');
+  const doGroup = groupFn || groupHl;
   // 来源 tab：全部 / 经文 / 生命读经
   const tabs = document.createElement('div');
   tabs.className = 'hl-tabs';
   const box = document.createElement('div');
   const renderList = (list) => {
     box.innerHTML = '';
-    const groups = groupHl(list);
+    const groups = doGroup(list);
     if (!groups.length) {
       const hint = document.createElement('div');
       hint.className = 'empty-hint';
@@ -983,22 +1288,23 @@ function renderHlItem(a) {
     noteEl.textContent = '📝 ' + a.note;
     div.appendChild(noteEl);
   }
-  div.addEventListener('click', () => {
-    if (a.type === 'verse') jumpToVerse(a.chapter, a.verse, a.half);
-    else jumpToLr(a.articleId);
-  });
+  div.addEventListener('click', () => { navigateToAnnotation(a); });
   return div;
 }
 
 function annotationText(a) {
   let slice = '';
   if (a.type === 'verse') {
-    const key = `${state.currentBook.acronym}${a.chapter}:${a.verse}${a.half || ''}`;
+    // 用标注自己的书卷取缩写（全局模式下当前书卷可能与标注书卷不同）
+    const acr = (state.books.find(b => b.index === a.book) || state.currentBook).acronym;
+    const key = `${acr}${a.chapter}:${a.verse}${a.half || ''}`;
     const marked = (state.bibleText || {})[key];
     if (!marked) return a.text || '';
     slice = parseMarkedText(marked).plain.slice(a.start, a.end);
   } else {
-    const art = (state.lifereading && state.lifereading.articles.find(x => x.id === a.articleId)) || null;
+    // 当前卷无该篇（跨书卷）时查 lrVolumes 缓存
+    const art = ((state.lifereading && state.lifereading.articles) || []).find(x => x.id === a.articleId)
+      || ((state.lrVolumes[a.book] || { articles: [] }).articles || []).find(x => x.id === a.articleId);
     if (!art) return a.text || '';
     slice = (art.content || '').slice(a.start, a.end);
   }
@@ -1012,7 +1318,7 @@ function isMobile() { return window.innerWidth <= 900; }
 // 移动端同一时刻只显示一个视图：读经（经文）或研读（注解/生命读经/我的笔记）
 // 模式切换在顶栏 crumb 右侧的「读经|研读」pill；桌面端调用为 no-op（pill 隐藏，body 类无 CSS 效果）
 function setMobileView(view) {
-  if (!isMobile()) return;
+  if (!isMobile() || state.screen === 'home') return;   // 首页是第三种态，不切读/研
   document.body.classList.toggle('mobile-study', view === 'study');
   document.querySelectorAll('#modePill .mode-pill-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.view === view));
@@ -1061,8 +1367,9 @@ function showToast(text, cls) {
 }
 
 // 移动端 crumb 点击 → 章节选择弹窗（章网格 + 顶部书卷横向切换）
-function openChapterPicker() {
-  let cur = state.currentBook.index;
+// 章节选择弹窗（首页读经块 / 移动端 crumb 共用）：initBook 指定初始书卷，默认当前书卷
+function openChapterPicker(initBook) {
+  let cur = (initBook && state.books.some(b => b.index === initBook)) ? initBook : state.currentBook.index;
   const books = state.books;
   const renderGrid = () => {
     const book = books.find(b => b.index === cur);
@@ -1095,7 +1402,9 @@ function openChapterPicker() {
     if (!c) return;
     const b = +c.dataset.b, ch = +c.dataset.c;
     closePopupAll();
+    enterWork();   // 从首页进入即切工作区（工作区内调用为幂等）
     if (b !== state.currentBook.index || ch !== state.currentChapter) selectBook(b, ch);
+    setMobileView('read');
   });
 }
 
@@ -1173,37 +1482,244 @@ function jumpToLr(articleId) {
   });
 }
 
+// 全局笔记点击跳转：跨书卷先选书再定位（同书卷行为与现状一致）
+// 模块感知：生命读经模块内点击 → 就地切篇/滚动；否则回读经模块走原文定位
+async function navigateToAnnotation(a) {
+  if (a.type === 'lr' && state.activeModule === 'lifereading') {
+    if (a.book !== state.lrBookIndex || a.articleId !== state.lrArticleId) {
+      await selectLrVolume(a.book);
+      await selectLrArticle(a.articleId);
+    }
+    // 已在本篇：滚动到标注位置
+    const mark = document.querySelector(`#lrMain mark[data-ann-id="${a.id}"]`);
+    if (mark) mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+  await enterModule('bible');
+  if (a.type === 'verse') {
+    if (a.book !== state.currentBook.index) await selectBook(a.book, a.chapter);
+    else if (a.chapter !== state.currentChapter) await selectChapter(a.chapter);
+    jumpToVerse(a.chapter, a.verse, a.half);
+  } else {
+    if (a.book !== state.currentBook.index) await selectBook(a.book, 1);
+    const art = ((state.lifereading && state.lifereading.articles) || []).find(x => x.id === a.articleId)
+      || ((state.lrVolumes[a.book] || { articles: [] }).articles || []).find(x => x.id === a.articleId);
+    const ch = art && art.verses && art.verses.length ? (parseInt(String(art.verses[0])) || 1) : 1;
+    if (ch !== state.currentChapter) await selectChapter(ch);
+    jumpToLr(a.articleId);
+  }
+}
+
+// 首页「我的笔记」块：进读经模块研读列，我的笔记 tab 全局模式
+async function enterNotesGlobal() {
+  await enterModule('bible');
+  state.activeTab = 'mynotes';
+  state.notesScope = 'global';
+  document.querySelectorAll('.study-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'mynotes'));
+  renderStudy();
+  setMobileView('study');
+}
+
+/* ============ 生命读经（篇目弹窗 / 卷缓存） ============ */
+// 篇目列表弹窗（crumb 点击 / 全局笔记入口），点击 → 统一入口 openLrArticle
+async function openLrArticleList(bookIndex) {
+  const vol = await ensureLrVolume(bookIndex);
+  if (!vol) { showToast('该卷生命读经数据缺失'); return; }
+  openPopup(`${vol.name} · 生命读经`, `
+    <div class="lr-art-list">
+      ${(vol.articles || []).map(a => `
+        <button class="lr-art-cell" data-id="${a.id}">${escapeHtml(a.title)}</button>`).join('')}
+    </div>`);
+  $('popupBody').querySelector('.lr-art-list').addEventListener('click', (e) => {
+    const cell = e.target.closest('.lr-art-cell');
+    if (!cell) return;
+    const art = (vol.articles || []).find(a => a.id === +cell.dataset.id);
+    if (!art) return;
+    closePopupAll();
+    openLrArticle(bookIndex, art);
+  });
+}
+
+// 加载并缓存某卷生命读经（selectBook 懒加载后也写入同一缓存，见 selectBook）
+async function ensureLrVolume(bookIndex) {
+  if (state.lrVolumes[bookIndex]) return state.lrVolumes[bookIndex];
+  const b = state.books.find(x => x.index === bookIndex);
+  if (!b) return null;
+  try {
+    const data = await fetchJSON(`data/lifereading/${b.acronym}.json`);
+    data.bookIndex = bookIndex;
+    data.name = b.name;
+    state.lrVolumes[bookIndex] = data;
+    return data;
+  } catch (e) { return null; }
+}
+
+/* ============ 生命读经阅读器模块 ============ */
+let _lrSpy = null;   // 模块右栏纲目滚动高亮句柄（切篇/切 tab 前解绑防堆积）
+
+// 左栏卷条（66 卷横向紧凑，当前卷 active）
+function renderLrVolStrip(curBookIndex) {
+  const nav = $('lrNav');
+  let strip = nav.querySelector('.lr-vol-strip');
+  if (!strip) { strip = document.createElement('div'); strip.className = 'lr-vol-strip'; nav.prepend(strip); }
+  strip.innerHTML = state.books.map(b =>
+    `<button class="lr-vol-strip-btn${b.index === curBookIndex ? ' active' : ''}" data-b="${b.index}">${escapeHtml(b.acronym)}</button>`).join('');
+  strip.querySelectorAll('.lr-vol-strip-btn').forEach(btn => {
+    btn.addEventListener('click', () => selectLrVolume(+btn.dataset.b));
+  });
+}
+
+// 左栏篇目列表（当前卷全部篇，当前篇 active）
+function renderLrArticleList(bookIndex, vol) {
+  const nav = $('lrNav');
+  let list = nav.querySelector('.lr-nav-articles');
+  if (!list) { list = document.createElement('div'); list.className = 'lr-nav-articles'; nav.appendChild(list); }
+  list.innerHTML = ((vol && vol.articles) || []).map(a =>
+    `<button class="lr-nav-art${a.id === state.lrArticleId ? ' active' : ''}" data-id="${a.id}">${escapeHtml(a.title)}</button>`).join('');
+  list.querySelectorAll('.lr-nav-art').forEach(btn => {
+    btn.addEventListener('click', () => selectLrArticle(+btn.dataset.id));
+  });
+}
+
+// 右栏：纲目 | 笔记（state.lrSideTab）
+function renderLrSide() {
+  const side = $('lrSide');
+  side.innerHTML = '';
+  const tabs = document.createElement('div');
+  tabs.className = 'lr-side-tabs';
+  [['outline', '纲目'], ['notes', '笔记']].forEach(([v, label]) => {
+    const b = document.createElement('button');
+    b.className = 'lr-side-tab' + (state.lrSideTab === v ? ' active' : '');
+    b.textContent = label;
+    b.addEventListener('click', () => { state.lrSideTab = v; renderLrSide(); });
+    tabs.appendChild(b);
+  });
+  const body = document.createElement('div');
+  body.className = 'lr-side-body';
+  if (state.lrSideTab === 'outline') renderLrOutline(body);
+  else renderLrNotes(body);
+  side.appendChild(tabs);
+  side.appendChild(body);
+}
+
+// 右栏纲目：extractLrHeadings 生成 toc，点击滚动定位 + 正文滚动高亮
+function renderLrOutline(body) {
+  if (_lrSpy) { $('textCol').removeEventListener('scroll', _lrSpy); _lrSpy = null; }
+  const vol = state.lrVolumes[state.lrBookIndex];
+  const art = vol && vol.articles.find(a => a.id === state.lrArticleId);
+  if (!art) { body.innerHTML = '<div class="empty-hint">本篇无纲目</div>'; return; }
+  const headings = extractLrHeadings(art.content || '');
+  if (!headings.length) { body.innerHTML = '<div class="empty-hint">本篇无纲目</div>'; return; }
+  const outline = document.createElement('div');
+  outline.className = 'lr-outline';
+  const group = document.createElement('div');
+  group.className = 'lr-outline-group';
+  headings.forEach((h, i) => {
+    const item = document.createElement('div');
+    item.className = `lr-toc-item lr-toc-l${h.level}`;
+    item.dataset.target = `lrh-${art.id}-${i}`;
+    item.textContent = h.text;
+    item.addEventListener('click', () => {
+      const el = document.getElementById(item.dataset.target);
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setLrOutlineActive(outline, item.dataset.target);
+    });
+    group.appendChild(item);
+  });
+  outline.appendChild(group);
+  body.appendChild(outline);
+  _lrSpy = bindLrOutlineSpy($('textCol'), outline);
+}
+
+// 右栏笔记：篇级笔记 textarea + 本篇标注汇总
+function renderLrNotes(body) {
+  const key = `${state.lrBookIndex}:${state.lrArticleId}`;
+  const ta = document.createElement('textarea');
+  ta.className = 'lr-note-ta';
+  ta.placeholder = '写点本篇的领受…';
+  ta.value = state.lrNotes[key] || '';
+  ta.addEventListener('input', () => {
+    state.lrNotes[key] = ta.value;
+    save(LS_LR_NOTES, state.lrNotes);
+  });
+  body.appendChild(ta);
+  const anns = state.annotations.filter(a =>
+    a.type === 'lr' && a.book === state.lrBookIndex && a.articleId === state.lrArticleId);
+  body.appendChild(renderHighlights(anns));
+}
+
+// 同卷切篇：重渲染主区 + 右栏 + crumb + 左栏 active，正文滚顶
+async function selectLrArticle(articleId) {
+  state.lrArticleId = articleId;
+  save(LS_LR_LAST, { book: state.lrBookIndex, articleId });
+  document.querySelectorAll('.lr-nav-art').forEach(x => x.classList.toggle('active', +x.dataset.id === articleId));
+  const mod = READER_MODULES.lifereading;
+  await mod.renderMain();
+  mod.renderSide();
+  mod.renderCrumb();
+  $('textCol').scrollTop = 0;
+}
+
+// 切卷 → 该卷第一篇
+async function selectLrVolume(bookIndex) {
+  state.lrBookIndex = bookIndex;
+  const vol = await ensureLrVolume(bookIndex);
+  if (!vol) { showToast('该卷生命读经数据缺失'); return; }
+  state.lrArticleId = (vol.articles[0] || {}).id;
+  save(LS_LR_LAST, { book: bookIndex, articleId: state.lrArticleId });
+  const mod = READER_MODULES.lifereading;
+  await mod.renderNav();
+  await mod.renderMain();
+  mod.renderSide();
+  mod.renderCrumb();
+  $('textCol').scrollTop = 0;
+}
+
+// 统一入口（首页搜索 / crumb 篇目 / 全局笔记 / 合集块）：模块内切篇，模块外进模块
+async function openLrArticle(bookIndex, art) {
+  if (state.activeModule === 'lifereading') {
+    if (bookIndex !== state.lrBookIndex) await selectLrVolume(bookIndex);
+    if (state.lrArticleId !== art.id) await selectLrArticle(art.id);
+  } else {
+    await enterModule('lifereading', { bookIndex, articleId: art.id });
+  }
+}
+
 /* ============ 标注 ============ */
 let pendingRange = null;
 let editingAnnId = null;
 
 function bindEvents() {
+  // 首页：合集块点击 + 顶部搜索 + ⌂ 回首页
+  bindHomeEvents();
   // 隐藏/显示注号
   $('hideMarksBtn').addEventListener('click', () => {
     state.hideMarks = !state.hideMarks;
     applyHideMarks();
     save(LS_HIDE_MARKS, state.hideMarks);
   });
-  // 菜单：移动端上下文导航（读经=书卷抽屉 / 研读+生命读经=篇目纲目），桌面端折叠左栏
+  // 菜单：桌面=折叠当前模块左栏；移动端上下文导航（读经=书卷抽屉 / 研读+生命读经=篇目纲目）
   $('menuBtn').addEventListener('click', () => {
-    if (window.innerWidth <= 900) {
-      if (document.body.classList.contains('mobile-study')) {
-        // 研读视图：只有生命读经 tab 提供导航，注解/我的笔记 tab 不动作
-        if (state.activeTab === 'lifereading') openLrNavSheet();
-        return;
-      }
-      $('navCol').classList.toggle('open');
-    } else {
-      state.navCollapsed = !state.navCollapsed;
-      applyLayout();
-      save(LS_NAV_COLLAPSED, state.navCollapsed);
+    if (state.screen === 'home') return;   // 首页隐藏 ☰（CSS 双保险）
+    if (window.innerWidth > 900) {
+      const mod = READER_MODULES[state.activeModule];
+      if (mod && mod.onMenu) mod.onMenu();
+      return;
     }
+    if (document.body.classList.contains('mobile-study')) {
+      // 研读视图：只有生命读经 tab 提供导航，注解/我的笔记 tab 不动作
+      if (state.activeTab === 'lifereading') openLrNavSheet();
+      return;
+    }
+    $('navCol').classList.toggle('open');
   });
-  // 移动端 crumb 标题点击：弹出章节选择（章网格 + 书卷切换）
+  // crumb 标题点击：按模块分发导航（读经=章节选择 / 生命读经=篇目列表）
   document.querySelector('.crumb').addEventListener('click', (e) => {
-    if (!isMobile()) return;
-    if (e.target.closest('button')) return;   // 不拦截 crumb 内按钮（桌面翻页按钮在移动端已隐藏，保险起见）
-    openChapterPicker();
+    if (state.screen === 'home') return;
+    if (e.target.closest('button')) return;   // 不拦截 crumb 内按钮（翻页按钮）
+    const mod = READER_MODULES[state.activeModule];
+    if (mod && mod.onCrumbClick) mod.onCrumbClick();
   });
   // 视图模式：双页 → 上下 → 全屏 循环
   $('viewModeBtn').addEventListener('click', () => {
@@ -1221,6 +1737,7 @@ function bindEvents() {
     renderStudy(); // 重新渲染，让纲目索引出现/消失
   });
   $('notesBtn').addEventListener('click', () => {
+    if (state.screen === 'home') enterWork();   // 桌面端从首页点 ✎ → 先进工作区
     $('studyCol').classList.toggle('open');
     if (state.viewMode === 'full') {
       state.viewMode = 'default';
@@ -1228,6 +1745,7 @@ function bindEvents() {
       save(LS_VIEW_MODE, state.viewMode);
     }
     state.activeTab = 'mynotes';
+    state.notesScope = 'chapter';
     document.querySelectorAll('.study-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'mynotes'));
     renderStudy();
   });
@@ -1258,10 +1776,11 @@ function bindEvents() {
       el.style.display = q ? 'none' : '';
     });
   });
-  // 研读 tab
+  // 研读 tab（常规点击我的笔记 → 当前章聚合模式）
   document.querySelectorAll('.study-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       state.activeTab = tab.dataset.tab;
+      if (tab.dataset.tab === 'mynotes') state.notesScope = 'chapter';
       document.querySelectorAll('.study-tab').forEach(t => t.classList.toggle('active', t === tab));
       renderStudy();
     });
@@ -1358,7 +1877,10 @@ function handleSelection() {
   if (ctx.context.type === 'verse') {
     plain = ctx.el.dataset.plain;
   } else {
-    const art = ((state.lifereading || {}).articles || []).find(a => a.id === ctx.context.articleId);
+    // 模块感知：优先按标注所属卷（data-book）查缓存，独立阅读器模块与研读列都能取到源文本
+    const bookIdx = ctx.context.book !== undefined ? ctx.context.book : state.currentBook.index;
+    const vol = state.lrVolumes[bookIdx] || state.lifereading;
+    const art = ((vol || {}).articles || []).find(a => a.id === ctx.context.articleId);
     plain = art ? (art.content || '') : ctx.el.textContent;
   }
   // 文本快照 + 上下文（TextQuoteSelector 自愈锚点）：快照取自 plain 而非 range.toString()，
@@ -1389,7 +1911,16 @@ function findAnnotatable(node) {
         };
       }
       if (el.classList.contains('lr-content')) {
-        return { el, context: { type: 'lr', articleId: +el.dataset.article } };
+        // data-article 守卫：排除注解容器（renderFootnotes 误用同 class，无 data-article → 不可标注）
+        if (el.dataset.article === undefined) { el = el.parentElement; continue; }
+        return {
+          el,
+          context: {
+            type: 'lr',
+            articleId: +el.dataset.article,
+            book: el.dataset.book !== undefined ? +el.dataset.book : undefined,
+          },
+        };
       }
     }
     el = el.parentElement;
