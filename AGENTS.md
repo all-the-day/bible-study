@@ -34,7 +34,7 @@
 | `config/android/` | 原生更新插件源码（ApkInstallerPlugin：download 原生下载 + install 安装；MainActivity/file_paths.xml），CI 注入 android/ 工程，不入本地构建 |
 | `scripts/export.py` | 从 `../bible` 导出静态 JSON → `data/` |
 | `scripts/patch-android.mjs` | CI 帮手：注入原生插件 + AndroidManifest 权限/FileProvider（幂等） |
-| `scripts/*-test.js` | puppeteer 端到端测试（e2e / 标注 / 生命读经标注）；`download-sim-test.js` 验证 WebView fetch 下载被 CORS 拦截（根因留档），`update-logic-test.js` mock 原生插件验证 download() fallback/进度/监听清理，`home-test.js` / `home-test-mobile.js` 首页+合集链路冒烟，`lr-reader-test.js` 生命读经阅读器专项（直进/切卷/切篇/纲目/笔记/折叠/划线/恢复） |
+| `scripts/*-test.js` | puppeteer 端到端测试（e2e / 标注 / 生命读经标注）；`download-sim-test.js` 验证 WebView fetch 下载被 CORS 拦截（根因留档），`update-logic-test.js` mock 原生插件验证 download() fallback/进度/监听清理，`home-test.js` / `home-test-mobile.js` 首页+合集链路冒烟，`lr-reader-test.js` 生命读经阅读器专项，`book-reader-test.js` 书报阅读器专项（直进/切辑/切书/切章/划线/全局笔记跳转/恢复） |
 | `data/books.json` | 66 卷目录 + 每卷章数 + 缩写 |
 | `data/bible-text.json` | 原文，键 `创1:1` / `创1:2上`，值含 `{N}`（注脚）/`[a]`（串珠）标记 |
 | `data/bible-notes.json` | 注解，键 → `{seq: 注脚文本}`（seq 为节内连续编号，可复用同一文本、跨半节连续） |
@@ -74,10 +74,11 @@
 - **阅读器外壳 + 模块注册表 `READER_MODULES`（app.js，核心抽象）**：每个合集模块 = 一套三列阅读器配置 `{id, title, enter(opts), renderNav(), renderMain(), renderSide(), renderCrumb(), onMenu(), onCrumbClick()}`。`enterModule(id, opts)` 是唯一入口（首页块/搜索/全局笔记都走它）：旧模块 onLeave → activeModule 切换 → `applyModuleBodyClass`（body-mod-{id} 类驱动三列容器归属，CSS 见 style.css「阅读器模块容器切换」节）→ enterWork → 首次进入时 enter + 四渲染（**同模块幂等不重渲染**）。☰ 桌面 = `toggleNavCollapsed()` 折叠当前模块左栏；crumb 点击 = 模块分发（读经=选章弹窗 / 生命读经=篇目弹窗）
 - **读经模块（bible）**：entry 直接进上次章节（`LS_LAST`，无则 1,1），不再弹选章；左栏=书卷+章网格、主区=经文、右栏=注解|生命读经|我的笔记、actions=双页/隐藏注号/研读全屏/笔记/反馈/设置（现状）
 - **生命读经模块（lifereading，方案 A 三列）**：entry 直接进上次篇目（`LS_LR_LAST`，无则第一卷第一篇）；左栏=卷条（66 卷横向 `.lr-vol-strip`）+ 当前卷篇目列表（`.lr-nav-articles`），☰ 折叠与读经一致；主区=篇目正文（`renderLrArticle(art, bookIndex)` 渲染到 `#lrMain`，标注坐标系不变）；右栏=`#lrSide`「纲目|笔记」tab（纲目在前：`extractLrHeadings` + 滚动高亮 `bindLrOutlineSpy` 句柄化监听 `#textCol`；笔记：篇级 textarea `state.lrNotes` + 本篇标注汇总）；crumb=`卷名 · 第{id}篇 {标题}` 点击弹篇目列表；actions 只留 ⚙️（`body-mod-lifereading` CSS 隐藏其余）；切篇/切卷 `selectLrArticle/selectLrVolume` 持久化 LS_LR_LAST + 正文滚顶；统一入口 `openLrArticle(bookIndex, art)`（模块内切篇/模块外进模块）
-- **模块感知标注**：`renderLrArticle` 输出 `data-book`；`findAnnotatable` 加 `data-article` 守卫（**修复 renderFootnotes 注解容器误标 .lr-content 致 articleId=NaN 的隐患**）；`handleSelection` 按 data-book 定位卷取源文本；`navigateToAnnotation` 模块感知（lr 模块内就地跳转，跨模块回 bible）
+- **书报模块（books，倪柝声文集，后续系列同构扩展）**：entry 直接进上次位置（`LS_BOOK_LAST`{volume,book,chapter}，无则第1辑第1本第1章）；左栏=辑条（`.bk-vol-strip`）+ 书列表（`.bk-nav-books`）；主区=`#bookMain` 当前章正文（`.bk-para` 按行 data-base 渲染，标注 type 'book' 坐标系=chapter.content）；右栏=`#bookSide`「章列表|笔记」（章列表切章，笔记=章级 textarea `state.bookNotes` + 标注汇总）；crumb=`倪柝声文集 · 书名 · 第N章`；数据 `data/books/`：`ni.json` 元数据（46KB，含章标题）+ `ni-{辑}.json` 按辑懒加载（3 辑 62 本 1325 章，共约 24MB）；切辑/切书/切章 `selectBookVolume/selectBookItem/selectBookChapter`（注意：**书报函数已加 Item 前缀避免与读经 selectBook/renderBookList 同名覆盖**）；统一入口 `openBookChapter(volume, book, chapter)`
+- **模块感知标注**：`renderLrArticle` 输出 `data-book`；`renderBookMain` 输出 `data-series/volume/book/chapter`；`findAnnotatable` 加 `data-article`/`data-chapter` 守卫（**修复 renderFootnotes 注解容器误标 .lr-content 致 articleId=NaN 的隐患**）；`handleSelection` 按 data-book / data-volume 定位源文本；`navigateToAnnotation` 模块感知（lr/books 模块内就地跳转，跨模块回 bible）；`buildAnnotation` 按 type 存定位字段（verse: chapter/verse/half、lr: articleId、book: series/volume/book/chapter）
 - **顶部搜索 `homeSearch(q)`**（轻量三条过滤，**不做全文**）：① 书卷+章正则走 `REF_ALIASES`/`resolveBookAlias` → `enterModule('bible')` 进工作区选章；② 标注 note/text 包含匹配（截 20 条，`navigateToAnnotation` 跳转）；③ 生命读经篇目标题（仅 `state.lrVolumes` 已缓存卷，不建全量索引）→ `openLrArticle` 直进阅读器
 - **测试**：e2e 类测试启动后需 `enterWork()` 切回工作区（init 后台预渲染使 DOM 存在但被 body.home 隐藏，直接 page.click 隐藏元素会抛错）；`home-test.js`（直进版冒烟）/ `home-test-mobile.js` / `lr-reader-test.js`（阅读器专项：直进/切卷/切篇/纲目/笔记/折叠/划线/恢复）为首页+阅读器链路测试
-- **数据源规划（阶段 3/4）**：晨兴 = 反编译晨读 APK 资源 `d:/迅雷下载/晨读appRes/resources/assets/public/`（`trainings.json` + 每月 `{期}/training.json`：chapters → outline_sections/detail_sections/morning_revivals 周一~周六），导出 `data/morning/`（`scripts/export-morning.py`）；书报 = `../bible/data/raw/spiritual_food/`（倪柝声文集 3 辑 62 本 1325 章 md + 目录索引 json，另 30 个系列渐进），导出 `data/books/`（`scripts/export-spiritual.py`）。标注 type 扩展 `'morning'`/`'book'` 向后兼容（旧 verse/lr 照常），模块注册表各加一行
+- **数据源（已落地）**：晨兴 = 反编译晨读 APK 资源 `d:/迅雷下载/晨读appRes/resources/assets/public/`（`trainings.json` + 每月 `{期}/training.json`：chapters → outline_sections/detail_sections/morning_revivals 周一~周六），`scripts/export-morning.py` 导出 `data/morning/`（index.json + 5 期 43 篇，每篇含 outline/detail/morning_revivals/content 标注坐标系）；书报 = `../bible/data/raw/spiritual_food/倪柝声文集/`（目录索引 + md），`scripts/export-spiritual.py` 导出 `data/books/`（ni.json 元数据 + ni-{辑}.json 内容，3 辑 62 本 1325 章）。标注 type 扩展 `'book'` 已落地（向后兼容旧 verse/lr）；`'morning'` 待晨兴数据调整后启用。其他 30 个书报系列（十二篮/荒漠甘泉/新约总论等）渐进加，元数据 + 系列内容文件同构扩展
 
 ## 云同步
 
@@ -86,10 +87,10 @@
 | 项 | 值 |
 |----|-----|
 | API | `https://duoban.xyz/bible-api/api/kv/{key}`（GET/PUT/DELETE） |
-| 服务器 key | `u{uid}:bible-study:annotations`、`u{uid}:bible-study:chapterNotes`、`u{uid}:bible-study:lrNotes`（uid 来自账号） |
+| 服务器 key | `u{uid}:bible-study:annotations`、`u{uid}:bible-study:chapterNotes`、`u{uid}:bible-study:lrNotes`、`u{uid}:bible-study:bookNotes`（uid 来自账号） |
 | 客户端 | `sync.js`（`window.BibleStudySync`） |
 | 策略 | 服务器为主：启动 `pullAll` 覆盖本地；写时 `putRemote` 防抖；失败标 pending，启动 `flushPending` 重试 |
-| 同步范围 | **只同步用户数据**（annotations / chapterNotes / lrNotes）；布局偏好（viewMode / hideMarks / studyWidth 等）保持设备本地 |
+| 同步范围 | **只同步用户数据**（annotations / chapterNotes / lrNotes / bookNotes）；布局偏好（viewMode / hideMarks / studyWidth 等）保持设备本地 |
 
 **账号与授权（RFC 8628 简化版）**：
 - 同步是**运行时可选功能**：localStorage `bible-study.account`（`{uid, token}`，null=未启用纯本地）；`syncActive()`（app.js）门控；⚙️ 设置弹窗「云同步」行打开启用/管理弹窗

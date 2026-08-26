@@ -25,6 +25,7 @@
     "bible-study.annotations": "bible-study:annotations",
     "bible-study.chapterNotes": "bible-study:chapterNotes",
     "bible-study.lrNotes": "bible-study:lrNotes",
+    "bible-study.bookNotes": "bible-study:bookNotes",
   };
 
   /* pending 标记：push 失败时记录，防止 pull 覆盖本地离线新增 */

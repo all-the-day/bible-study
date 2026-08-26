@@ -21,6 +21,10 @@ const LS_LR_MAP = 'bible-study.lrMap';
 const LS_ACCOUNT = 'bible-study.account';
 const LS_LR_LAST = 'bible-study.lrLast';    // {book, articleId} 生命读经阅读器上次位置
 const LS_LR_NOTES = 'bible-study.lrNotes';  // {"bookIndex:articleId": text} 篇级笔记
+const LS_BOOK_LAST = 'bible-study.bookLast';   // {volume, book, chapter} 书报阅读器上次位置
+const LS_BOOK_NOTES = 'bible-study.bookNotes'; // {"volume:book:chapter": text} 章级笔记
+const LS_MORNING_LAST = 'bible-study.morningLast';   // {period, chapterId} 晨兴阅读器上次位置（数据到位后启用）
+const LS_MORNING_NOTES = 'bible-study.morningNotes'; // {"period:chapterId": text}
 
 // 反馈提交地址（bible-kv 服务器，Caddy /bible-api/ 反代）
 const FEEDBACK_API = 'https://duoban.xyz/bible-api';
@@ -54,6 +58,16 @@ const state = {
   lrArticleId: null,     // 生命读经阅读器当前篇
   lrSideTab: 'outline',  // 生命读经右栏 tab：'outline' | 'notes'
   lrNotes: load(LS_LR_NOTES, {}),
+  // 书报阅读器（倪柝声文集等，多系列）
+  bookMeta: null,        // data/books/{series}.json 元数据（懒加载）
+  bookVolumes: {},       // {series: {volume: {volume, books}}} 按系列+辑内容缓存（懒加载）
+  bookSeriesIndex: null, // data/books/index.json 系列清单（懒加载）
+  bookSeries: 'ni',      // 当前系列（左栏系列条切换）
+  bookVolume: null,      // 当前辑（1-3）
+  bookBook: null,        // 当前书（辑内序号 0 基）
+  bookChapter: null,     // 当前章（书内序号 0 基）
+  bookSideTab: 'toc',    // 书报右栏 tab：'toc' | 'notes'
+  bookNotes: load(LS_BOOK_NOTES, {}),
 };
 
 /* 合集注册表（数据驱动）：首页块列表，点击 = 直接进入对应阅读器模块。
@@ -62,8 +76,8 @@ const COLLECTIONS = [
   { id: 'bible', title: '读经', icon: '📖', entry: () => enterModule('bible') },
   { id: 'lifereading', title: '生命读经', icon: '📗', entry: () => enterModule('lifereading') },
   { id: 'notes', title: '我的笔记', icon: '📝', entry: () => { enterModule('bible'); enterNotesGlobal(); } },
+  { id: 'books', title: '书报', icon: '📚', entry: () => enterModule('books') },
   // 阶段 2：{ id: 'morning', title: '晨兴', icon: '🌅', entry: openMorningList }
-  // 阶段 3：{ id: 'books', title: '书报', icon: '📚', entry: openBookList }
 ];
 
 function load(key, fallback) {
@@ -74,7 +88,7 @@ function load(key, fallback) {
 const Sync = window.BibleStudySync || null;
 // 运行时门控：未启用同步（无 account）时即使 sync.js 存在也不参与云同步
 function syncActive() { return !!(Sync && state.account); }
-const SYNC_KEYS = [LS_ANNOTATIONS, LS_CHAPTER_NOTES, LS_LR_NOTES];
+const SYNC_KEYS = [LS_ANNOTATIONS, LS_CHAPTER_NOTES, LS_LR_NOTES, LS_BOOK_NOTES];
 
 function save(key, val) {
   localStorage.setItem(key, JSON.stringify(val));
@@ -90,10 +104,12 @@ async function syncFromRemote() {
   state.annotations = load(LS_ANNOTATIONS, []);
   state.chapterNotes = load(LS_CHAPTER_NOTES, {});
   state.lrNotes = load(LS_LR_NOTES, {});
+  state.bookNotes = load(LS_BOOK_NOTES, {});
   Sync.flushPending((key) => {
     if (key === LS_ANNOTATIONS) return state.annotations;
     if (key === LS_CHAPTER_NOTES) return state.chapterNotes;
     if (key === LS_LR_NOTES) return state.lrNotes;
+    if (key === LS_BOOK_NOTES) return state.bookNotes;
     return undefined;
   });
   renderChapter();
@@ -423,7 +439,13 @@ const READER_MODULES = {
     renderNav() { renderBookList(); renderChapterList(); highlightNav(); },
     renderMain() { renderChapter(); },
     renderSide() { renderStudy(); },
-    renderCrumb() { renderChapterNav(); },
+    renderCrumb() {
+      // 模块切换后显式写回读经位置（selectBook/selectChapter 也写，幂等）
+      if (!state.currentBook) return;
+      $('bookName').textContent = state.currentBook.name;
+      $('chapterLabel').textContent = `${state.currentChapter}章`;
+      renderChapterNav();
+    },
     onMenu() { toggleNavCollapsed(); },
     onCrumbClick() { openChapterPicker(); },
   },
@@ -472,11 +494,51 @@ const READER_MODULES = {
       if (_lrSpy) { $('textCol').removeEventListener('scroll', _lrSpy); _lrSpy = null; }
     },
   },
+  books: {
+    id: 'books',
+    title: '书报',
+    async enter(opts) {
+      await ensureBookSeriesIndex();
+      const last = load(LS_BOOK_LAST, null) || {};
+      if (opts && opts.series) state.bookSeries = opts.series;
+      else if (last.series) state.bookSeries = last.series;
+      else state.bookSeries = (state.bookSeriesIndex.series[0] || {}).id || 'ni';
+      state.bookVolume = (opts && opts.volume) || last.volume || 1;
+      state.bookBook = (opts && opts.book) || last.book || 0;
+      state.bookChapter = (opts && opts.chapter) || last.chapter || 0;
+      await ensureBookMeta();
+      const vol = await ensureBookVolume(state.bookVolume);
+      if (!vol) { showToast('该辑数据缺失'); return; }
+      const metaVol = state.bookMeta && state.bookMeta.volumes[state.bookVolume - 1];
+      if (metaVol && state.bookBook >= metaVol.books.length) { state.bookBook = 0; state.bookChapter = 0; }
+      const book = vol.books[state.bookBook];
+      if (book && state.bookChapter >= book.chapters.length) state.bookChapter = 0;
+      state.studyFull = false;
+      state.viewMode = 'default';
+      applyLayout();
+    },
+    async renderNav() {
+      renderBookSeriesStrip();
+      await ensureBookMeta();
+      renderBookVolStrip();
+      renderBookNavBooks();
+    },
+    async renderMain() { await renderBookMain(); },
+    renderSide() { renderBookSide(); },
+    renderCrumb() {
+      const metaVol = state.bookMeta && state.bookMeta.volumes[state.bookVolume - 1];
+      const book = metaVol && metaVol.books[state.bookBook];
+      $('bookName').textContent = (state.bookMeta && state.bookMeta.name) || '书报';
+      $('chapterLabel').textContent = book ? `${book.title} · 第${state.bookChapter + 1}章` : '';
+    },
+    onMenu() { toggleNavCollapsed(); },
+    onCrumbClick() { state.bookSideTab = 'toc'; renderBookSide(); },
+  },
 };
 
-// body-mod-{id} 类控制三列容器归属（bible 容器默认显示，lr 容器由 CSS 切换）
+// body-mod-{id} 类控制三列容器归属（bible 容器默认显示，lr/books 容器由 CSS 切换）
 function applyModuleBodyClass(id) {
-  document.body.classList.remove('body-mod-bible', 'body-mod-lifereading');
+  document.body.classList.remove('body-mod-bible', 'body-mod-lifereading', 'body-mod-books');
   if (id) document.body.classList.add('body-mod-' + id);
 }
 
@@ -572,6 +634,22 @@ function homeSearch(q) {
       }
     });
   });
+  // 4. 书报章节标题（仅 bookMeta 已加载，按辑内容再懒加载）
+  if (state.bookMeta) {
+    state.bookMeta.volumes.forEach((v, vi) => {
+      v.books.forEach((b, bi) => {
+        (b.chapters || []).forEach((ct, ci) => {
+          if (String(ct).includes(q)) {
+            out.push({
+              key: 'bk-' + vi + '-' + bi + '-' + ci,
+              loc: `${state.bookMeta.name} · ${v.title} · ${b.title}`, text: String(ct),
+              go: () => openBookChapter(vi + 1, bi, ci, state.bookSeries),
+            });
+          }
+        });
+      });
+    });
+  }
   return out.slice(0, 25);
 }
 
@@ -1161,12 +1239,16 @@ function groupHlGlobal(list) {
   const groups = [];
   const verseByBook = {};
   const lrByBook = {};
+  const bookByKey = {};   // book 标注按 series:volume:book 分组
   list.forEach(a => {
     if (a.type === 'verse') {
       const m = (verseByBook[a.book] = verseByBook[a.book] || {});
       (m[a.chapter] = m[a.chapter] || []).push(a);
-    } else {
+    } else if (a.type === 'lr') {
       (lrByBook[a.book] = lrByBook[a.book] || []).push(a);
+    } else if (a.type === 'book') {
+      const k = `${a.series}:${a.volume}:${a.book}`;
+      (bookByKey[k] = bookByKey[k] || []).push(a);
     }
   });
   const books = [...new Set([...Object.keys(verseByBook), ...Object.keys(lrByBook)])].map(Number).sort((a, b) => a - b);
@@ -1184,6 +1266,17 @@ function groupHlGlobal(list) {
         items: lrByBook[b].sort((x, y) => (x.articleId - y.articleId) || (x.start - y.start)),
       });
     }
+  });
+  // 书报分组：倪柝声文集 · 第{辑}辑 · {书名}
+  Object.keys(bookByKey).sort().forEach(k => {
+    const [series, volume, book] = k.split(':');
+    const metaVol = (series === 'ni' && state.bookMeta) ? state.bookMeta.volumes[+volume - 1] : null;
+    const metaBook = metaVol && metaVol.books[+book];
+    const label = metaBook ? `${(state.bookMeta && state.bookMeta.name) || series} · ${metaVol.title} · ${metaBook.title}` : `${series} · 卷${volume} · 书${+book + 1}`;
+    groups.push({
+      label,
+      items: bookByKey[k].sort((x, y) => (x.chapter - y.chapter) || (x.start - y.start)),
+    });
   });
   return groups;
 }
@@ -1219,8 +1312,9 @@ function renderHighlights(anns, groupFn) {
   }
   const verseItems = anns.filter(a => a.type === 'verse');
   const lrItems = anns.filter(a => a.type === 'lr');
+  const bookItems = anns.filter(a => a.type === 'book');
   const doGroup = groupFn || groupHl;
-  // 来源 tab：全部 / 经文 / 生命读经
+  // 来源 tab：全部 / 经文 / 生命读经 / 书报
   const tabs = document.createElement('div');
   tabs.className = 'hl-tabs';
   const box = document.createElement('div');
@@ -1254,6 +1348,7 @@ function renderHighlights(anns, groupFn) {
   };
   const tabAll = mkTab('全部', anns);
   const tabsArr = [tabAll, mkTab('经文', verseItems), mkTab('生命读经', lrItems)];
+  if (bookItems.length) tabsArr.push(mkTab('书报', bookItems));
   tabs.append(...tabsArr);
   tabAll.classList.add('active');
   section.appendChild(tabs);
@@ -1278,7 +1373,13 @@ function renderHlItem(a) {
   text.textContent = annotationText(a) || '（内容已失效）';
   const loc = document.createElement('span');
   loc.className = 'hl-loc';
-  loc.textContent = a.type === 'verse' ? `${a.chapter}:${a.verse}${a.half}` : `生命读经 ${a.articleId}`;
+  if (a.type === 'verse') loc.textContent = `${a.chapter}:${a.verse}${a.half}`;
+  else if (a.type === 'lr') loc.textContent = `生命读经 ${a.articleId}`;
+  else if (a.type === 'book') {
+    const metaVol = (a.series === 'ni' && state.bookMeta) ? state.bookMeta.volumes[a.volume - 1] : null;
+    const metaBook = metaVol && metaVol.books[a.book];
+    loc.textContent = metaBook ? `${metaBook.title} · 第${a.chapter + 1}章` : `书报 卷${a.volume}书${a.book + 1} 第${a.chapter + 1}章`;
+  }
   div.appendChild(dot);
   div.appendChild(loc);
   div.appendChild(text);
@@ -1301,12 +1402,20 @@ function annotationText(a) {
     const marked = (state.bibleText || {})[key];
     if (!marked) return a.text || '';
     slice = parseMarkedText(marked).plain.slice(a.start, a.end);
-  } else {
+  } else if (a.type === 'lr') {
     // 当前卷无该篇（跨书卷）时查 lrVolumes 缓存
     const art = ((state.lifereading && state.lifereading.articles) || []).find(x => x.id === a.articleId)
       || ((state.lrVolumes[a.book] || { articles: [] }).articles || []).find(x => x.id === a.articleId);
     if (!art) return a.text || '';
     slice = (art.content || '').slice(a.start, a.end);
+  } else if (a.type === 'book') {
+    // 书报：按系列+辑内容缓存
+    const vols = state.bookVolumes[a.series] || {};
+    const vol = vols[a.volume];
+    const book = vol && vol.books[a.book];
+    const ch = book && book.chapters[a.chapter];
+    if (!ch) return a.text || '';
+    slice = (ch.content || '').slice(a.start, a.end);
   }
   // 偏移失效时退回保存的文本快照（自愈前的兜底）
   return (a.text && slice !== a.text) ? a.text : slice;
@@ -1483,7 +1592,7 @@ function jumpToLr(articleId) {
 }
 
 // 全局笔记点击跳转：跨书卷先选书再定位（同书卷行为与现状一致）
-// 模块感知：生命读经模块内点击 → 就地切篇/滚动；否则回读经模块走原文定位
+// 模块感知：生命读经/书报模块内点击 → 就地切篇/章并滚动；否则回读经模块走原文定位
 async function navigateToAnnotation(a) {
   if (a.type === 'lr' && state.activeModule === 'lifereading') {
     if (a.book !== state.lrBookIndex || a.articleId !== state.lrArticleId) {
@@ -1495,18 +1604,30 @@ async function navigateToAnnotation(a) {
     if (mark) mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
     return;
   }
+  if (a.type === 'book' && state.activeModule === 'books') {
+    if (a.volume !== state.bookVolume || a.book !== state.bookBook || a.chapter !== state.bookChapter) {
+      await selectBookChapter(a.volume, a.book, a.chapter);
+    }
+    const mark = document.querySelector(`#bookMain mark[data-ann-id="${a.id}"]`);
+    if (mark) mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
   await enterModule('bible');
   if (a.type === 'verse') {
     if (a.book !== state.currentBook.index) await selectBook(a.book, a.chapter);
     else if (a.chapter !== state.currentChapter) await selectChapter(a.chapter);
     jumpToVerse(a.chapter, a.verse, a.half);
-  } else {
+  } else if (a.type === 'lr') {
     if (a.book !== state.currentBook.index) await selectBook(a.book, 1);
     const art = ((state.lifereading && state.lifereading.articles) || []).find(x => x.id === a.articleId)
       || ((state.lrVolumes[a.book] || { articles: [] }).articles || []).find(x => x.id === a.articleId);
     const ch = art && art.verses && art.verses.length ? (parseInt(String(art.verses[0])) || 1) : 1;
     if (ch !== state.currentChapter) await selectChapter(ch);
     jumpToLr(a.articleId);
+  } else if (a.type === 'book') {
+    await enterModule('books', { series: a.series, volume: a.volume, book: a.book, chapter: a.chapter });
+    const mark = document.querySelector(`#bookMain mark[data-ann-id="${a.id}"]`);
+    if (mark) mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 }
 
@@ -1683,6 +1804,235 @@ async function openLrArticle(bookIndex, art) {
     if (state.lrArticleId !== art.id) await selectLrArticle(art.id);
   } else {
     await enterModule('lifereading', { bookIndex, articleId: art.id });
+  }
+}
+
+/* ============ 书报阅读器模块（多系列：倪柝声文集，后续系列同构扩展） ============ */
+async function ensureBookSeriesIndex() {
+  if (state.bookSeriesIndex) return state.bookSeriesIndex;
+  try { state.bookSeriesIndex = await fetchJSON('data/books/index.json'); return state.bookSeriesIndex; }
+  catch (e) { state.bookSeriesIndex = { series: [] }; return state.bookSeriesIndex; }
+}
+async function ensureBookMeta() {
+  if (state.bookMeta) return state.bookMeta;
+  try { state.bookMeta = await fetchJSON(`data/books/${state.bookSeries}.json`); return state.bookMeta; }
+  catch (e) { return null; }
+}
+async function ensureBookVolume(volume) {
+  const key = state.bookSeries;
+  const vols = (state.bookVolumes[key] = state.bookVolumes[key] || {});
+  if (vols[volume]) return vols[volume];
+  try { const data = await fetchJSON(`data/books/${key}-${volume}.json`); vols[volume] = data; return data; }
+  catch (e) { return null; }
+}
+
+// 左栏系列条（多系列切换，当前系列 active）
+function renderBookSeriesStrip() {
+  const nav = $('bookNav');
+  let strip = nav.querySelector('.bk-series-strip');
+  if (!strip) { strip = document.createElement('div'); strip.className = 'bk-series-strip'; nav.prepend(strip); }
+  const list = (state.bookSeriesIndex && state.bookSeriesIndex.series) || [];
+  if (list.length <= 1) { strip.style.display = 'none'; return; }
+  strip.style.display = '';
+  strip.innerHTML = list.map(s =>
+    `<button class="bk-series-btn${s.id === state.bookSeries ? ' active' : ''}" data-s="${s.id}">${escapeHtml(s.name)}</button>`).join('');
+  strip.querySelectorAll('.bk-series-btn').forEach(btn => {
+    btn.addEventListener('click', () => selectBookSeries(btn.dataset.s));
+  });
+}
+
+// 左栏辑条（meta.volumes，当前辑 active）
+function renderBookVolStrip() {
+  const nav = $('bookNav');
+  let strip = nav.querySelector('.bk-vol-strip');
+  if (!strip) { strip = document.createElement('div'); strip.className = 'bk-vol-strip'; nav.prepend(strip); }
+  strip.innerHTML = (state.bookMeta && state.bookMeta.volumes || []).map((v, i) =>
+    `<button class="bk-vol-strip-btn${i + 1 === state.bookVolume ? ' active' : ''}" data-v="${i + 1}">${escapeHtml(v.title)}</button>`).join('');
+  strip.querySelectorAll('.bk-vol-strip-btn').forEach(btn => {
+    btn.addEventListener('click', () => selectBookVolume(+btn.dataset.v));
+  });
+}
+
+// 左栏书列表（当前辑全部书，当前书 active）
+function renderBookNavBooks() {
+  const nav = $('bookNav');
+  let list = nav.querySelector('.bk-nav-books');
+  if (!list) { list = document.createElement('div'); list.className = 'bk-nav-books'; nav.appendChild(list); }
+  const metaVol = state.bookMeta && state.bookMeta.volumes[state.bookVolume - 1];
+  list.innerHTML = (metaVol && metaVol.books || []).map((b, i) =>
+    `<button class="bk-nav-book${i === state.bookBook ? ' active' : ''}" data-b="${i}">
+       <span class="bkb-title">${escapeHtml(b.title)}</span>
+       <span class="bkb-count">${b.chapters.length}章</span>
+     </button>`).join('');
+  list.querySelectorAll('.bk-nav-book').forEach(btn => {
+    btn.addEventListener('click', () => selectBookItem(+btn.dataset.b));
+  });
+}
+
+// 主区：当前章正文（按行 data-base 渲染，标注坐标系 = chapter.content）
+function renderBookContent(parent, content, annotations) {
+  const lines = (content || '').split('\n');
+  let offset = 0;
+  for (const line of lines) {
+    if (line.trim() === '') { offset += line.length + 1; continue; }
+    const div = document.createElement('div');
+    div.className = 'bk-para';
+    div.dataset.base = offset;
+    renderLrLine(div, line, offset, annotations);   // 复用：ref-link 引用高亮 + 标注叠加
+    parent.appendChild(div);
+    offset += line.length + 1;
+  }
+}
+
+async function renderBookMain() {
+  const vol = await ensureBookVolume(state.bookVolume);
+  const book = vol && vol.books[state.bookBook];
+  const ch = book && book.chapters[state.bookChapter];
+  if (!ch) return;
+  const anns = state.annotations.filter(a =>
+    a.type === 'book' && a.series === state.bookSeries && a.volume === state.bookVolume &&
+    a.book === state.bookBook && a.chapter === state.bookChapter);
+  if (healAnnotations(anns, ch.content || '')) save(LS_ANNOTATIONS, state.annotations);
+  const main = $('bookMain');
+  main.innerHTML = '';
+  const h = document.createElement('div');
+  h.className = 'bk-title';
+  h.textContent = ch.title;
+  main.appendChild(h);
+  const content = document.createElement('div');
+  content.className = 'book-content';
+  content.dataset.series = state.bookSeries;
+  content.dataset.volume = state.bookVolume;
+  content.dataset.book = state.bookBook;
+  content.dataset.chapter = state.bookChapter;
+  renderBookContent(content, ch.content || '', anns);
+  main.appendChild(content);
+}
+
+// 右栏：章列表 | 笔记
+function renderBookSide() {
+  const side = $('bookSide');
+  side.innerHTML = '';
+  const tabs = document.createElement('div');
+  tabs.className = 'lr-side-tabs';
+  [['toc', '章列表'], ['notes', '笔记']].forEach(([v, label]) => {
+    const b = document.createElement('button');
+    b.className = 'lr-side-tab' + (state.bookSideTab === v ? ' active' : '');
+    b.textContent = label;
+    b.addEventListener('click', () => { state.bookSideTab = v; renderBookSide(); });
+    tabs.appendChild(b);
+  });
+  const body = document.createElement('div');
+  body.className = 'lr-side-body';
+  if (state.bookSideTab === 'toc') renderBookToc(body);
+  else renderBookNotes(body);
+  side.appendChild(tabs);
+  side.appendChild(body);
+}
+
+// 右栏章列表：当前书全部章，点击切章
+function renderBookToc(body) {
+  const vol = state.bookVolumes[state.bookSeries] && state.bookVolumes[state.bookSeries][state.bookVolume];
+  const book = vol && vol.books[state.bookBook];
+  const chapters = (book && book.chapters) || [];
+  if (!chapters.length) { body.innerHTML = '<div class="empty-hint">本书无章节</div>'; return; }
+  chapters.forEach((ch, i) => {
+    const item = document.createElement('button');
+    item.className = 'bk-toc-item' + (i === state.bookChapter ? ' active' : '');
+    item.textContent = ch.title;
+    item.addEventListener('click', () => selectBookChapter(state.bookVolume, state.bookBook, i));
+    body.appendChild(item);
+  });
+}
+
+// 右栏笔记：章级笔记 + 本章标注汇总
+function renderBookNotes(body) {
+  const key = `${state.bookVolume}:${state.bookBook}:${state.bookChapter}`;
+  const ta = document.createElement('textarea');
+  ta.className = 'lr-note-ta';
+  ta.placeholder = '写点本章的领受…';
+  ta.value = state.bookNotes[key] || '';
+  ta.addEventListener('input', () => {
+    state.bookNotes[key] = ta.value;
+    save(LS_BOOK_NOTES, state.bookNotes);
+  });
+  body.appendChild(ta);
+  const anns = state.annotations.filter(a =>
+    a.type === 'book' && a.series === state.bookSeries && a.volume === state.bookVolume &&
+    a.book === state.bookBook && a.chapter === state.bookChapter);
+  body.appendChild(renderHighlights(anns));
+}
+
+// 切系列 → 第 1 辑第 1 本第 1 章（系列条点击）
+async function selectBookSeries(series) {
+  if (series === state.bookSeries) return;
+  state.bookSeries = series;
+  state.bookMeta = null;   // 换系列重载元数据
+  state.bookVolume = 1;
+  state.bookBook = 0;
+  state.bookChapter = 0;
+  const vol = await ensureBookVolume(1);
+  if (!vol) { showToast('该系列数据缺失'); return; }
+  save(LS_BOOK_LAST, { series, volume: 1, book: 0, chapter: 0 });
+  const mod = READER_MODULES.books;
+  await mod.renderNav();
+  await mod.renderMain();
+  mod.renderSide();
+  mod.renderCrumb();
+  $('textCol').scrollTop = 0;
+}
+
+// 选辑 → 第 1 本第 1 章
+async function selectBookVolume(volume) {
+  state.bookVolume = volume;
+  state.bookBook = 0;
+  state.bookChapter = 0;
+  const vol = await ensureBookVolume(volume);
+  if (!vol) { showToast('该辑数据缺失'); return; }
+  save(LS_BOOK_LAST, { series: state.bookSeries, volume, book: 0, chapter: 0 });
+  const mod = READER_MODULES.books;
+  await mod.renderNav();
+  await mod.renderMain();
+  mod.renderSide();
+  mod.renderCrumb();
+  $('textCol').scrollTop = 0;
+}
+
+// 选书 → 第 1 章
+async function selectBookItem(book) {
+  state.bookBook = book;
+  state.bookChapter = 0;
+  save(LS_BOOK_LAST, { series: state.bookSeries, volume: state.bookVolume, book, chapter: 0 });
+  const mod = READER_MODULES.books;
+  document.querySelectorAll('.bk-nav-book').forEach(x => x.classList.toggle('active', +x.dataset.b === book));
+  await mod.renderMain();
+  mod.renderSide();
+  mod.renderCrumb();
+  $('textCol').scrollTop = 0;
+}
+
+// 切章（同书内）
+async function selectBookChapter(volume, book, chapter) {
+  state.bookVolume = volume; state.bookBook = book; state.bookChapter = chapter;
+  save(LS_BOOK_LAST, { series: state.bookSeries, volume, book, chapter });
+  document.querySelectorAll('.bk-vol-strip-btn').forEach(x => x.classList.toggle('active', +x.dataset.v === volume));
+  document.querySelectorAll('.bk-nav-book').forEach(x => x.classList.toggle('active', +x.dataset.b === book));
+  const mod = READER_MODULES.books;
+  await mod.renderMain();
+  mod.renderSide();
+  mod.renderCrumb();
+  $('textCol').scrollTop = 0;
+}
+
+// 统一入口（首页块 / 搜索 / 全局笔记）：模块内切章，模块外进模块
+async function openBookChapter(volume, book, chapter, series) {
+  if (state.activeModule === 'books') {
+    if (series && series !== state.bookSeries) await selectBookSeries(series);
+    if (volume !== state.bookVolume || book !== state.bookBook || chapter !== state.bookChapter) {
+      await selectBookChapter(volume, book, chapter);
+    }
+  } else {
+    await enterModule('books', { series, volume, book, chapter });
   }
 }
 
@@ -1876,12 +2226,18 @@ function handleSelection() {
   let plain;
   if (ctx.context.type === 'verse') {
     plain = ctx.el.dataset.plain;
-  } else {
+  } else if (ctx.context.type === 'lr') {
     // 模块感知：优先按标注所属卷（data-book）查缓存，独立阅读器模块与研读列都能取到源文本
     const bookIdx = ctx.context.book !== undefined ? ctx.context.book : state.currentBook.index;
     const vol = state.lrVolumes[bookIdx] || state.lifereading;
     const art = ((vol || {}).articles || []).find(a => a.id === ctx.context.articleId);
     plain = art ? (art.content || '') : ctx.el.textContent;
+  } else if (ctx.context.type === 'book') {
+    const vols = state.bookVolumes[ctx.context.series] || {};
+    const vol = vols[ctx.context.volume];
+    const book = vol && vol.books[ctx.context.book];
+    const ch = book && book.chapters[ctx.context.chapter];
+    plain = ch ? (ch.content || '') : ctx.el.textContent;
   }
   // 文本快照 + 上下文（TextQuoteSelector 自愈锚点）：快照取自 plain 而非 range.toString()，
   // 保证与渲染切片坐标系严格一致（跨注脚上标的选区也不会混入标记字符）
@@ -1922,6 +2278,20 @@ function findAnnotatable(node) {
           },
         };
       }
+      if (el.classList.contains('book-content')) {
+        // data-chapter 守卫：无则不可标注（防误识别）
+        if (el.dataset.chapter === undefined) { el = el.parentElement; continue; }
+        return {
+          el,
+          context: {
+            type: 'book',
+            series: el.dataset.series,
+            volume: +el.dataset.volume,
+            book: +el.dataset.book,
+            chapter: +el.dataset.chapter,
+          },
+        };
+      }
     }
     el = el.parentElement;
   }
@@ -1939,9 +2309,9 @@ function plainOffset(root, node, offset) {
       else if (child.nodeType === 1 && child.tagName !== 'SUP') walkInner(child);
     }
   }
-  // 生命读经：行 div 带 data-base（该行在源 content 的偏移，含空行），
+  // 生命读经/书报：行 div 带 data-base（该行在源 content 的偏移，含空行），
   // 选区偏移 = 行基址 + 行内偏移，与渲染 baseOffset / 自愈 plain 同一坐标系
-  if (root.classList.contains('lr-content')) {
+  if (root.classList.contains('lr-content') || root.classList.contains('book-content')) {
     let div = node.nodeType === 3 ? node.parentElement : node;
     while (div && div.parentElement !== root) div = div.parentElement;
     if (div && div.parentElement === root && div.dataset.base !== undefined) {
@@ -1951,7 +2321,7 @@ function plainOffset(root, node, offset) {
     }
   }
   const isBlock = (el) => el.nodeType === 1 &&
-    (el.classList.contains('lr-head') || el.classList.contains('lr-para'));
+    (el.classList.contains('lr-head') || el.classList.contains('lr-para') || el.classList.contains('bk-para'));
   let first = true;
   for (const child of root.childNodes) {
     if (done) break;
@@ -2186,9 +2556,17 @@ function hideFloatTool() {
 
 // 从选区构造标注记录（不依赖全局 pendingRange，供编辑器在菜单关闭后创建）
 function buildAnnotation(r, partial) {
+  let loc = {};
+  if (r.type === 'verse') {
+    loc = { chapter: state.currentChapter, verse: r.verse, half: r.half };
+  } else if (r.type === 'lr') {
+    loc = { articleId: r.articleId };
+  } else if (r.type === 'book') {
+    loc = { series: r.series, volume: r.volume, book: r.book, chapter: r.chapter };
+  }
   return {
     id: 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-    book: state.currentBook.index,
+    book: r.type === 'verse' || r.type === 'lr' ? state.currentBook.index : (r.volume || 0),
     type: r.type,
     start: r.start,
     end: r.end,
@@ -2197,9 +2575,7 @@ function buildAnnotation(r, partial) {
     text: r.text || '',
     prefix: r.prefix || '',
     suffix: r.suffix || '',
-    ...(r.type === 'verse'
-      ? { chapter: state.currentChapter, verse: r.verse, half: r.half }
-      : { articleId: r.articleId }),
+    ...loc,
     ...partial,
   };
 }
@@ -2224,8 +2600,13 @@ function rerenderAnn(ann) {
       renderChapter();
       if (state.activeTab === 'mynotes') renderStudy();
     });
-  } else {
+  } else if (ann.type === 'lr') {
     withScrollPreserved(['#studyBody', '#textCol', '.lr-full-content'], renderStudy);
+  } else if (ann.type === 'book') {
+    // 书报模块内标注：重渲染主区保持高亮
+    withScrollPreserved(['#textCol'], () => {
+      if (state.activeModule === 'books') READER_MODULES.books.renderMain();
+    });
   }
 }
 

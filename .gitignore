@@ -16,6 +16,8 @@ data/bible-notes.json
 data/bible-xrefs.json
 data/bible-outlines.json
 data/lifereading/
+data/morning/
+data/books/
 
 # 本地密钥
 .env

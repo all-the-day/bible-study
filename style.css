@@ -796,8 +796,8 @@ body.home .mobile-nav { display: none; }
 .lr-art-cell:hover { background: var(--surface-alt); }
 .lr-art-cell:last-child { border-bottom: none; }
 
-/* ── 阅读器模块容器切换（默认 bible；body-mod-lifereading 时换生命读经三列） ── */
-#lrNav, #lrMain, #lrSide { display: none; }
+/* ── 阅读器模块容器切换（默认 bible；body-mod-lifereading / body-mod-books 切换） ── */
+#lrNav, #lrMain, #lrSide, #bookNav, #bookMain, #bookSide { display: none; }
 .body-mod-lifereading .nav-search,
 .body-mod-lifereading #bookList, .body-mod-lifereading #chapterList { display: none; }
 .body-mod-lifereading #chapterTheme, .body-mod-lifereading #verseContainer { display: none; }
@@ -805,10 +805,20 @@ body.home .mobile-nav { display: none; }
 .body-mod-lifereading #lrNav  { display: flex; flex-direction: column; min-height: 0; flex: 1; }
 .body-mod-lifereading #lrMain { display: block; }
 .body-mod-lifereading #lrSide { display: flex; flex-direction: column; min-height: 0; }
-/* 生命读经模块：顶栏只留 ⚙️（双页/隐藏注号/研读全屏/笔记/反馈 隐藏；翻章按钮无意义） */
+.body-mod-books .nav-search,
+.body-mod-books #bookList, .body-mod-books #chapterList { display: none; }
+.body-mod-books #chapterTheme, .body-mod-books #verseContainer { display: none; }
+.body-mod-books #studyTabs, .body-mod-books #studyBody { display: none; }
+.body-mod-books #bookNav  { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.body-mod-books #bookMain { display: block; }
+.body-mod-books #bookSide { display: flex; flex-direction: column; min-height: 0; }
+/* 生命读经/书报模块：顶栏只留 ⚙️（双页/隐藏注号/研读全屏/笔记/反馈 隐藏；翻章按钮无意义） */
 .body-mod-lifereading #viewModeBtn, .body-mod-lifereading #hideMarksBtn, .body-mod-lifereading #studyFullBtn,
 .body-mod-lifereading #feedbackBtn, .body-mod-lifereading #notesBtn { display: none !important; }
 .body-mod-lifereading .crumb-nav { display: none; }
+.body-mod-books #viewModeBtn, .body-mod-books #hideMarksBtn, .body-mod-books #studyFullBtn,
+.body-mod-books #feedbackBtn, .body-mod-books #notesBtn { display: none !important; }
+.body-mod-books .crumb-nav { display: none; }
 
 /* 生命读经阅读器：左栏两级导航（卷条 + 篇目列表） */
 .lr-vol-strip {
@@ -851,6 +861,51 @@ body.home .mobile-nav { display: none; }
 }
 .lr-main { padding: 16px 20px; }
 .lr-main .lr-item { margin-bottom: 8px; }
+
+/* 书报阅读器：左栏（系列条 + 辑条 + 书列表） */
+.bk-series-strip {
+  display: flex; gap: 6px; overflow-x: auto; padding: 8px;
+  border-bottom: 1px solid var(--border); flex: none;
+}
+.bk-series-btn {
+  flex: none; padding: 4px 12px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--surface);
+  font-size: 13px; cursor: pointer; color: var(--text-soft);
+}
+.bk-series-btn:hover { border-color: var(--brand); }
+.bk-series-btn.active { background: var(--brand-dark); border-color: var(--brand-dark); color: #fff; font-weight: 600; }
+.bk-vol-strip {
+  display: flex; gap: 6px; overflow-x: auto; padding: 8px;
+  border-bottom: 1px solid var(--border); flex: none;
+}
+.bk-vol-strip-btn {
+  flex: none; padding: 4px 10px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--surface);
+  font-size: 13px; cursor: pointer; color: var(--text-soft);
+}
+.bk-vol-strip-btn:hover { border-color: var(--brand); }
+.bk-vol-strip-btn.active { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
+.bk-nav-books { flex: 1; overflow-y: auto; min-height: 0; padding: 6px; }
+.bk-nav-book {
+  display: block; width: 100%; text-align: left; padding: 8px 10px;
+  border: none; background: transparent; border-bottom: 1px solid var(--border);
+  cursor: pointer; font-size: 13px; color: var(--text); line-height: 1.5;
+}
+.bk-nav-book:hover { background: var(--surface-alt); }
+.bk-nav-book.active { background: rgba(102,126,234,.1); color: var(--brand); font-weight: 600; }
+.bk-nav-book .bkb-count { font-size: 11px; color: var(--text-muted); margin-left: 6px; }
+
+/* 书报阅读器：主区 + 右栏 */
+.bk-main { padding: 16px 20px; }
+.bk-title { font-size: 17px; font-weight: 700; color: var(--heading); margin-bottom: 12px; }
+.bk-para { font-size: 15px; line-height: 2; color: var(--text); margin-bottom: 6px; }
+.bk-toc-item {
+  display: block; width: 100%; text-align: left; padding: 7px 10px;
+  border: none; background: transparent; border-bottom: 1px solid var(--border);
+  cursor: pointer; font-size: 13px; color: var(--text); line-height: 1.5;
+}
+.bk-toc-item:hover { background: var(--surface-alt); }
+.bk-toc-item.active { background: rgba(102,126,234,.1); color: var(--brand); font-weight: 600; }
 
 /* ── 移动端 ── */
 @media (max-width: 900px) {

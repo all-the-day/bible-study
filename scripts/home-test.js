@@ -15,7 +15,17 @@ async function main() {
   await page.setViewport({ width: 1280, height: 800 });
   const errors = [];
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
-  page.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('favicon')) errors.push('console: ' + m.text()); });
+  page.on('console', (m) => {
+    if (m.type() !== 'error') return;
+    if (m.text().includes('Failed to load resource')) return;   // 资源加载错误由 response 监听接管
+    errors.push('console: ' + m.text());
+  });
+  // 资源加载失败（排除 favicon 与 GitHub API 更新检查——测试环境限流属环境噪音）
+  page.on('response', (r) => {
+    if (r.status() >= 400 && !r.url().includes('favicon') && !r.url().includes('api.github.com')) {
+      errors.push('http ' + r.status() + ': ' + r.url().replace('http://127.0.0.1:' + PORT, ''));
+    }
+  });
 
   // 1. 启动进首页 + 无副标题
   await page.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'networkidle0', timeout: 30000 });
