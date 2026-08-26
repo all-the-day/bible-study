@@ -85,11 +85,14 @@ jobs:
       - name: 下载数据（从 Vercel）
         run: |
           BASE="https://bible-study-teal-seven.vercel.app/data"
+          # -f 失败即退出（HTTP 错误码不静默写坏文件）；--retry-all-errors 兜底 Vercel edge
+          # 偶发 TLS 连接重置（exit 35，runner→edge 数据中心链路）；-4 规避 IPv6 链路问题
+          CURL="curl -sfL --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 15 --max-time 240 -4"
           for f in books.json bible-text.json bible-notes.json bible-xrefs.json bible-outlines.json; do
-            curl -sL "$BASE/$f" -o "www/data/$f"
+            $CURL "$BASE/$f" -o "www/data/$f"
           done
           for acr in $(python3 -c "import json; print(' '.join(b['acronym'] for b in json.load(open('www/data/books.json'))))"); do
-            code=$(curl -sL -w "%{http_code}" -o "www/data/lifereading/$acr.json" "$BASE/lifereading/$acr.json")
+            code=$(curl -sL --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 15 --max-time 240 -4 -w "%{http_code}" -o "www/data/lifereading/$acr.json" "$BASE/lifereading/$acr.json")
             if [ "$code" != "200" ]; then rm -f "www/data/lifereading/$acr.json"; fi
           done
           echo "lifereading 文件数: $(ls www/data/lifereading/ | wc -l)"
