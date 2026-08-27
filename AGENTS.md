@@ -37,7 +37,7 @@
 | `scripts/export-spiritual.py` | 从 `../bible/data/raw/spiritual_food/` 导出书报 → `data/books/`（系列索引 + 元数据 + 按辑懒加载） |
 | `start.bat` / `icons/` | 本地预览服务器（python http.server 8765）/ PWA 图标（icon-192/512，`resources/icon.png` 为 APK 图标源） |
 | `scripts/patch-android.mjs` | CI 帮手：注入原生插件 + AndroidManifest 权限/FileProvider（幂等） |
-| `scripts/*-test.js` | puppeteer 端到端测试（e2e / 标注 / 生命读经标注 / 生命读经模块内标注）；`download-sim-test.js` 验证 WebView fetch 下载被 CORS 拦截（根因留档），`update-logic-test.js` mock 原生插件验证 download() fallback/进度/监听清理，`lr-heading-test.js` 纲目标题提取，`home-test.js` / `home-test-mobile.js` 首页+合集链路冒烟，`lr-reader-test.js` 生命读经阅读器专项，`lr-module-annotation-test.js` 生命读经模块内划线回归（rerenderAnn 主区重渲染），`book-reader-test.js` 书报阅读器专项，`morning-reader-test.js` 听抄阅读器专项（直进/切期/切篇/层级标题渲染/笔记/划线/全局笔记跳转/恢复） |
+| `scripts/*-test.js` | puppeteer 端到端测试（e2e / 标注 / 生命读经标注 / 生命读经模块内标注）；`download-sim-test.js` 验证 WebView fetch 下载被 CORS 拦截（根因留档），`update-logic-test.js` mock 原生插件验证 download() fallback/进度/监听清理，`lr-heading-test.js` 纲目标题提取，`home-test.js` / `home-test-mobile.js` 首页+合集链路冒烟，`lr-reader-test.js` 生命读经阅读器专项，`lr-module-annotation-test.js` 生命读经模块内划线回归（rerenderAnn 主区重渲染），`book-reader-test.js` 书报阅读器专项，`morning-reader-test.js` 听抄阅读器专项（直进/切期/切篇/层级标题渲染/笔记/划线/全局笔记跳转/恢复）；`sync-merge-test.js` sync.js flushPending 合并语义 node 单测（无浏览器，防旧快照覆盖回归） |
 | `data/books.json` | 66 卷目录 + 每卷章数 + 缩写 |
 | `data/bible-text.json` | 原文，键 `创1:1` / `创1:2上`，值含 `{N}`（注脚）/`[a]`（串珠）标记 |
 | `data/bible-notes.json` | 注解，键 → `{seq: 注脚文本}`（seq 为节内连续编号，可复用同一文本、跨半节连续） |
@@ -95,7 +95,7 @@
 | API | `https://duoban.xyz/bible-api/api/kv/{key}`（GET/PUT/DELETE） |
 | 服务器 key | `u{uid}:bible-study:annotations`、`u{uid}:bible-study:chapterNotes`、`u{uid}:bible-study:lrNotes`、`u{uid}:bible-study:bookNotes`、`u{uid}:bible-study:morningNotes`（uid 来自账号） |
 | 客户端 | `sync.js`（`window.BibleStudySync`） |
-| 策略 | 服务器为主：启动 `pullAll` 覆盖本地；写时 `putRemote` 防抖；失败标 pending，启动 `flushPending` 重试 |
+| 策略 | 服务器为主：启动 `pullAll` 覆盖本地（pending 的 key 跳过）；写时 `putRemote` 防抖；失败标 pending，启动 `flushPending` 重试——**推送前先 GET 服务器当前值合并**（数组按 id 并集、同 id 本机赢；对象浅合并本机赢；拉取失败则本轮不推保留 pending），防止旧快照整体覆盖其他设备的新数据 |
 | 同步范围 | **只同步用户数据**（annotations / chapterNotes / lrNotes / bookNotes / morningNotes）；布局偏好（viewMode / hideMarks / studyWidth 等）保持设备本地 |
 
 **账号与授权（RFC 8628 简化版）**：
@@ -103,6 +103,7 @@
 - 启用流程 = 输入授权码 → `POST /api/account/claim` 兑换 `{uid, token}`；管理员用 `npm run account:code`（`--uid u1` 绑定已有账号 / 缺省新账号码）生成，码 10 分钟有效、一次性、每 IP claim 限流
 - **KV 权限**：`u{n}:bible-study:*` 命名空间读写必须带设备令牌（`Authorization: Bearer`），`sync.js` 自动附加；跨账号隔离（u2 token 访问 u1 → 401）；bible-reader 命名空间暂未纳入（`SECURED_PROJECTS` 可扩展）
 - owner 账号 `u1` 预置，既有数据命名空间不变；新账号从 u2 起
+- **管理面板**：`https://duoban.xyz/bible-api/admin` — 账号列表/详情（设备吊销、KV 查看/删除、清空账号数据）、授权码撤销、网页生成授权码（可绑定已有 uid，避免「生成码总是新 uid」）。登录用管理员令牌（`BIBLE_ADMIN_TOKEN` = 服务器 `FEEDBACK_ADMIN_TOKEN`）或服务器 `admin_password.txt` 密码（两者存于 server-ops，见 `../server-ops/docs/servers/aliyun-rike.md`）；服务器代码与页面版本化源头在 `../server-ops/files/bible-reader/`，更新走 server-ops upload + `pm2 restart bible-kv`
 
 - 同步失败静默降级为纯本地，不阻塞应用；`window.BIBLE_OFFLINE=true` 可跳过远程（测试用）
 - 服务器 CORS 白名单在 `/var/www/bible-reader/server.py` 的 `ALLOWED_ORIGINS`，新增域名用 `../server-ops/server-ops.py -s aliyun-rike exec ...` 操作并重启 `bible-kv`（`pm2 restart bible-kv`，**不要带 `--update-env`** 以免丢 FEEDBACK_ADMIN_TOKEN）。Capacitor 6 WebView origin 是 `https://localhost`（白名单已含）

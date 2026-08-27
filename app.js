@@ -103,16 +103,13 @@ function save(key, val) {
   }
 }
 
-// 启动时后台同步：服务器为主，成功后覆盖本地；再重试离线未推送的改动
+// 启动时后台同步：服务器为主，成功后覆盖本地；再重试离线未推送的改动（先合并服务器当前值再推）
 async function syncFromRemote() {
   if (!syncActive()) return;
   await Sync.pullAll(SYNC_KEYS);
-  state.annotations = load(LS_ANNOTATIONS, []);
-  state.chapterNotes = load(LS_CHAPTER_NOTES, {});
-  state.lrNotes = load(LS_LR_NOTES, {});
-  state.bookNotes = load(LS_BOOK_NOTES, {});
-  state.morningNotes = load(LS_MORNING_NOTES, {});
-  Sync.flushPending((key) => {
+  // flushPending 推送前会拉取服务器当前值合并（防旧快照覆盖新数据），成功后把合并结果写回 localStorage，
+  // 因此状态重载必须放在 flush 之后，UI 与后续 save 才基于合并结果
+  await Sync.flushPending((key) => {
     if (key === LS_ANNOTATIONS) return state.annotations;
     if (key === LS_CHAPTER_NOTES) return state.chapterNotes;
     if (key === LS_LR_NOTES) return state.lrNotes;
@@ -120,6 +117,11 @@ async function syncFromRemote() {
     if (key === LS_MORNING_NOTES) return state.morningNotes;
     return undefined;
   });
+  state.annotations = load(LS_ANNOTATIONS, []);
+  state.chapterNotes = load(LS_CHAPTER_NOTES, {});
+  state.lrNotes = load(LS_LR_NOTES, {});
+  state.bookNotes = load(LS_BOOK_NOTES, {});
+  state.morningNotes = load(LS_MORNING_NOTES, {});
   renderChapter();
   renderStudy();
 }
@@ -1349,6 +1351,8 @@ function groupHl(list) {
   const groups = [];
   const vs = list.filter(a => a.type === 'verse');
   const lr = list.filter(a => a.type === 'lr');
+  const books = list.filter(a => a.type === 'book');
+  const mornings = list.filter(a => a.type === 'morning');
   const verseByChapter = {};
   vs.forEach(a => { (verseByChapter[a.chapter] = verseByChapter[a.chapter] || []).push(a); });
   Object.keys(verseByChapter).map(Number).sort((a, b) => a - b).forEach(ch => {
@@ -1356,6 +1360,29 @@ function groupHl(list) {
   });
   if (lr.length) {
     groups.push({ label: '生命读经', items: lr.sort((x, y) => (x.articleId - y.articleId) || (x.start - y.start)) });
+  }
+  // 书报：右栏已按 chapter 过滤，通常只一个 group；多卷时按 series:volume:book 分组
+  if (books.length) {
+    const byKey = {};
+    books.forEach(a => { const k = `${a.series}:${a.volume}:${a.book}`; (byKey[k] = byKey[k] || []).push(a); });
+    Object.keys(byKey).sort().forEach(k => {
+      const [series, volume, book] = k.split(':');
+      const metaVol = (series === 'ni' && state.bookMeta) ? state.bookMeta.volumes[+volume - 1] : null;
+      const metaBook = metaVol && metaVol.books[+book];
+      const label = metaBook ? `${(state.bookMeta && state.bookMeta.name) || series} · ${metaVol.title} · ${metaBook.title}` : `${series} · 卷${volume} · 书${+book + 1}`;
+      groups.push({ label, items: byKey[k].sort((x, y) => (x.chapter - y.chapter) || (x.start - y.start)) });
+    });
+  }
+  // 听抄：右栏已按 chapter 过滤，通常只一个 group；多期时按 period:chapterId 分组
+  if (mornings.length) {
+    const byKey = {};
+    mornings.forEach(a => { const k = `${a.period}:${a.chapterId}`; (byKey[k] = byKey[k] || []).push(a); });
+    Object.keys(byKey).sort().forEach(k => {
+      const [pid, cid] = k.split(':');
+      const t = state.morningIndex && state.morningIndex.trainings.find(x => x.id === pid);
+      const label = `${(t && (t.title || t.season)) || pid} · 第${cid}篇`;
+      groups.push({ label, items: byKey[k].sort((x, y) => x.start - y.start) });
+    });
   }
   return groups;
 }

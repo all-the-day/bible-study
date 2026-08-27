@@ -82,11 +82,11 @@
     });
   }
 
-  function getRemote(localKey, timeoutMs = 5000) {
-    if (OFFLINE) return Promise.resolve(null);
-    if (isPending(localKey)) return Promise.resolve(null);
+  /* 拉取远端值：key 不存在 → null；请求失败/超时 → undefined（与 null 区分，防止盲推覆盖） */
+  function fetchRemote(localKey, timeoutMs = 5000) {
+    if (OFFLINE) return Promise.resolve(undefined);
     return new Promise((resolve) => {
-      const timer = setTimeout(() => resolve(null), timeoutMs);
+      const timer = setTimeout(() => resolve(undefined), timeoutMs);
       http("/api/kv/" + encodeURIComponent(remoteKey(localKey)), "GET")
         .then((data) => {
           clearTimeout(timer);
@@ -94,9 +94,15 @@
         })
         .catch(() => {
           clearTimeout(timer);
-          resolve(null);
+          resolve(undefined);
         });
     });
+  }
+
+  function getRemote(localKey, timeoutMs = 5000) {
+    if (OFFLINE) return Promise.resolve(null);
+    if (isPending(localKey)) return Promise.resolve(null);
+    return fetchRemote(localKey, timeoutMs);
   }
 
   function putRemote(localKey, value, timeoutMs = 5000) {
@@ -126,11 +132,43 @@
     });
   }
 
-  /** 启动时重试所有 pending 的本地改动 */
+  /* 合并「服务器当前值」与「本地待推值」：数组按 id 并集（同 id 本机赢），对象按键浅合并（本机赢）。
+     防止旧快照整体 PUT 覆盖其他设备推上去的新数据（last-write-wins 数据丢失） */
+  function mergeRemoteLocal(remote, local) {
+    if (Array.isArray(local)) {
+      if (!Array.isArray(remote)) return local;
+      const merged = remote.slice();
+      for (const item of local) {
+        const id = item && item.id;
+        if (id === undefined) {
+          merged.push(item);
+          continue;
+        }
+        const idx = merged.findIndex((x) => x && x.id === id);
+        if (idx === -1) merged.push(item);
+        else merged[idx] = item;
+      }
+      return merged;
+    }
+    if (local && typeof local === "object") {
+      const base = remote && typeof remote === "object" && !Array.isArray(remote) ? remote : {};
+      return Object.assign({}, base, local);
+    }
+    return local;
+  }
+
+  /** 启动时重试所有 pending 的本地改动（推送前先拉取服务器当前值合并，防止旧快照覆盖新数据） */
   async function flushPending(getterByKey) {
     for (const localKey of getPending()) {
-      const value = getterByKey(localKey);
-      if (value !== undefined) await putRemote(localKey, value);
+      const local = getterByKey(localKey);
+      if (local === undefined) continue;
+      const remote = await fetchRemote(localKey);
+      if (remote === undefined) continue; // 拉不到服务器当前值就本轮不推，保留 pending 下轮再试
+      const merged = mergeRemoteLocal(remote, local);
+      const ok = await putRemote(localKey, merged);
+      if (ok) {
+        try { localStorage.setItem(localKey, JSON.stringify(merged)); } catch (e) {}
+      }
     }
   }
 
