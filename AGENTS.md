@@ -2,17 +2,17 @@
 
 ## 项目定位
 
-**读经研读/预习草稿工具**：选一章（如 创 24）→ 聚合查看原文、注解、相关生命读经 → 在材料上划线、标记、写笔记 → 笔记按章累积。
+**读经研读/预习草稿工具**：启动进首页合集块（读经/生命读经/听抄/书报/我的笔记）→ 聚合查看原文、注解、相关生命读经 → 在材料上划线、标记、写笔记 → 笔记按章累积；标注/笔记可选云同步，APK 支持 App 内更新。
 
 与兄弟项目的边界：
-- **bible**（`../bible`）— 数据源，通过 `query_api.py` 提供经文/注解/串珠/生命读经。本项目的 `scripts/export.py` 从它导出静态 JSON，**不直接读 bible.db**。
+- **bible**（`../bible`）— 数据源，通过 `query_api.py` 提供经文/注解/串珠/生命读经。本项目的 `scripts/export.py` 从它导出静态 JSON，**不直接读 bible.db**；书报系列数据也来自 `../bible/data/raw/spiritual_food/`
 - **bible-reader** — 纯划线阅读器，定位「干净、无注解」。本项目的**颜色概念体系沿用它的 5 色语义**，但功能上不复用其代码。
-- **晨读 app（特会信息合集）** — UI 与标注交互机制的参考样板。
+- **晨读 app（特会信息合集）** — UI 与标注交互机制的参考样板，且**听抄模块的数据源**（反编译其 APK 资源导出 `data/morning/`，见「数据导出」节）
 
 ## 技术栈
 
 纯静态 PWA（无构建步骤，参照晨读 app / bible-reader 模式）：
-`index.html` + `style.css` + `app.js` + `sync.js` + `manifest.json` + `sw.js`。
+`index.html` + `style.css` + `app.js` + `sync.js` + `update.js` + `manifest.json` + `sw.js`。
 
 离线 APK：Capacitor 6（`capacitor.config.json` + `package.json`），GitHub Actions 云构建（`.github/workflows/build-apk.yml`）。
 
@@ -33,14 +33,19 @@
 | `capacitor.config.json` / `package.json` | APK 打包配置（`resources/icon.png` 为图标源） |
 | `config/android/` | 原生更新插件源码（ApkInstallerPlugin：download 原生下载 + install 安装；MainActivity/file_paths.xml），CI 注入 android/ 工程，不入本地构建 |
 | `scripts/export.py` | 从 `../bible` 导出静态 JSON → `data/` |
+| `scripts/export-morning.py` | 从晨读 APK 资源导出听抄 → `data/morning/`（默认只导当年，`--exclude` 排除期，旧期自动清理） |
+| `scripts/export-spiritual.py` | 从 `../bible/data/raw/spiritual_food/` 导出书报 → `data/books/`（系列索引 + 元数据 + 按辑懒加载） |
+| `start.bat` / `icons/` | 本地预览服务器（python http.server 8765）/ PWA 图标（icon-192/512，`resources/icon.png` 为 APK 图标源） |
 | `scripts/patch-android.mjs` | CI 帮手：注入原生插件 + AndroidManifest 权限/FileProvider（幂等） |
-| `scripts/*-test.js` | puppeteer 端到端测试（e2e / 标注 / 生命读经标注）；`download-sim-test.js` 验证 WebView fetch 下载被 CORS 拦截（根因留档），`update-logic-test.js` mock 原生插件验证 download() fallback/进度/监听清理，`home-test.js` / `home-test-mobile.js` 首页+合集链路冒烟，`lr-reader-test.js` 生命读经阅读器专项，`book-reader-test.js` 书报阅读器专项，`morning-reader-test.js` 晨兴阅读器专项（直进/切期/切篇/六天渲染/笔记/划线/全局笔记跳转/恢复） |
+| `scripts/*-test.js` | puppeteer 端到端测试（e2e / 标注 / 生命读经标注 / 生命读经模块内标注）；`download-sim-test.js` 验证 WebView fetch 下载被 CORS 拦截（根因留档），`update-logic-test.js` mock 原生插件验证 download() fallback/进度/监听清理，`lr-heading-test.js` 纲目标题提取，`home-test.js` / `home-test-mobile.js` 首页+合集链路冒烟，`lr-reader-test.js` 生命读经阅读器专项，`lr-module-annotation-test.js` 生命读经模块内划线回归（rerenderAnn 主区重渲染），`book-reader-test.js` 书报阅读器专项，`morning-reader-test.js` 听抄阅读器专项（直进/切期/切篇/层级标题渲染/笔记/划线/全局笔记跳转/恢复） |
 | `data/books.json` | 66 卷目录 + 每卷章数 + 缩写 |
 | `data/bible-text.json` | 原文，键 `创1:1` / `创1:2上`，值含 `{N}`（注脚）/`[a]`（串珠）标记 |
 | `data/bible-notes.json` | 注解，键 → `{seq: 注脚文本}`（seq 为节内连续编号，可复用同一文本、跨半节连续） |
 | `data/bible-xrefs.json` | 串珠，键 → `{字母: 引用串}` |
 | `data/bible-outlines.json` | 纲目，键 `创1` → `{theme: [{level,text}], items: [{level,text,section,flag}]}` |
 | `data/lifereading/{缩写}.json` | 每卷生命读经：篇目 + 经文映射（verses）+ 正文。合并卷（撒母耳记/列王纪/历代志）拆分为子卷文件（撒上/撒下、王上/王下、代上/代下） |
+| `data/morning/` | 听抄：index.json（期索引 trainings）+ `{期}.json`（chapters 听抄正文，无六天晨兴/纲目） |
+| `data/books/` | 书报：index.json（系列清单）+ `{系列}.json`（元数据 volumes）+ `{系列}-{辑}.json`（按辑懒加载） |
 
 ## 数据模型（核心）
 
@@ -70,11 +75,11 @@
 
 - **状态**：`state.screen`（'home'|'work'，唯一视图正交开关）、`state.activeModule`（当前阅读器模块：'bible'|'lifereading'）、`state.notesScope`（'chapter'|'global'）、`state.lrVolumes`（生命读经卷懒加载缓存，`selectChapter` 懒加载与阅读器共用）、`state.lrBookIndex/lrArticleId/lrSideTab`（生命读经阅读器位置与右栏 tab）
 - **切换函数**（顶层声明，e2e 测试 `page.evaluate(() => enterWork())` 直接调用）：`showHome()`（加 body.home + 移除 mobile-study + closePopupAll + 刷新块计数）、`enterWork()`（移除 body.home，幂等）
-- **合集注册表 `COLLECTIONS`（app.js 顶部，数据驱动）**：`{id, title, icon, entry}` 数组（**无 sub 副标题**）→ `renderHome()` 遍历生成 `.home-block` tile，点击委托分发。**晨兴/书报数据导出后各加一行即可上块，UI 零改动**（注册表已留注释占位）
+- **合集注册表 `COLLECTIONS`（app.js 顶部，数据驱动）**：`{id, title, icon, entry}` 数组（**无 sub 副标题**）→ `renderHome()` 遍历生成 `.home-block` tile，点击委托分发。**听抄/书报数据导出后各加一行即可上块，UI 零改动**（注册表已留注释占位）
 - **阅读器外壳 + 模块注册表 `READER_MODULES`（app.js，核心抽象）**：每个合集模块 = 一套三列阅读器配置 `{id, title, enter(opts), renderNav(), renderMain(), renderSide(), renderCrumb(), onMenu(), onCrumbClick()}`。`enterModule(id, opts)` 是唯一入口（首页块/搜索/全局笔记都走它）：旧模块 onLeave → activeModule 切换 → `applyModuleBodyClass`（body-mod-{id} 类驱动三列容器归属，CSS 见 style.css「阅读器模块容器切换」节）→ enterWork → 首次进入时 enter + 四渲染（**同模块幂等不重渲染**）。☰ 桌面 = `toggleNavCollapsed()` 折叠当前模块左栏；crumb 点击 = 模块分发（读经=选章弹窗 / 生命读经=篇目弹窗）
 - **读经模块（bible）**：entry 直接进上次章节（`LS_LAST`，无则 1,1），不再弹选章；左栏=书卷+章网格、主区=经文、右栏=注解|生命读经|我的笔记、actions=双页/隐藏注号/研读全屏/笔记/反馈/设置（现状）
 - **生命读经模块（lifereading，方案 A 三列）**：entry 直接进上次篇目（`LS_LR_LAST`，无则第一卷第一篇）；左栏=卷条（66 卷横向 `.lr-vol-strip`）+ 当前卷篇目列表（`.lr-nav-articles`），☰ 折叠与读经一致；主区=篇目正文（`renderLrArticle(art, bookIndex)` 渲染到 `#lrMain`，标注坐标系不变）；右栏=`#lrSide`「纲目|笔记」tab（纲目在前：`extractLrHeadings` + 滚动高亮 `bindLrOutlineSpy` 句柄化监听 `#textCol`；笔记：篇级 textarea `state.lrNotes` + 本篇标注汇总）；crumb=`卷名 · 第{id}篇 {标题}` 点击弹篇目列表；actions 只留 ⚙️（`body-mod-lifereading` CSS 隐藏其余）；切篇/切卷 `selectLrArticle/selectLrVolume` 持久化 LS_LR_LAST + 正文滚顶；统一入口 `openLrArticle(bookIndex, art)`（模块内切篇/模块外进模块）
-- **书报模块（books，倪柝声文集，后续系列同构扩展）**：entry 直接进上次位置（`LS_BOOK_LAST`{volume,book,chapter}，无则第1辑第1本第1章）；左栏=辑条（`.bk-vol-strip`）+ 书列表（`.bk-nav-books`）；主区=`#bookMain` 当前章正文（`.bk-para` 按行 data-base 渲染，标注 type 'book' 坐标系=chapter.content）；右栏=`#bookSide`「章列表|笔记」（章列表切章，笔记=章级 textarea `state.bookNotes` + 标注汇总）；crumb=`倪柝声文集 · 书名 · 第N章`；数据 `data/books/`：`ni.json` 元数据（46KB，含章标题）+ `ni-{辑}.json` 按辑懒加载（3 辑 62 本 1325 章，共约 24MB）；切辑/切书/切章 `selectBookVolume/selectBookItem/selectBookChapter`（注意：**书报函数已加 Item 前缀避免与读经 selectBook/renderBookList 同名覆盖**）；统一入口 `openBookChapter(volume, book, chapter)`
+- **书报模块（books，倪柝声文集，后续系列同构扩展）**：entry 直接进上次位置（`LS_BOOK_LAST`{volume,book,chapter}，无则第1辑第1本第1章）；左栏=辑条（`.bk-vol-strip`）+ 书列表（`.bk-nav-books`）；主区=`#bookMain` 当前章正文（`.bk-para`/`.bk-head lr-h{n}` 按行 data-base 渲染：**标题行 `detectLrHeading` 识别独立成 `.bk-head`（左对齐+加粗+字号递进，无缩进），正文段落卡片化与 `.lr-para` 同款**；标注 type 'book' 坐标系=chapter.content）；右栏=`#bookSide`「章列表|笔记」（章列表切章，笔记=章级 textarea `state.bookNotes` + 标注汇总）；crumb=`倪柝声文集 · 书名 · 第N章`；数据 `data/books/`：`ni.json` 元数据（46KB，含章标题）+ `ni-{辑}.json` 按辑懒加载（3 辑 62 本 1325 章，共约 24MB）；切辑/切书/切章 `selectBookVolume/selectBookItem/selectBookChapter`（注意：**书报函数已加 Item 前缀避免与读经 selectBook/renderBookList 同名覆盖**）；统一入口 `openBookChapter(volume, book, chapter)`
 - **听抄模块（morning）**：entry 直接进上次位置（`LS_MORNING_LAST`{period, chapterId}，无则第 1 期第 1 篇）；左栏=期条（`.morning-period-strip`，当年各期）+ 篇列表（`.morning-nav-chapters`）；主区=`#morningMain` 当前篇**听抄**（信息正文：`detail_sections` 树形层级标题 + 段落，content 逐行 data-base 渲染，标题行经 `detectLrHeading` 识别加 `.morning-head` 类；仅含听抄数据，纲目/六天晨兴不导出）；右栏=`#morningSide` 篇级笔记（`state.morningNotes`）+ 标注汇总；crumb=`期标题 · 第{n}篇 {标题}` 点击弹篇目列表；标注 type 'morning'（`period`/`chapterId` 定位）；数据 `data/morning/`（index.json + `{期}.json`，当前 2026-03/04 两期 18 篇）；`openMorningArticle(periodId, chapterId)` 统一入口
 - **模块感知标注**：`renderLrArticle` 输出 `data-book`；`renderBookMain` 输出 `data-series/volume/book/chapter`；`renderMorningMain` 输出 `data-period/chapter`；`findAnnotatable` 加 `data-article`/`data-chapter` 守卫（**修复 renderFootnotes 注解容器误标 .lr-content 致 articleId=NaN 的隐患**）；`handleSelection` 按 data-book / data-volume / data-period 定位源文本；`navigateToAnnotation` 模块感知（lr/books/morning 模块内就地跳转，跨模块回 bible）；`buildAnnotation` 按 type 存定位字段（verse: chapter/verse/half、lr: articleId、book: series/volume/book/chapter、morning: period/chapterId）
 - **顶部搜索 `homeSearch(q)`**（轻量三条过滤，**不做全文**）：① 书卷+章正则走 `REF_ALIASES`/`resolveBookAlias` → `enterModule('bible')` 进工作区选章；② 标注 note/text 包含匹配（截 20 条，`navigateToAnnotation` 跳转）；③ 生命读经篇目标题（仅 `state.lrVolumes` 已缓存卷，不建全量索引）→ `openLrArticle` 直进阅读器
@@ -142,9 +147,11 @@ npm run feedback:close <id>      # 标记已处理
 ## 数据导出
 
 ```bash
-cd scripts && python export.py
+cd scripts && python export.py          # 经文/注解/串珠/纲目/生命读经
+cd scripts && python export-morning.py  # 听抄（默认只导当年，--exclude 排除期）
+cd scripts && python export-spiritual.py # 书报系列（倪柝声文集等）
 ```
-- 数据源路径 `../bible/data/raw/bible_root/bible.db`（只读）与 `../bible/data/raw/life_study/`（只读）
+- 数据源路径 `../bible/data/raw/bible_root/bible.db`（只读）与 `../bible/data/raw/life_study/`（只读）；听抄源为晨读 APK 资源 `d:/迅雷下载/晨读appRes/resources/assets/public/`；书报源为 `../bible/data/raw/spiritual_food/`
 - 导出到 `data/`，改动数据源后需重跑导出
 - 生命读经 `verses` 来自 `../bible` 的 `生命读经章节映射.json`（ezoe.work 目录页精确标注）；合并卷按「读经：」行拆分到子卷，verses 优先用精确标注，为空或章节号与主书卷不对应时用读经行补齐
 
@@ -159,7 +166,7 @@ vercel --prod --yes --archive=tgz
 
 ## APK 打包（GitHub Actions）
 
-- workflow `.github/workflows/build-apk.yml`：单一 job → **自动递增版本**（release 版本与 package.json 相同时 patch+1，构建成功后 `[skip ci]` 提交推送回 main）→ 版本一致性守卫（package/manifest 版本对齐）→ 准备 web 资源（`www/manifest.json` 版本重写为 package.json）+ 从 Vercel 下载 data（books/text/notes/xrefs/**outlines** + lifereading）→ `npm install` → `cap add android` → `cap sync` → `capacitor-assets generate`（图标）→ `scripts/patch-android.mjs`（注入原生更新插件 + **强制改写 signingConfigs.debug 指向固定 keystore**）→ 注入固定 keystore 到 `$HOME/.android/` → gradle 构建 debug APK → 上传 artifact
+- workflow `.github/workflows/build-apk.yml`：单一 job → **自动递增版本**（release 版本与 package.json 相同时 patch+1，构建成功后 `[skip ci]` 提交推送回 main）→ 版本一致性守卫（package/manifest 版本对齐）→ 准备 web 资源（`www/manifest.json` 版本重写为 package.json）+ 从 Vercel 下载 data（books/text/notes/xrefs/**outlines** + lifereading + books/ + morning/，curl 加固：`--retry-all-errors -4 -f` 兜底 Vercel edge 偶发 TLS 重置）→ `npm install` → `cap add android` → `cap sync` → `capacitor-assets generate`（图标）→ `scripts/patch-android.mjs`（注入原生更新插件 + **强制改写 signingConfigs.debug 指向固定 keystore**）→ 注入固定 keystore 到 `$HOME/.android/` → gradle 构建 debug APK → 上传 artifact
   - **注意**：APK 数据只来自 Vercel 部署产物，不在 git 里；改 `data/` 后务必先 `vercel` 部署再让 APK 构建拉取，否则 APK 拿不到新数据。
   - **注意**：workflow 的 `run:` 块不要用 heredoc（`<<EOF`）——GitHub 解析会失败导致 push 静默不触发，用 `printf`/`--notes-file` 等替代
 - 触发：push 到 **main** 且改动前端文件（`app.js`/`style.css`/`index.html`/`update.js` 等）或 `package.json`/`capacitor.config.json`/`resources/**`/`config/**`/`scripts/patch-android.mjs`；`workflow_dispatch` 手动触发

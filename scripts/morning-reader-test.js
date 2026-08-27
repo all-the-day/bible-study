@@ -1,4 +1,4 @@
-/* 听抄阅读器专项测试：直进第一篇、期条切期、篇列表切篇、六天晨兴渲染、
+/* 听抄阅读器专项测试：直进第一篇、期条切期、篇列表切篇、层级标题渲染、
  * 听抄划线标注、全局笔记听抄分组跳转、回首页再进恢复 */
 const { spawn } = require('child_process');
 const ROOT = require('path').resolve(__dirname, '..');

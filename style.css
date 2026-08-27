@@ -393,7 +393,7 @@ sup.xref-ref:hover { color: var(--brand-dark); }
 .note-item .note-meta { color: var(--text-muted); font-size: 12px; margin-bottom: 4px; }
 .empty-hint { color: var(--text-muted); text-align: center; padding: 30px 0; font-size: 14px; }
 .lr-content { white-space: pre-wrap; font-size: 17px; line-height: 2; }
-.lr-para {
+.lr-para, .bk-para {
   margin-bottom: 10px;
   text-indent: 2em;
   background: var(--surface);
@@ -401,6 +401,25 @@ sup.xref-ref:hover { color: var(--brand-dark); }
   border-radius: var(--radius-md);
   padding: 14px 16px;
   box-shadow: var(--shadow-sm);
+}
+/* 书报容器无 font-size，段落自带；生命读经继承 .lr-content 的 17px */
+.bk-para { font-size: 15px; line-height: 2; color: var(--text); }
+/* 书报标题：与正文卡片区分（左对齐 + 加粗 + 字号递进 + 间距），不做逐级缩进 */
+.book-content { text-align: justify; }
+.bk-head {
+  font-weight: 700;
+  color: var(--heading);
+  margin: 18px 0 10px;
+  line-height: 1.7;
+  text-align: justify;
+}
+.bk-head.lr-h0 { font-size: 16px; }            /* 短行节标题（无编号） */
+.bk-head.lr-h1 { font-size: 17px; }            /* 壹 */
+.bk-head.lr-h2 { font-size: 16px; }            /* 一 */
+.bk-head.lr-h3, .bk-head.lr-h4 { font-size: 15.5px; font-weight: 600; }  /* １ （壹） */
+.bk-head.lr-h5, .bk-head.lr-h6, .bk-head.lr-h7,
+.bk-head.lr-h8, .bk-head.lr-h9, .bk-head.lr-h10 {
+  font-size: 15px; font-weight: 600; color: var(--text);                  /* （一）及更深 */
 }
 /* 生命读经标题：所有层级统一居中，正文卡片化后标题自然凸显 */
 .lr-head {
@@ -940,11 +959,33 @@ body.home .mobile-nav { display: none; }
 .morning-main { padding: 16px 20px; }
 .morning-title { font-size: 17px; font-weight: 700; color: var(--heading); margin-bottom: 8px; }
 .morning-scripture { font-size: 13px; color: var(--text-muted); margin-bottom: 12px; }
-.morning-para { font-size: 15px; line-height: 2; color: var(--text); margin-bottom: 6px; }
-.morning-head { font-weight: 600; color: var(--heading); margin-top: 10px; line-height: 1.8; }
-.morning-head.lr-h1 { font-size: 16px; }
-.morning-head.lr-h2, .morning-head.lr-h3 { font-size: 15px; }
-.morning-head.lr-h4 { font-weight: 500; }
+/* 听抄排版：照抄晨读 app message-page（renderer.js renderMessageSection / css .section-level*）
+   段落两端对齐 + 2em 首行缩进；层级标题字号/字重/左缩进递进（lr-h0 短行小标题用基础样式），无卡片 */
+.morning-content { font-size: 15px; text-align: justify; }
+.morning-para {
+  margin: 14px 0;
+  padding-inline: 0.3em;
+  text-indent: 2em;
+  color: var(--text);
+  line-height: 1.8;
+  text-align: justify;
+}
+.morning-head {
+  font-weight: 600;
+  color: var(--heading);
+  margin: 13px 0 8px;
+  line-height: 1.6;
+  text-align: justify;
+  padding-left: 10px;
+}
+.morning-head.lr-h1 { font-size: 1.06em; font-weight: 650; margin: 16px 0 10px; }
+.morning-head.lr-h2 { font-size: 1.03em; font-weight: 600; margin: 13px 0 8px; margin-left: 8px; }
+.morning-head.lr-h3 { font-size: 1.02em; font-weight: 540; margin: 11px 0 8px; margin-left: 16px; }
+.morning-head.lr-h4 { font-size: 1.00em; font-weight: 500; margin: 9px 0 6px; margin-left: 24px; }
+.morning-head.lr-h5, .morning-head.lr-h6, .morning-head.lr-h7,
+.morning-head.lr-h8, .morning-head.lr-h9, .morning-head.lr-h10 {
+  font-size: .97em; font-weight: 450; margin: 7px 0 5px; margin-left: 32px;
+}
 
 /* ── 移动端 ── */
 @media (max-width: 900px) {

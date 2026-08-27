@@ -1954,7 +1954,8 @@ function renderBookContent(parent, content, annotations) {
   for (const line of lines) {
     if (line.trim() === '') { offset += line.length + 1; continue; }
     const div = document.createElement('div');
-    div.className = 'bk-para';
+    const heading = detectLrHeading(line);
+    div.className = heading ? `bk-head lr-h${heading.level}` : 'bk-para';
     div.dataset.base = offset;
     renderLrLine(div, line, offset, annotations);   // 复用：ref-link 引用高亮 + 标注叠加
     parent.appendChild(div);
@@ -2568,8 +2569,8 @@ function plainOffset(root, node, offset) {
   }
   const isBlock = (el) => el.nodeType === 1 &&
     (el.classList.contains('lr-head') || el.classList.contains('lr-para') ||
-     el.classList.contains('bk-para') || el.classList.contains('morning-para') ||
-     el.classList.contains('morning-head'));
+     el.classList.contains('bk-para') || el.classList.contains('bk-head') ||
+     el.classList.contains('morning-para') || el.classList.contains('morning-head'));
   let first = true;
   for (const child of root.childNodes) {
     if (done) break;
