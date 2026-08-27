@@ -94,16 +94,19 @@ async function main() {
   }));
   console.log('6. 右栏笔记 tab:', r6.tabActive === '笔记' && r6.ta ? '✓' : '✗');
 
-  // 7. ⌂ 回首页 → 我的笔记块 → 全局模式
+  // 7. ⌂ 回首页 → 我的笔记块 → 笔记管理模块
   await page.click('#homeBtn');
   await new Promise((r) => setTimeout(r, 300));
   await page.click('#homeGrid .home-block[data-entry="notes"]');
-  await page.waitForSelector('.note-scope', { timeout: 5000 });
+  await new Promise((r) => setTimeout(r, 1200));
   const r7 = await page.evaluate(() => ({
-    tab: document.querySelector('.study-tab.active')?.dataset.tab,
-    scope: [...document.querySelectorAll('.note-scope-btn')].map(b => b.textContent + (b.classList.contains('active') ? '*' : '')).join('/'),
+    mod: document.body.classList.contains('body-mod-notes'),
+    mainVisible: getComputedStyle(document.querySelector('#notesMain')).display !== 'none',
+    nav: !!document.querySelector('#notesNav'),
+    side: !!document.querySelector('#notesSide'),
+    crumb: document.querySelector('#bookName').textContent,
   }));
-  console.log('7. 我的笔记块:', r7.tab === 'mynotes' && r7.scope.includes('全部*') ? '✓' : '✗', '|', r7.scope);
+  console.log('7. 我的笔记块:', r7.mod && r7.mainVisible && r7.nav && r7.side && r7.crumb === '笔记管理' ? '✓' : '✗', '|', JSON.stringify(r7));
 
   // 8. 搜索「创24」→ 跳转
   await page.click('#homeBtn');

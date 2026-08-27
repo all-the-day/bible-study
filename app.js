@@ -25,6 +25,7 @@ const LS_BOOK_LAST = 'bible-study.bookLast';   // {volume, book, chapter} 书报
 const LS_BOOK_NOTES = 'bible-study.bookNotes'; // {"volume:book:chapter": text} 章级笔记
 const LS_MORNING_LAST = 'bible-study.morningLast';   // {period, chapterId} 晨兴阅读器上次位置
 const LS_MORNING_NOTES = 'bible-study.morningNotes'; // {"period:chapterId": text}
+const LS_NOTES_PREFS = 'bible-study.notesPrefs';     // {source, color, sort} 笔记管理模块偏好
 
 // 反馈提交地址（bible-kv 服务器，Caddy /bible-api/ 反代）
 const FEEDBACK_API = 'https://duoban.xyz/bible-api';
@@ -51,8 +52,7 @@ const state = {
   account: load(LS_ACCOUNT, null),  // {uid, token}；null = 未启用云同步（纯本地）
   // 首页 + 合集（2026-08 阶段 1）：screen 是唯一视图正交开关
   screen: 'home',        // 'home' | 'work' —— 首页全屏层 / 工作区
-  activeModule: 'bible', // 当前阅读器模块：'bible' | 'lifereading'（晨兴/书报后续）
-  notesScope: 'chapter', // 'chapter' | 'global' —— 我的笔记聚合范围（研读列内）
+  activeModule: 'bible', // 当前阅读器模块：'bible' | 'lifereading' | 'books' | 'morning' | 'notes'
   lrVolumes: {},         // { bookIndex: {name,acronym,articles} } 生命读经卷懒加载缓存
   lrBookIndex: null,     // 生命读经阅读器当前卷（null=未进入过）
   lrArticleId: null,     // 生命读经阅读器当前篇
@@ -74,6 +74,17 @@ const state = {
   morningPeriod: null,       // 当前期（如 '2026-04'）
   morningChapterId: null,    // 当前篇（篇 number，1 基）
   morningNotes: load(LS_MORNING_NOTES, {}),
+  // 笔记管理模块（三列：分类树 / 条目列表 / 编辑面板）
+  notesPrefs: load(LS_NOTES_PREFS, {}),  // 持久化：{source, color, sort}
+  notesSource: 'all',    // 来源过滤：'all' | 'verse' | 'lr' | 'book' | 'morning'
+  notesColor: 'all',     // 颜色过滤：'all' | c1..c5
+  notesSort: 'book',     // 排序：'book' 书卷序 | 'time' createdAt 倒序
+  notesQuery: '',        // 搜索关键词（匹配划文本/笔记文字/大段笔记内容）
+  notesSelectMode: false,
+  notesSelected: new Set(),   // 多选模式选中的标注 id
+  notesCollapsed: new Set(),  // 分类树折叠节点
+  notesGroup: null,           // 左栏树选中的叶子分组（过滤主区）
+  notesSelectedItem: null,    // 右栏编辑目标：{kind:'ann',id} | {kind:'note',dict,key}
 };
 
 /* 合集注册表（数据驱动）：首页块列表，点击 = 直接进入对应阅读器模块。
@@ -81,7 +92,7 @@ const state = {
 const COLLECTIONS = [
   { id: 'bible', title: '读经', icon: '📖', entry: () => enterModule('bible') },
   { id: 'lifereading', title: '生命读经', icon: '📗', entry: () => enterModule('lifereading') },
-  { id: 'notes', title: '我的笔记', icon: '📝', entry: () => { enterModule('bible'); enterNotesGlobal(); } },
+  { id: 'notes', title: '我的笔记', icon: '📝', entry: () => enterModule('notes') },
   { id: 'morning', title: '听抄', icon: '🌅', entry: () => enterModule('morning') },
   { id: 'books', title: '书报', icon: '📚', entry: () => enterModule('books') },
 ];
@@ -576,11 +587,43 @@ const READER_MODULES = {
     onMenu() { toggleNavCollapsed(); },
     onCrumbClick() { openMorningArticleList(); },
   },
+  notes: {
+    id: 'notes',
+    title: '笔记管理',
+    // 偏好初始化 + 重置会话态；不切移动端单视图（模块正文直接显示在 text-col）
+    async enter() {
+      const p = state.notesPrefs || {};
+      state.notesSource = p.source || 'all';
+      state.notesColor = p.color || 'all';
+      state.notesSort = p.sort || 'book';
+      state.notesQuery = '';
+      state.notesSelectMode = false;
+      state.notesSelected = new Set();
+      state.notesGroup = null;
+      state.notesSelectedItem = null;
+      state.studyFull = false;
+      state.viewMode = 'default';
+      applyLayout();
+      // 定位文案依赖书报元数据与听抄期索引（懒加载兜底）
+      await ensureBookSeriesIndex();
+      if (state.bookSeries) await ensureBookMeta();
+      await ensureMorningIndex();
+    },
+    renderNav() { renderNotesTree(); },
+    renderMain() { renderNotesList(); },
+    renderSide() { renderNotesPanel(); },
+    renderCrumb() {
+      $('bookName').textContent = '笔记管理';
+      $('chapterLabel').textContent = '';
+    },
+    onMenu() { toggleNavCollapsed(); },
+    onCrumbClick() {},
+  },
 };
 
 // body-mod-{id} 类控制三列容器归属（bible 容器默认显示，其他模块容器由 CSS 切换）
 function applyModuleBodyClass(id) {
-  document.body.classList.remove('body-mod-bible', 'body-mod-lifereading', 'body-mod-books', 'body-mod-morning');
+  document.body.classList.remove('body-mod-bible', 'body-mod-lifereading', 'body-mod-books', 'body-mod-morning', 'body-mod-notes');
   if (id) document.body.classList.add('body-mod-' + id);
 }
 
@@ -1238,24 +1281,6 @@ function setLrOutlineActive(outline, targetId) {
 
 function renderMyNotes() {
   const body = $('studyBody');
-  // 范围切换：本章（当前章聚合）/ 全部（跨书卷按模块分类）
-  const scopeBar = document.createElement('div');
-  scopeBar.className = 'note-scope';
-  [['chapter', '本章'], ['global', '全部']].forEach(([s, label]) => {
-    const btn = document.createElement('button');
-    btn.className = 'note-scope-btn' + (state.notesScope === s ? ' active' : '');
-    btn.textContent = label;
-    btn.addEventListener('click', () => {
-      state.notesScope = s;
-      renderStudy();
-    });
-    scopeBar.appendChild(btn);
-  });
-  body.appendChild(scopeBar);
-  if (state.notesScope === 'global') {
-    body.appendChild(renderMyNotesGlobal());
-    return;
-  }
   const key = `${state.currentBook.index}:${state.currentChapter}`;
   // 章级笔记
   const noteDiv = document.createElement('div');
@@ -1284,12 +1309,25 @@ function renderMyNotes() {
   body.appendChild(renderHighlights(highlights));
 }
 
-// 全局笔记：全部标注按 type 分 tab，跨书卷分组（groupHlGlobal）
-function renderMyNotesGlobal() {
-  return renderHighlights(state.annotations, groupHlGlobal);
+// 单条标注的分组标签（与 groupHlGlobal 一致；笔记管理模块的树/过滤/大段笔记挂组共用）
+function annGroupLabel(a) {
+  if (a.type === 'verse') return `${bookName(a.book)} · 第${a.chapter}章`;
+  if (a.type === 'lr') return `${bookName(a.book)} · 生命读经`;
+  if (a.type === 'book') {
+    const metaVol = (a.series === 'ni' && state.bookMeta) ? state.bookMeta.volumes[a.volume - 1] : null;
+    const metaBook = metaVol && metaVol.books[a.book];
+    return metaBook ? `${(state.bookMeta && state.bookMeta.name) || a.series} · ${metaVol.title} · ${metaBook.title}`
+      : `${a.series} · 卷${a.volume} · 书${a.book + 1}`;
+  }
+  if (a.type === 'morning') {
+    const t = state.morningIndex && state.morningIndex.trainings.find(x => x.id === a.period);
+    return `${(t && (t.title || t.season)) || a.period} · 听抄`;
+  }
+  return '其他';
 }
 
 // 全局分组：经文按 书卷→章 两级；生命读经按书卷（label：创世记 · 第24章 / 创世记 · 生命读经）
+// 供笔记管理模块使用（研读列「我的笔记」已只留本章聚合）
 function groupHlGlobal(list) {
   const groups = [];
   const verseByBook = {};
@@ -1311,38 +1349,24 @@ function groupHlGlobal(list) {
   });
   const books = [...new Set([...Object.keys(verseByBook), ...Object.keys(lrByBook)])].map(Number).sort((a, b) => a - b);
   books.forEach(b => {
-    const name = bookName(b);
     Object.keys(verseByBook[b] || {}).map(Number).sort((x, y) => x - y).forEach(ch => {
-      groups.push({
-        label: `${name} · 第${ch}章`,
-        items: verseByBook[b][ch].sort((x, y) => (x.verse - y.verse) || (x.start - y.start)),
-      });
+      const items = verseByBook[b][ch].sort((x, y) => (x.verse - y.verse) || (x.start - y.start));
+      groups.push({ label: annGroupLabel(items[0]), items });
     });
     if ((lrByBook[b] || []).length) {
-      groups.push({
-        label: `${name} · 生命读经`,
-        items: lrByBook[b].sort((x, y) => (x.articleId - y.articleId) || (x.start - y.start)),
-      });
+      const items = lrByBook[b].sort((x, y) => (x.articleId - y.articleId) || (x.start - y.start));
+      groups.push({ label: annGroupLabel(items[0]), items });
     }
   });
   // 书报分组：倪柝声文集 · 第{辑}辑 · {书名}
   Object.keys(bookByKey).sort().forEach(k => {
-    const [series, volume, book] = k.split(':');
-    const metaVol = (series === 'ni' && state.bookMeta) ? state.bookMeta.volumes[+volume - 1] : null;
-    const metaBook = metaVol && metaVol.books[+book];
-    const label = metaBook ? `${(state.bookMeta && state.bookMeta.name) || series} · ${metaVol.title} · ${metaBook.title}` : `${series} · 卷${volume} · 书${+book + 1}`;
-    groups.push({
-      label,
-      items: bookByKey[k].sort((x, y) => (x.chapter - y.chapter) || (x.start - y.start)),
-    });
+    const items = bookByKey[k].sort((x, y) => (x.chapter - y.chapter) || (x.start - y.start));
+    groups.push({ label: annGroupLabel(items[0]), items });
   });
   // 晨兴分组：{期标题} · 第{n}篇
   Object.keys(morningByPeriod).sort().forEach(pid => {
-    const t = state.morningIndex && state.morningIndex.trainings.find(x => x.id === pid);
-    groups.push({
-      label: `${(t && (t.title || t.season)) || pid} · 听抄`,
-      items: morningByPeriod[pid].sort((x, y) => (x.chapterId - y.chapterId) || (x.start - y.start)),
-    });
+    const items = morningByPeriod[pid].sort((x, y) => (x.chapterId - y.chapterId) || (x.start - y.start));
+    groups.push({ label: annGroupLabel(items[0]), items });
   });
   return groups;
 }
@@ -1385,6 +1409,681 @@ function groupHl(list) {
     });
   }
   return groups;
+}
+
+/* ============ 笔记管理模块（三列：分类树 / 条目列表 / 编辑面板） ============ */
+
+const NOTES_DICTS = [
+  { type: 'verse', dict: 'chapterNotes', lsKey: LS_CHAPTER_NOTES },
+  { type: 'lr', dict: 'lrNotes', lsKey: LS_LR_NOTES },
+  { type: 'book', dict: 'bookNotes', lsKey: LS_BOOK_NOTES },
+  { type: 'morning', dict: 'morningNotes', lsKey: LS_MORNING_NOTES },
+];
+
+function saveNotesPrefs() {
+  try {
+    localStorage.setItem(LS_NOTES_PREFS, JSON.stringify({
+      source: state.notesSource, color: state.notesColor, sort: state.notesSort,
+    }));
+  } catch (e) {}
+}
+
+// 大段笔记条目（只列非空）：{kind:'note', type, dict, key, text, loc}
+function collectBigNotes() {
+  const out = [];
+  NOTES_DICTS.forEach(({ type, dict }) => {
+    const store = state[dict] || {};
+    Object.keys(store).forEach((key) => {
+      const text = (store[key] || '').trim();
+      if (!text) return;
+      out.push({ kind: 'note', type, dict, key, text, loc: bigNoteLoc(type, key) });
+    });
+  });
+  return out;
+}
+
+function bigNoteLoc(type, key) {
+  const parts = key.split(':');
+  if (type === 'verse') return `${bookName(+parts[0])} · 第${parts[1]}章`;
+  if (type === 'lr') return `${bookName(+parts[0])} · 生命读经 第${parts[1]}篇`;
+  if (type === 'book') {
+    const [v, b, ch] = parts.map(Number);
+    const metaVol = (state.bookMeta && state.bookMeta.volumes) ? state.bookMeta.volumes[v - 1] : null;
+    const metaBook = metaVol && metaVol.books[b];
+    return `${(metaBook && metaBook.title) || `书报 卷${v}书${b + 1}`} · 第${ch + 1}章`;
+  }
+  if (type === 'morning') {
+    const t = state.morningIndex && state.morningIndex.trainings.find(x => x.id === parts[0]);
+    return `${(t && (t.title || t.season)) || parts[0]} · 第${parts[1]}篇`;
+  }
+  return key;
+}
+
+// 大段笔记的挂组标签（与 annGroupLabel 对应，供混排挂组）
+function bigNoteGroupLabel(n) {
+  const parts = n.key.split(':');
+  if (n.type === 'verse') return `${bookName(+parts[0])} · 第${parts[1]}章`;
+  if (n.type === 'lr') return `${bookName(+parts[0])} · 生命读经`;
+  if (n.type === 'book') {
+    const [v, b] = parts.map(Number);
+    const metaVol = (state.bookMeta && state.bookMeta.volumes) ? state.bookMeta.volumes[v - 1] : null;
+    const metaBook = metaVol && metaVol.books[b];
+    return `${(state.bookMeta && state.bookMeta.name) || '书报'} · ${(metaVol && metaVol.title) || `第${v}辑`} · ${(metaBook && metaBook.title) || `书${b + 1}`}`;
+  }
+  if (n.type === 'morning') {
+    const t = state.morningIndex && state.morningIndex.trainings.find(x => x.id === parts[0]);
+    return `${(t && (t.title || t.season)) || parts[0]} · 听抄`;
+  }
+  return '其他';
+}
+
+function deleteBigNote(dict, key) {
+  const store = state[dict];
+  if (store) delete store[key];
+  const entry = NOTES_DICTS.find(x => x.dict === dict);
+  if (entry) save(entry.lsKey, store);
+  if (state.notesSelectedItem && state.notesSelectedItem.kind === 'note' &&
+      state.notesSelectedItem.dict === dict && state.notesSelectedItem.key === key) {
+    state.notesSelectedItem = null;
+  }
+}
+
+function selectNotesItem(item) {
+  state.notesSelectedItem = item;
+  renderNotesList();
+  renderNotesPanel();
+}
+
+// 删除确认（复用 openPopup，不新建组件）
+function confirmDialog(title, msg, onConfirm) {
+  openPopup(title, `
+    <div class="fb-hint">${escapeHtml(msg)}</div>
+    <div class="fb-actions">
+      <button class="popup-btn" id="cfCancel">取消</button>
+      <button class="popup-btn danger" id="cfOk">删除</button>
+    </div>
+  `);
+  const cancel = $('cfCancel'), ok = $('cfOk');
+  if (cancel) cancel.addEventListener('click', () => closePopupAll());
+  if (ok) ok.addEventListener('click', () => { closePopupAll(); onConfirm(); });
+}
+
+function fmtTime(ts) {
+  const d = new Date(ts);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getMonth() + 1}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function toggleNotesCollapsed(id) {
+  if (state.notesCollapsed.has(id)) state.notesCollapsed.delete(id);
+  else state.notesCollapsed.add(id);
+  renderNotesTree();
+}
+
+function mkTreeNode(label, count, active, collapsed, onClick) {
+  const node = document.createElement('button');
+  node.className = 'notes-tree-node' + (active ? ' active' : '');
+  const caret = document.createElement('span');
+  caret.className = 'notes-caret';
+  caret.textContent = collapsed === undefined ? '' : (collapsed ? '▸' : '▾');
+  const lbl = document.createElement('span');
+  lbl.textContent = label;
+  const cnt = document.createElement('span');
+  cnt.className = 'notes-count';
+  cnt.textContent = count;
+  node.appendChild(caret);
+  node.appendChild(lbl);
+  node.appendChild(cnt);
+  node.addEventListener('click', onClick);
+  return node;
+}
+
+/* ---- 过滤与排序（来源 tab / 颜色 / 搜索 / 树选中分组 / 排序） ---- */
+function notesFiltered() {
+  let anns = state.annotations.filter(a => state.notesSource === 'all' || a.type === state.notesSource);
+  let bigNotes = collectBigNotes().filter(n => state.notesSource === 'all' || n.type === state.notesSource);
+  const g = state.notesGroup;
+  if (g) {
+    if (g.source === 'all') {
+      anns = anns.filter(a => annGroupLabel(a) === g.label);
+      bigNotes = bigNotes.filter(n => bigNoteGroupLabel(n) === g.label);
+    } else if (g.type === 'verse') {
+      anns = anns.filter(a => a.type === 'verse' && a.book === g.book && (g.chapter === undefined || a.chapter === g.chapter));
+      bigNotes = bigNotes.filter(n => n.type === 'verse' && +n.key.split(':')[0] === g.book && (g.chapter === undefined || +n.key.split(':')[1] === g.chapter));
+    } else if (g.type === 'lr') {
+      anns = anns.filter(a => a.type === 'lr' && a.book === g.book);
+      bigNotes = bigNotes.filter(n => n.type === 'lr' && +n.key.split(':')[0] === g.book);
+    } else if (g.type === 'book') {
+      anns = anns.filter(a => a.type === 'book' && a.series === g.series && a.volume === g.volume && a.book === g.book && (g.chapter === undefined || a.chapter === g.chapter));
+      bigNotes = bigNotes.filter(n => n.type === 'book' && +n.key.split(':')[0] === g.volume && +n.key.split(':')[1] === g.book && (g.chapter === undefined || +n.key.split(':')[2] === g.chapter));
+    } else if (g.type === 'morning') {
+      anns = anns.filter(a => a.type === 'morning' && a.period === g.period && (g.chapterId === undefined || a.chapterId === g.chapterId));
+      bigNotes = bigNotes.filter(n => n.type === 'morning' && n.key.split(':')[0] === g.period && (g.chapterId === undefined || +n.key.split(':')[1] === g.chapterId));
+    }
+  }
+  if (state.notesColor !== 'all') anns = anns.filter(a => a.colorId === state.notesColor);
+  const q = state.notesQuery.trim().toLowerCase();
+  if (q) {
+    anns = anns.filter(a => (a.text || '').toLowerCase().includes(q) || (a.note || '').toLowerCase().includes(q));
+    bigNotes = bigNotes.filter(n => n.text.toLowerCase().includes(q));
+  }
+  if (state.notesSort === 'time') {
+    anns = [...anns].sort((x, y) => (y.createdAt || 0) - (x.createdAt || 0));
+  }
+  return { anns, bigNotes };
+}
+
+/* ---- 左栏分类树 ---- */
+function renderNotesTree() {
+  const nav = $('notesNav');
+  nav.innerHTML = '';
+  const wrap = document.createElement('div');
+  wrap.className = 'notes-tree';
+  const anns = state.annotations;
+  const bigNotes = collectBigNotes();
+  const SOURCES = [
+    { id: 'all', label: '全部', types: null },
+    { id: 'verse', label: '经文', types: ['verse'] },
+    { id: 'lr', label: '生命读经', types: ['lr'] },
+    { id: 'book', label: '书报', types: ['book'] },
+    { id: 'morning', label: '听抄', types: ['morning'] },
+  ];
+  const annOf = (types) => types ? anns.filter(a => types.includes(a.type)) : anns;
+  const bigOf = (types) => bigNotes.filter(n => !types || types.includes(n.type));
+
+  SOURCES.forEach(src => {
+    const total = annOf(src.types).length + bigOf(src.types).length;
+    if (src.id !== 'all' && total === 0) return;
+    const collapsed = state.notesCollapsed.has(src.id);
+    const active = state.notesSource === src.id && !state.notesGroup;
+    wrap.appendChild(mkTreeNode(src.label, total, active, collapsed, () => {
+      if (active) { toggleNotesCollapsed(src.id); return; }
+      state.notesSource = src.id;
+      state.notesGroup = null;
+      state.notesSelectedItem = null;
+      saveNotesPrefs();
+      renderNotesTree();
+      renderNotesList();
+      renderNotesPanel();
+    }));
+    if (!collapsed) {
+      const children = buildNotesTreeChildren(src.id, annOf(src.types), bigOf(src.types));
+      if (children) wrap.appendChild(children);
+    }
+  });
+  nav.appendChild(wrap);
+}
+
+function buildNotesTreeChildren(sourceId, anns, bigNotes) {
+  const wrap = document.createElement('div');
+  wrap.className = 'notes-tree-children';
+  if (!anns.length && !bigNotes.length) return wrap;
+  const setGroup = (g) => { state.notesGroup = g; renderNotesTree(); renderNotesList(); };
+
+  if (sourceId === 'all') {
+    // 复用 groupHlGlobal 扁平分组做叶子；大段笔记单独按组挂（无标注组时自成节点）
+    const bigByGroup = {};
+    bigNotes.forEach(n => { (bigByGroup[bigNoteGroupLabel(n)] = bigByGroup[bigNoteGroupLabel(n)] || []).push(n); });
+    const groups = groupHlGlobal(anns);
+    groups.forEach(g => {
+      wrap.appendChild(mkTreeNode(g.label, g.items.length + (bigByGroup[g.label] || []).length,
+        isNotesGroupActive({ source: 'all', label: g.label }), undefined,
+        () => setGroup({ source: 'all', label: g.label })));
+    });
+    Object.keys(bigByGroup).forEach(label => {
+      if (groups.some(g => g.label === label)) return;
+      wrap.appendChild(mkTreeNode(label, bigByGroup[label].length,
+        isNotesGroupActive({ source: 'all', label }), undefined,
+        () => setGroup({ source: 'all', label })));
+    });
+    return wrap;
+  }
+
+  if (sourceId === 'verse') {
+    const byBook = {};
+    anns.forEach(a => { (byBook[a.book] = byBook[a.book] || []).push(a); });
+    Object.keys(byBook).map(Number).sort((x, y) => x - y).forEach(b => {
+      const bAnns = byBook[b];
+      const bBig = bigNotes.filter(n => +n.key.split(':')[0] === b);
+      const nodeId = `verse:${b}`;
+      const collapsed = state.notesCollapsed.has(nodeId);
+      wrap.appendChild(mkTreeNode(bookName(b), bAnns.length + bBig.length,
+        isNotesGroupActive({ type: 'verse', book: b }), collapsed, () => {
+          if (isNotesGroupActive({ type: 'verse', book: b })) { toggleNotesCollapsed(nodeId); return; }
+          setGroup({ type: 'verse', book: b });
+        }));
+      if (collapsed) return;
+      const chWrap = document.createElement('div');
+      chWrap.className = 'notes-tree-children';
+      const byChapter = {};
+      bAnns.forEach(a => { (byChapter[a.chapter] = byChapter[a.chapter] || []).push(a); });
+      Object.keys(byChapter).map(Number).sort((x, y) => x - y).forEach(ch => {
+        const chBig = bBig.filter(n => +n.key.split(':')[1] === ch).length;
+        chWrap.appendChild(mkTreeNode(`第${ch}章`, byChapter[ch].length + chBig,
+          isNotesGroupActive({ type: 'verse', book: b, chapter: ch }), undefined,
+          () => setGroup({ type: 'verse', book: b, chapter: ch })));
+      });
+      wrap.appendChild(chWrap);
+    });
+    return wrap;
+  }
+
+  if (sourceId === 'lr') {
+    const byBook = {};
+    anns.forEach(a => { (byBook[a.book] = byBook[a.book] || []).push(a); });
+    Object.keys(byBook).map(Number).sort((x, y) => x - y).forEach(b => {
+      const bBig = bigNotes.filter(n => +n.key.split(':')[0] === b).length;
+      wrap.appendChild(mkTreeNode(`${bookName(b)} · 生命读经`, byBook[b].length + bBig,
+        isNotesGroupActive({ type: 'lr', book: b }), undefined,
+        () => setGroup({ type: 'lr', book: b })));
+    });
+    return wrap;
+  }
+
+  if (sourceId === 'book') {
+    const byKey = {};
+    anns.forEach(a => { const k = `${a.series}:${a.volume}:${a.book}`; (byKey[k] = byKey[k] || []).push(a); });
+    Object.keys(byKey).sort().forEach(k => {
+      const kAnns = byKey[k];
+      const [series, volume, book] = k.split(':');
+      const metaVol = (series === 'ni' && state.bookMeta) ? state.bookMeta.volumes[+volume - 1] : null;
+      const metaBook = metaVol && metaVol.books[+book];
+      const label = metaBook ? metaBook.title : `${series} 卷${volume}书${+book + 1}`;
+      const nodeId = `book:${k}`;
+      const collapsed = state.notesCollapsed.has(nodeId);
+      const bBig = bigNotes.filter(n => +n.key.split(':')[0] === +volume && +n.key.split(':')[1] === +book);
+      wrap.appendChild(mkTreeNode(label, kAnns.length + bBig.length,
+        isNotesGroupActive({ type: 'book', series, volume: +volume, book: +book }), collapsed, () => {
+          if (isNotesGroupActive({ type: 'book', series, volume: +volume, book: +book })) { toggleNotesCollapsed(nodeId); return; }
+          setGroup({ type: 'book', series, volume: +volume, book: +book });
+        }));
+      if (collapsed) return;
+      const chWrap = document.createElement('div');
+      chWrap.className = 'notes-tree-children';
+      const byChapter = {};
+      kAnns.forEach(a => { (byChapter[a.chapter] = byChapter[a.chapter] || []).push(a); });
+      Object.keys(byChapter).map(Number).sort((x, y) => x - y).forEach(ch => {
+        const chBig = bBig.filter(n => +n.key.split(':')[2] === ch).length;
+        chWrap.appendChild(mkTreeNode(`第${ch + 1}章`, byChapter[ch].length + chBig,
+          isNotesGroupActive({ type: 'book', series, volume: +volume, book: +book, chapter: ch }), undefined,
+          () => setGroup({ type: 'book', series, volume: +volume, book: +book, chapter: ch })));
+      });
+      wrap.appendChild(chWrap);
+    });
+    return wrap;
+  }
+
+  if (sourceId === 'morning') {
+    const byPeriod = {};
+    anns.forEach(a => { (byPeriod[a.period] = byPeriod[a.period] || []).push(a); });
+    Object.keys(byPeriod).sort().forEach(pid => {
+      const pAnns = byPeriod[pid];
+      const t = state.morningIndex && state.morningIndex.trainings.find(x => x.id === pid);
+      const pBig = bigNotes.filter(n => n.key.split(':')[0] === pid);
+      const nodeId = `morning:${pid}`;
+      const collapsed = state.notesCollapsed.has(nodeId);
+      wrap.appendChild(mkTreeNode((t && (t.title || t.season)) || pid, pAnns.length + pBig.length,
+        isNotesGroupActive({ type: 'morning', period: pid }), collapsed, () => {
+          if (isNotesGroupActive({ type: 'morning', period: pid })) { toggleNotesCollapsed(nodeId); return; }
+          setGroup({ type: 'morning', period: pid });
+        }));
+      if (collapsed) return;
+      const chWrap = document.createElement('div');
+      chWrap.className = 'notes-tree-children';
+      const byChapter = {};
+      pAnns.forEach(a => { (byChapter[a.chapterId] = byChapter[a.chapterId] || []).push(a); });
+      Object.keys(byChapter).map(Number).sort((x, y) => x - y).forEach(cid => {
+        const chBig = pBig.filter(n => +n.key.split(':')[1] === cid).length;
+        chWrap.appendChild(mkTreeNode(`第${cid}篇`, byChapter[cid].length + chBig,
+          isNotesGroupActive({ type: 'morning', period: pid, chapterId: cid }), undefined,
+          () => setGroup({ type: 'morning', period: pid, chapterId: cid })));
+      });
+      wrap.appendChild(chWrap);
+    });
+    return wrap;
+  }
+  return wrap;
+}
+
+function isNotesGroupActive(g) {
+  const cur = state.notesGroup;
+  if (!cur) return false;
+  return Object.keys(g).every(k => cur[k] === g[k]);
+}
+
+/* ---- 主区：工具条 + 分组列表 + 批量 ---- */
+function renderNotesList() {
+  const main = $('notesMain');
+  main.innerHTML = '';
+  main.appendChild(buildNotesToolbar());
+  const listWrap = document.createElement('div');
+  listWrap.className = 'notes-list';
+  main.appendChild(listWrap);
+  renderNotesListBody(listWrap);
+}
+
+function buildNotesToolbar() {
+  const bar = document.createElement('div');
+  bar.className = 'notes-toolbar';
+  [['all', '全部'], ['verse', '经文'], ['lr', '生命读经'], ['book', '书报'], ['morning', '听抄']].forEach(([v, label]) => {
+    const t = document.createElement('button');
+    t.className = 'notes-tab' + (state.notesSource === v ? ' active' : '');
+    t.textContent = label;
+    t.addEventListener('click', () => {
+      state.notesSource = v;
+      state.notesGroup = null;
+      state.notesSelectedItem = null;
+      saveNotesPrefs();
+      renderNotesTree();
+      renderNotesList();
+      renderNotesPanel();
+    });
+    bar.appendChild(t);
+  });
+  const colorBtn = document.createElement('button');
+  colorBtn.className = 'notes-color' + (state.notesColor === 'all' ? ' active' : '');
+  colorBtn.textContent = '全';
+  colorBtn.title = '全部颜色';
+  colorBtn.addEventListener('click', () => {
+    state.notesColor = 'all';
+    saveNotesPrefs();
+    renderNotesList();
+  });
+  bar.appendChild(colorBtn);
+  COLORS.forEach(c => {
+    const b = document.createElement('button');
+    b.className = 'notes-color' + (state.notesColor === c.id ? ' active' : '');
+    b.style.background = c.hex;
+    b.title = c.name + '：' + c.desc;
+    b.addEventListener('click', () => {
+      state.notesColor = c.id;
+      saveNotesPrefs();
+      renderNotesList();
+    });
+    bar.appendChild(b);
+  });
+  const search = document.createElement('input');
+  search.className = 'notes-search';
+  search.placeholder = '搜索划文本 / 笔记…';
+  search.value = state.notesQuery;
+  // 只刷新列表主体（保留输入框焦点，连续输入不被重建打断）
+  search.addEventListener('input', () => {
+    state.notesQuery = search.value;
+    const listWrap = document.querySelector('#notesMain .notes-list');
+    if (listWrap) renderNotesListBody(listWrap);
+  });
+  bar.appendChild(search);
+  [['book', '书卷序'], ['time', '时间倒序']].forEach(([v, label]) => {
+    const b = document.createElement('button');
+    b.className = 'notes-sort' + (state.notesSort === v ? ' active' : '');
+    b.textContent = label;
+    b.addEventListener('click', () => {
+      state.notesSort = v;
+      saveNotesPrefs();
+      renderNotesList();
+    });
+    bar.appendChild(b);
+  });
+  const selBtn = document.createElement('button');
+  selBtn.className = 'notes-sort' + (state.notesSelectMode ? ' active' : '');
+  selBtn.textContent = '多选';
+  selBtn.addEventListener('click', () => {
+    state.notesSelectMode = !state.notesSelectMode;
+    state.notesSelected = new Set();
+    state.notesSelectedItem = null;
+    renderNotesList();
+    renderNotesPanel();
+  });
+  bar.appendChild(selBtn);
+  return bar;
+}
+
+function renderNotesListBody(listWrap) {
+  listWrap.innerHTML = '';
+  const { anns, bigNotes } = notesFiltered();
+  if (state.notesSelectMode && (anns.length || bigNotes.length)) {
+    listWrap.appendChild(renderNotesBatchBar());
+  }
+  if (!anns.length && !bigNotes.length) {
+    const empty = document.createElement('div');
+    empty.className = 'notes-empty';
+    empty.textContent = state.annotations.length ? '当前筛选下没有笔记' : '还没有任何标注或笔记';
+    listWrap.appendChild(empty);
+    return;
+  }
+  if (state.notesSort === 'time') {
+    anns.forEach(a => listWrap.appendChild(renderNotesItem(a)));
+    if (bigNotes.length) {
+      const gl = document.createElement('div');
+      gl.className = 'notes-group';
+      gl.textContent = '大段笔记';
+      listWrap.appendChild(gl);
+      bigNotes.forEach(n => listWrap.appendChild(renderNotesBigItem(n)));
+    }
+  } else {
+    const bigByGroup = {};
+    bigNotes.forEach(n => { (bigByGroup[bigNoteGroupLabel(n)] = bigByGroup[bigNoteGroupLabel(n)] || []).push(n); });
+    const groups = groupHlGlobal(anns);
+    groups.forEach(g => {
+      const gl = document.createElement('div');
+      gl.className = 'notes-group';
+      gl.textContent = g.label;
+      if (state.notesSelectMode && g.items.length) {
+        const allBtn = document.createElement('span');
+        allBtn.className = 'notes-group-check';
+        allBtn.textContent = '全选';
+        allBtn.addEventListener('click', () => {
+          g.items.forEach(a => state.notesSelected.add(a.id));
+          renderNotesList();
+        });
+        gl.appendChild(allBtn);
+      }
+      listWrap.appendChild(gl);
+      (bigByGroup[g.label] || []).forEach(n => listWrap.appendChild(renderNotesBigItem(n)));
+      g.items.forEach(a => listWrap.appendChild(renderNotesItem(a)));
+    });
+    Object.keys(bigByGroup).forEach(label => {
+      if (groups.some(g => g.label === label)) return;
+      const gl = document.createElement('div');
+      gl.className = 'notes-group';
+      gl.textContent = label;
+      listWrap.appendChild(gl);
+      bigByGroup[label].forEach(n => listWrap.appendChild(renderNotesBigItem(n)));
+    });
+  }
+}
+
+function renderNotesBatchBar() {
+  const bar = document.createElement('div');
+  bar.className = 'notes-batch-bar';
+  const label = document.createElement('span');
+  label.textContent = `已选 ${state.notesSelected.size} 条`;
+  const del = document.createElement('button');
+  del.className = 'popup-btn danger';
+  del.textContent = '删除所选';
+  del.addEventListener('click', () => {
+    const n = state.notesSelected.size;
+    if (!n) return;
+    confirmDialog('批量删除', `删除选中的 ${n} 条标注？此操作不可撤销。`, () => {
+      state.annotations = state.annotations.filter(a => !state.notesSelected.has(a.id));
+      save(LS_ANNOTATIONS, state.annotations);
+      state.notesSelected = new Set();
+      state.notesSelectMode = false;
+      state.notesSelectedItem = null;
+      renderNotesTree();
+      renderNotesList();
+      renderNotesPanel();
+    });
+  });
+  const cancel = document.createElement('button');
+  cancel.className = 'popup-btn';
+  cancel.textContent = '取消';
+  cancel.addEventListener('click', () => {
+    state.notesSelectMode = false;
+    state.notesSelected = new Set();
+    renderNotesList();
+  });
+  bar.appendChild(label);
+  bar.appendChild(del);
+  bar.appendChild(cancel);
+  return bar;
+}
+
+function renderNotesItem(a) {
+  const div = buildHlItemBody(a, 'notes-item');
+  div.classList.toggle('selected',
+    state.notesSelectedItem && state.notesSelectedItem.kind === 'ann' && state.notesSelectedItem.id === a.id);
+  if (state.notesSelectMode) {
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.className = 'notes-item-check';
+    cb.checked = state.notesSelected.has(a.id);
+    cb.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (cb.checked) state.notesSelected.add(a.id);
+      else state.notesSelected.delete(a.id);
+      const bar = document.querySelector('.notes-batch-bar span');
+      if (bar) bar.textContent = `已选 ${state.notesSelected.size} 条`;
+    });
+    div.insertBefore(cb, div.firstChild);
+  }
+  if (a.createdAt) {
+    const time = document.createElement('span');
+    time.className = 'notes-item-time';
+    time.textContent = fmtTime(a.createdAt);
+    div.appendChild(time);
+  }
+  div.addEventListener('click', () => selectNotesItem({ kind: 'ann', id: a.id }));
+  return div;
+}
+
+function renderNotesBigItem(n) {
+  const div = document.createElement('div');
+  div.className = 'notes-item' + (
+    state.notesSelectedItem && state.notesSelectedItem.kind === 'note' &&
+    state.notesSelectedItem.dict === n.dict && state.notesSelectedItem.key === n.key ? ' selected' : '');
+  const kind = document.createElement('span');
+  kind.className = 'notes-item-kind';
+  kind.textContent = '📝';
+  const loc = document.createElement('span');
+  loc.className = 'hl-loc';
+  loc.textContent = n.loc;
+  const text = document.createElement('span');
+  text.className = 'hl-text';
+  text.textContent = n.text;
+  div.appendChild(kind);
+  div.appendChild(loc);
+  div.appendChild(text);
+  div.addEventListener('click', () => selectNotesItem({ kind: 'note', dict: n.dict, key: n.key }));
+  return div;
+}
+
+/* ---- 右栏编辑面板 ---- */
+function renderNotesPanel() {
+  const side = $('notesSide');
+  side.innerHTML = '';
+  const item = state.notesSelectedItem;
+  if (!item) {
+    const hint = document.createElement('div');
+    hint.className = 'notes-panel-hint';
+    hint.textContent = '点击左侧条目在此查看与编辑\n（编辑笔记 / 改色 / 下划线 / 删除）';
+    side.appendChild(hint);
+    return;
+  }
+  if (item.kind === 'ann') {
+    const a = state.annotations.find(x => x.id === item.id);
+    if (!a) { state.notesSelectedItem = null; renderNotesPanel(); return; }
+    const title = document.createElement('div');
+    title.className = 'notes-panel-title';
+    title.textContent = a.type === 'verse' ? '经文标注' : a.type === 'lr' ? '生命读经标注' : a.type === 'book' ? '书报标注' : '听抄标注';
+    side.appendChild(title);
+    const meta = document.createElement('div');
+    meta.className = 'notes-panel-meta';
+    meta.textContent = `${annGroupLabel(a)}${a.createdAt ? ' · ' + fmtTime(a.createdAt) : ''}`;
+    side.appendChild(meta);
+    const text = document.createElement('div');
+    text.className = 'notes-panel-text';
+    text.textContent = annotationText(a) || '（内容已失效）';
+    side.appendChild(text);
+    const ta = document.createElement('textarea');
+    ta.className = 'lr-note-ta';
+    ta.placeholder = '写点笔记…';
+    ta.value = a.note || '';
+    ta.addEventListener('input', () => {
+      a.note = ta.value;
+      save(LS_ANNOTATIONS, state.annotations);
+    });
+    ta.addEventListener('blur', () => {
+      // 无颜色/无下划线且笔记清空 → 等同删除该条（与 saveNote 行为一致）
+      if (!a.note && !a.colorId && !a.underline) { deleteAnn(a.id); return; }
+      renderNotesList();
+    });
+    side.appendChild(ta);
+    const row = document.createElement('div');
+    row.className = 'notes-panel-row';
+    COLORS.forEach(c => {
+      const sw = document.createElement('button');
+      sw.className = 'notes-color';
+      sw.style.background = c.hex;
+      sw.title = c.name + '：' + c.desc;
+      sw.classList.toggle('active', a.colorId === c.id && !a.underline);
+      sw.addEventListener('click', () => changeAnnColor(a.id, c.id));
+      row.appendChild(sw);
+    });
+    const ul = document.createElement('button');
+    ul.className = 'notes-sort' + (a.underline ? ' active' : '');
+    ul.textContent = '下划线';
+    ul.addEventListener('click', () => toggleAnnUnderline(a.id));
+    row.appendChild(ul);
+    side.appendChild(row);
+    const actions = document.createElement('div');
+    actions.className = 'notes-panel-row';
+    const del = document.createElement('button');
+    del.className = 'popup-btn danger';
+    del.textContent = '删除';
+    del.addEventListener('click', () => confirmDialog('删除标注', '删除这条标注？此操作不可撤销。', () => deleteAnn(a.id)));
+    actions.appendChild(del);
+    side.appendChild(actions);
+    return;
+  }
+  if (item.kind === 'note') {
+    const entry = NOTES_DICTS.find(x => x.dict === item.dict);
+    const store = state[item.dict];
+    if (!store || !(item.key in store)) { state.notesSelectedItem = null; renderNotesPanel(); return; }
+    const title = document.createElement('div');
+    title.className = 'notes-panel-title';
+    title.textContent = '大段笔记';
+    side.appendChild(title);
+    const meta = document.createElement('div');
+    meta.className = 'notes-panel-meta';
+    meta.textContent = bigNoteLoc(item.type || (entry && entry.type), item.key);
+    side.appendChild(meta);
+    const ta = document.createElement('textarea');
+    ta.className = 'lr-note-ta';
+    ta.placeholder = '写点笔记…';
+    ta.value = store[item.key] || '';
+    ta.addEventListener('input', () => {
+      store[item.key] = ta.value;
+      save(entry.lsKey, store);
+    });
+    ta.addEventListener('blur', () => {
+      if (!(store[item.key] || '').trim()) { deleteBigNote(item.dict, item.key); renderNotesTree(); renderNotesList(); renderNotesPanel(); }
+    });
+    side.appendChild(ta);
+    const actions = document.createElement('div');
+    actions.className = 'notes-panel-row';
+    const del = document.createElement('button');
+    del.className = 'popup-btn danger';
+    del.textContent = '删除';
+    del.addEventListener('click', () => confirmDialog('删除笔记', '删除这条笔记？此操作不可撤销。', () => {
+      deleteBigNote(item.dict, item.key);
+      renderNotesTree();
+      renderNotesList();
+      renderNotesPanel();
+    }));
+    actions.appendChild(del);
+    side.appendChild(actions);
+  }
 }
 
 function renderHighlights(anns, groupFn) {
@@ -1451,8 +2150,15 @@ function renderHighlights(anns, groupFn) {
 }
 
 function renderHlItem(a) {
+  const div = buildHlItemBody(a);
+  div.addEventListener('click', () => { navigateToAnnotation(a); });
+  return div;
+}
+
+// 条目主体：颜色点 + 定位 + 划文本 + 笔记摘要（研读列/模块右栏与笔记管理模块共用）
+function buildHlItemBody(a, cls) {
   const div = document.createElement('div');
-  div.className = 'hl-item';
+  div.className = cls || 'hl-item';
   const dot = document.createElement('span');
   dot.className = 'hl-dot';
   if (a.underline) {
@@ -1466,16 +2172,7 @@ function renderHlItem(a) {
   text.textContent = annotationText(a) || '（内容已失效）';
   const loc = document.createElement('span');
   loc.className = 'hl-loc';
-  if (a.type === 'verse') loc.textContent = `${a.chapter}:${a.verse}${a.half}`;
-  else if (a.type === 'lr') loc.textContent = `生命读经 ${a.articleId}`;
-  else if (a.type === 'book') {
-    const metaVol = (a.series === 'ni' && state.bookMeta) ? state.bookMeta.volumes[a.volume - 1] : null;
-    const metaBook = metaVol && metaVol.books[a.book];
-    loc.textContent = metaBook ? `${metaBook.title} · 第${a.chapter + 1}章` : `书报 卷${a.volume}书${a.book + 1} 第${a.chapter + 1}章`;
-  } else if (a.type === 'morning') {
-    const t = state.morningIndex && state.morningIndex.trainings.find(x => x.id === a.period);
-    loc.textContent = `${(t && (t.title || t.season)) || a.period} · 第${a.chapterId}篇`;
-  }
+  loc.textContent = hlLocText(a);
   div.appendChild(dot);
   div.appendChild(loc);
   div.appendChild(text);
@@ -1485,8 +2182,23 @@ function renderHlItem(a) {
     noteEl.textContent = '📝 ' + a.note;
     div.appendChild(noteEl);
   }
-  div.addEventListener('click', () => { navigateToAnnotation(a); });
   return div;
+}
+
+// 定位文案（研读列条目与笔记管理模块共用）
+function hlLocText(a) {
+  if (a.type === 'verse') return `${a.chapter}:${a.verse}${a.half}`;
+  if (a.type === 'lr') return `生命读经 ${a.articleId}`;
+  if (a.type === 'book') {
+    const metaVol = (a.series === 'ni' && state.bookMeta) ? state.bookMeta.volumes[a.volume - 1] : null;
+    const metaBook = metaVol && metaVol.books[a.book];
+    return metaBook ? `${metaBook.title} · 第${a.chapter + 1}章` : `书报 卷${a.volume}书${a.book + 1} 第${a.chapter + 1}章`;
+  }
+  if (a.type === 'morning') {
+    const t = state.morningIndex && state.morningIndex.trainings.find(x => x.id === a.period);
+    return `${(t && (t.title || t.season)) || a.period} · 第${a.chapterId}篇`;
+  }
+  return '';
 }
 
 function annotationText(a) {
@@ -1734,16 +2446,6 @@ async function navigateToAnnotation(a) {
     const mark = document.querySelector(`#morningMain mark[data-ann-id="${a.id}"]`);
     if (mark) mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
-}
-
-// 首页「我的笔记」块：进读经模块研读列，我的笔记 tab 全局模式
-async function enterNotesGlobal() {
-  await enterModule('bible');
-  state.activeTab = 'mynotes';
-  state.notesScope = 'global';
-  document.querySelectorAll('.study-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'mynotes'));
-  renderStudy();
-  setMobileView('study');
 }
 
 /* ============ 生命读经（篇目弹窗 / 卷缓存） ============ */
@@ -2357,7 +3059,6 @@ function bindEvents() {
       save(LS_VIEW_MODE, state.viewMode);
     }
     state.activeTab = 'mynotes';
-    state.notesScope = 'chapter';
     document.querySelectorAll('.study-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'mynotes'));
     renderStudy();
   });
@@ -2392,7 +3093,6 @@ function bindEvents() {
   document.querySelectorAll('.study-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       state.activeTab = tab.dataset.tab;
-      if (tab.dataset.tab === 'mynotes') state.notesScope = 'chapter';
       document.querySelectorAll('.study-tab').forEach(t => t.classList.toggle('active', t === tab));
       renderStudy();
     });
@@ -2873,6 +3573,13 @@ function applyUnderline() { addAnnotation({ underline: true, colorId: null }); }
 
 /* 标注变更后的定向重渲染（保留滚动位置） */
 function rerenderAnn(ann) {
+  // 笔记管理模块内：刷新模块三视图即可（无需渲染经文主区，防止误 renderChapter）
+  if (state.activeModule === 'notes') {
+    renderNotesTree();
+    renderNotesList();
+    renderNotesPanel();
+    return;
+  }
   if (ann.type === 'verse') {
     withScrollPreserved(['#textCol', '#studyBody', '.lr-full-content'], () => {
       renderChapter();

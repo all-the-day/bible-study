@@ -90,23 +90,32 @@ async function main() {
   });
   console.log('5. 书报划线:', r5.type === 'book' && r5.vol === 2 && r5.mark ? '✓' : '✗', JSON.stringify(r5));
 
-  // 6. 回首页 → 我的笔记 → 书报分组 → 点击跳回
+  // 6. 回首页 → 笔记管理模块 → 书报 tab 分组 → 点击选中进编辑面板（不再跳回原文）
   await page.click('#homeBtn');
   await new Promise((r) => setTimeout(r, 300));
   await page.click('#homeGrid .home-block[data-entry="notes"]');
-  await new Promise((r) => setTimeout(r, 1000));
+  await new Promise((r) => setTimeout(r, 1200));
   const r6 = await page.evaluate(() => ({
-    tabs: [...document.querySelectorAll('.hl-tab')].map(t => t.textContent).join('|'),
-    groups: [...document.querySelectorAll('.hl-group')].map(g => g.textContent).join('|'),
+    mod: document.body.classList.contains('body-mod-notes'),
+    tabs: [...document.querySelectorAll('.notes-tab')].map(t => t.textContent).join('|'),
+    groups: [...document.querySelectorAll('.notes-group')].map(g => g.textContent).join('|'),
   }));
-  console.log('6. 全局笔记:', r6.tabs.includes('书报') ? '✓' : '✗', '| 分组:', r6.groups);
-  await page.evaluate(() => document.querySelectorAll('.hl-item')[0].click());
-  await new Promise((r) => setTimeout(r, 2500));
-  const r6b = await page.evaluate(() => ({
-    modBooks: document.body.classList.contains('body-mod-books'),
-    crumb: document.querySelector('#chapterLabel').textContent.slice(0, 20),
-  }));
-  console.log('   跳回书报:', r6b.modBooks && r6b.crumb.includes('第') ? '✓' : '✗', '|', r6b.crumb);
+  console.log('6. 笔记模块:', r6.mod && r6.tabs.includes('书报') ? '✓' : '✗', '| 分组:', r6.groups);
+  await page.evaluate(() => { [...document.querySelectorAll('.notes-tab')].find(t => t.textContent === '书报').click(); });
+  await new Promise((r) => setTimeout(r, 500));
+  const itemCount = await page.$$eval('.notes-item', els => els.length);
+  if (itemCount) {
+    await page.click('.notes-item');
+    await new Promise((r) => setTimeout(r, 500));
+    const r6b = await page.evaluate(() => ({
+      panelTitle: document.querySelector('.notes-panel-title')?.textContent,
+      stayNotes: document.body.classList.contains('body-mod-notes'),
+      modBooks: document.body.classList.contains('body-mod-books'),
+    }));
+    console.log('   点击选中:', r6b.panelTitle === '书报标注' && r6b.stayNotes && !r6b.modBooks ? '✓' : '✗', '| 面板:', r6b.panelTitle);
+  } else {
+    console.log('   点击选中: ✗ 无条目');
+  }
 
   // 7. ⌂ 回首页再进书报 → 恢复上次位置
   await page.click('#homeBtn');

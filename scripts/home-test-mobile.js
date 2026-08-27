@@ -42,7 +42,7 @@ async function main() {
   console.log('   进读经视图: 非首页', !m2.home ? '✓' : '✗', '| 无弹窗', m2.popupHidden ? '✓' : '✗', '| 经文可见', m2.verseVisible ? '✓' : '✗', '| 底nav', m2.mobileNav);
   await page.close();
 
-  // ── B. 全局笔记跨书卷跳转 ──
+  // ── B. 笔记管理模块跨书卷聚合 + 首页搜索跨书卷跳转 ──
   const page2 = await browser.newPage();
   await page2.setViewport({ width: 1280, height: 800 });
   const errors2 = [];
@@ -58,19 +58,36 @@ async function main() {
   await page2.reload({ waitUntil: 'networkidle0' });
   await page2.waitForSelector('#homeGrid .home-block', { timeout: 15000 });
   await page2.click('#homeGrid .home-block[data-entry="notes"]');
-  await page2.waitForSelector('.hl-item', { timeout: 5000 });
-  const groups = await page2.$$eval('.hl-group', els => els.map(e => e.textContent));
-  console.log('B. 全局笔记分组:', groups.join(' | '));
-  // 点击罗马书那条（第 2 个 hl-item）→ 应跳到罗马书
-  await page2.evaluate(() => { document.querySelectorAll('.hl-item')[1].click(); });
-  await new Promise((r) => setTimeout(r, 2000));
-  const jumped = await page2.evaluate(() => ({
-    home: document.body.classList.contains('home'),
-    book: document.querySelector('#bookName').textContent,
-    ch: document.querySelector('#chapterLabel').textContent,
-    mark: document.querySelector('mark.c2')?.textContent,
+  await page2.waitForSelector('.notes-item', { timeout: 5000 });
+  const groups = await page2.$$eval('.notes-group', els => els.map(e => e.textContent));
+  console.log('B. 笔记模块分组:', groups.join(' | '));
+  // 点击条目 → 选中进右栏编辑面板（笔记模块内不跳原文）
+  await page2.evaluate(() => { document.querySelectorAll('.notes-item')[0].click(); });
+  await new Promise((r) => setTimeout(r, 500));
+  const panel = await page2.evaluate(() => ({
+    stayNotes: document.body.classList.contains('body-mod-notes'),
+    title: document.querySelector('.notes-panel-title')?.textContent,
   }));
-  console.log('   点击罗马书标注跳转:', !jumped.home ? '✓' : '✗', '|', jumped.book, jumped.ch, '| 高亮:', jumped.mark);
+  console.log('   点击条目进面板:', panel.stayNotes && panel.title === '经文标注' ? '✓' : '✗', '|', panel.title);
+
+  // 跨书卷跳转改走首页搜索的标注分支：搜「基督」→ 点击结果 → 跳到罗马书
+  await page2.click('#homeBtn');
+  await new Promise((r) => setTimeout(r, 300));
+  await page2.type('#homeSearch', '基督');
+  await new Promise((r) => setTimeout(r, 500));
+  const srCount = await page2.$$eval('#homeSearchResults .home-sr-item', els => els.length);
+  if (srCount) {
+    await page2.click('#homeSearchResults .home-sr-item');
+    await new Promise((r) => setTimeout(r, 2000));
+    const jumped = await page2.evaluate(() => ({
+      home: document.body.classList.contains('home'),
+      book: document.querySelector('#bookName').textContent,
+      ch: document.querySelector('#chapterLabel').textContent,
+    }));
+    console.log('   搜索跨书卷跳转:', !jumped.home && jumped.book === '罗马书' ? '✓' : '✗', '|', jumped.book, jumped.ch);
+  } else {
+    console.log('   搜索跨书卷跳转: ✗ 无结果');
+  }
   console.log('   JS 错误:', errors2.length ? errors2 : '无');
 
   await browser.close();

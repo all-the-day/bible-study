@@ -91,23 +91,37 @@ async function main() {
   console.log('5. 晨兴划线:', r5.type === 'morning' && r5.period === '2026-03' && r5.mark && r5.sideItems >= 1 ? '✓' : '✗',
     '| 主区高亮:', r5.mark, '| 右栏汇总条数:', r5.sideItems);
 
-  // 6. 全局笔记晨兴分组 → 点击跳回
+  // 6. 笔记管理模块：听抄 tab 分组 + 点击条目选中进编辑面板（不再跳回原文）
   await page.click('#homeBtn');
   await new Promise((r) => setTimeout(r, 300));
   await page.click('#homeGrid .home-block[data-entry="notes"]');
-  await new Promise((r) => setTimeout(r, 1000));
+  await new Promise((r) => setTimeout(r, 1200));
   const r6 = await page.evaluate(() => ({
-    tabs: [...document.querySelectorAll('.hl-tab')].map(t => t.textContent).join('|'),
-    groups: [...document.querySelectorAll('.hl-group')].map(g => g.textContent).join('|'),
+    mod: document.body.classList.contains('body-mod-notes'),
+    tabs: [...document.querySelectorAll('.notes-tab')].map(t => t.textContent).join('|'),
+    groups: [...document.querySelectorAll('.notes-group')].map(g => g.textContent).join('|'),
   }));
-  console.log('6. 全局笔记:', r6.tabs.includes('听抄') ? '✓' : '✗', '| 分组:', r6.groups);
-  await page.evaluate(() => { document.querySelectorAll('.hl-item')[0].click(); });
-  await new Promise((r) => setTimeout(r, 2500));
-  const r6b = await page.evaluate(() => ({
-    modMorning: document.body.classList.contains('body-mod-morning'),
-    crumb: document.querySelector('#chapterLabel').textContent.slice(0, 22),
-  }));
-  console.log('   跳回晨兴:', r6b.modMorning && r6b.crumb.includes('第2篇') ? '✓' : '✗', '|', r6b.crumb);
+  console.log('6. 笔记模块:', r6.mod && r6.tabs.includes('听抄') ? '✓' : '✗', '| 分组:', r6.groups);
+  // 切到听抄 tab 找条目，点击 → 右栏编辑面板出现
+  await page.evaluate(() => { [...document.querySelectorAll('.notes-tab')].find(t => t.textContent === '听抄').click(); });
+  await new Promise((r) => setTimeout(r, 500));
+  const itemCount = await page.$$eval('.notes-item', els => els.length);
+  if (itemCount) {
+    // 大段笔记项带 .notes-item-kind 图标，标注项没有——点标注项
+    await page.evaluate(() => {
+      const ann = [...document.querySelectorAll('.notes-item')].find(el => !el.querySelector('.notes-item-kind'));
+      if (ann) ann.click();
+    });
+    await new Promise((r) => setTimeout(r, 500));
+    const r6b = await page.evaluate(() => ({
+      panelTitle: document.querySelector('.notes-panel-title')?.textContent,
+      modMorning: document.body.classList.contains('body-mod-morning'),
+      stayNotes: document.body.classList.contains('body-mod-notes'),
+    }));
+    console.log('   点击选中:', r6b.panelTitle === '听抄标注' && r6b.stayNotes && !r6b.modMorning ? '✓' : '✗', '| 面板:', r6b.panelTitle);
+  } else {
+    console.log('   点击选中: ✗ 无条目');
+  }
 
   // 7. ⌂ 回首页再进晨兴 → 恢复上次位置
   await page.click('#homeBtn');
