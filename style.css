@@ -35,6 +35,41 @@ body {
   line-height: 1.9;
 }
 
+/* ── 首屏 splash：全屏覆盖，首页就绪后 .hidden 隐藏（display:none 同步，不挡交互） ── */
+#splash {
+  position: fixed; inset: 0; z-index: 100;
+  background: linear-gradient(160deg, var(--brand-dark), var(--brand));
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 18px; padding: 24px; text-align: center;
+}
+#splash.hidden { display: none; }
+.splash-logo { font-size: 40px; font-weight: 700; color: #fff; letter-spacing: 2px; }
+.splash-verse {
+  margin: 0; max-width: 560px; font-size: 17px; line-height: 2;
+  color: rgba(255,255,255,.95); font-style: normal;
+}
+.splash-source { font-size: 13px; color: rgba(255,255,255,.7); }
+.splash-spinner {
+  width: 34px; height: 34px; margin-top: 6px;
+  border: 3px solid rgba(255,255,255,.25); border-top-color: #fff;
+  border-radius: 50%; animation: spin .9s linear infinite;
+}
+/* 模块数据加载指示（ensure* 未缓存时占位，渲染后被内容替换） */
+.loading-hint {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 40px 16px; color: var(--text-muted); font-size: 14px;
+}
+.loading-spin {
+  width: 18px; height: 18px; flex: none;
+  border: 2px solid var(--border); border-top-color: var(--brand);
+  border-radius: 50%; animation: spin .8s linear infinite;
+}
+.loading-error {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 40px 16px; color: var(--text-muted); font-size: 14px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
 /* ── 顶栏 ── */
 .topbar {
   position: sticky; top: 0; z-index: 30;

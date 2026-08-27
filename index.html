@@ -10,6 +10,13 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- 首屏 splash：纯静态（app.js 未加载也能显示），JS 拉取 data/verses.json 后替换随机经节，首页就绪后隐藏 -->
+  <div id="splash">
+    <div class="splash-logo">📖 读经</div>
+    <blockquote class="splash-verse" id="splashVerse">愿耶和华赐福与你，保护你；愿耶和华使祂的面光照你，赐恩给你。</blockquote>
+    <div class="splash-source" id="splashVerseRef">民 6:24-25</div>
+    <div class="splash-spinner"></div>
+  </div>
   <header class="topbar">
     <button id="homeBtn" class="icon-btn" aria-label="首页">⌂</button>
     <button id="menuBtn" class="icon-btn" aria-label="菜单">☰</button>

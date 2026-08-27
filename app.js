@@ -382,14 +382,59 @@ function bindViewport() {
 const $ = (id) => document.getElementById(id);
 
 /* ============ 数据加载 ============ */
-async function fetchJSON(url) {
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`加载失败 ${url}: ${r.status}`);
-  return r.json();
+async function fetchJSON(url, timeoutMs = 25000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const r = await fetch(url, { signal: ctrl.signal });
+    if (!r.ok) throw new Error(`加载失败 ${url}: ${r.status}`);
+    return await r.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// 首屏 splash 控制：静态 HTML 已含兜底经节，JS 拉到 verses.json 后替换随机节，首页就绪后隐藏
+function splashSetVerse(v) {
+  const el = $('splashVerse'), ref = $('splashVerseRef');
+  if (el && v && v.text) el.textContent = v.text;
+  if (ref && v && v.ref) ref.textContent = v.ref;
+}
+function splashHide() {
+  const s = $('splash');
+  if (s) s.classList.add('hidden');
+}
+
+// 模块数据加载指示（ensure* 未缓存时占位；渲染完成后被内容替换）
+function showLoadingHint(container, text) {
+  if (!container) return;
+  container.innerHTML = `<div class="loading-hint"><span class="loading-spin"></span>${escapeHtml(text)}</div>`;
+}
+function showLoadingError(container, msg, retryFn) {
+  if (!container) return;
+  const div = document.createElement('div');
+  div.className = 'loading-error';
+  const label = document.createElement('span');
+  label.textContent = (msg || '加载失败');
+  const btn = document.createElement('button');
+  btn.className = 'popup-btn primary';
+  btn.textContent = '重试';
+  btn.addEventListener('click', retryFn);
+  div.appendChild(label);
+  div.appendChild(btn);
+  container.innerHTML = '';
+  container.appendChild(div);
 }
 
 async function init() {
-  state.books = await fetchJSON('data/books.json');
+  // 首屏：splash 已由 HTML 静态显示（app.js 加载前即可见），这里并行拉取经节与书卷目录
+  const versesP = fetchJSON('data/verses.json').catch(() => null);
+  const [booksData, versesData] = await Promise.all([
+    fetchJSON('data/books.json'),
+    versesP,
+  ]);
+  if (versesData && versesData.length) splashSetVerse(versesData[Math.floor(Math.random() * versesData.length)]);
+  state.books = booksData;
   state.books.forEach(b => state.bookIndexByIdx[b.acronym + b.index] = b);
   state.books.forEach(b => { REF_ALIASES[b.acronym] = b.acronym; });
   _refAliasesSorted = Object.keys(REF_ALIASES).sort((a, b) => b.length - a.length);
@@ -401,13 +446,17 @@ async function init() {
   applyModuleBodyClass('bible');
   renderHome();
   showHome();   // 启动先进首页（body.home 隐藏工作区，合集块可点）
-  // 后台预渲染工作区：DOM 就绪，点合集块秒开（LS_LAST 保留用于「继续上次」）
-  const last = load(LS_LAST, null);
-  if (last && state.books.some(b => b.index === last.book)) {
-    await selectBook(last.book, last.chapter);
-  } else {
-    await selectBook(1, 1);
-  }
+  splashHide(); // 首页可交互后隐藏 splash（同步 display:none，不挡测试点击）
+  // 后台预渲染工作区：DOM 就绪，点合集块秒开（LS_LAST 保留用于「继续上次」）；
+  // 经文首载失败不阻塞事件绑定（verseContainer 会显示加载失败+重试）
+  try {
+    const last = load(LS_LAST, null);
+    if (last && state.books.some(b => b.index === last.book)) {
+      await selectBook(last.book, last.chapter);
+    } else {
+      await selectBook(1, 1);
+    }
+  } catch (e) { /* 后台预渲染失败仅记录，不影响启动 */ }
   bindEvents();
   // 云同步：状态指示 + 后台拉取服务器数据
   if (Sync) Sync.onStatus(updateSyncStatus);
@@ -863,16 +912,23 @@ async function selectChapter(chapter) {
 
 async function ensureBibleData() {
   if (state.bibleText) return;
-  const [text, notes, xrefs, outlines] = await Promise.all([
-    fetchJSON('data/bible-text.json'),
-    fetchJSON('data/bible-notes.json'),
-    fetchJSON('data/bible-xrefs.json'),
-    fetchJSON('data/bible-outlines.json'),
-  ]);
-  state.bibleText = text;
-  state.bibleNotes = notes;
-  state.bibleXrefs = xrefs;
-  state.outlines = outlines;
+  showLoadingHint($('verseContainer'), '经文加载中…');
+  try {
+    const [text, notes, xrefs, outlines] = await Promise.all([
+      fetchJSON('data/bible-text.json'),
+      fetchJSON('data/bible-notes.json'),
+      fetchJSON('data/bible-xrefs.json'),
+      fetchJSON('data/bible-outlines.json'),
+    ]);
+    state.bibleText = text;
+    state.bibleNotes = notes;
+    state.bibleXrefs = xrefs;
+    state.outlines = outlines;
+  } catch (e) {
+    // 失败显示重试（不抛异常：init 后台预渲染失败不应中断事件绑定）；重试走完整 selectBook 链路
+    showLoadingError($('verseContainer'), '经文加载失败',
+      () => selectBook(state.currentBook.index, state.currentChapter));
+  }
 }
 
 /* ============ 原文渲染 ============ */
@@ -2473,13 +2529,22 @@ async function ensureLrVolume(bookIndex) {
   if (state.lrVolumes[bookIndex]) return state.lrVolumes[bookIndex];
   const b = state.books.find(x => x.index === bookIndex);
   if (!b) return null;
+  showLoadingHint($('lrMain'), '生命读经加载中…');
   try {
     const data = await fetchJSON(`data/lifereading/${b.acronym}.json`);
     data.bookIndex = bookIndex;
     data.name = b.name;
     state.lrVolumes[bookIndex] = data;
     return data;
-  } catch (e) { return null; }
+  } catch (e) {
+    // 重试：加载成功后若仍在模块内，重渲染主区（替换错误提示）
+    showLoadingError($('lrMain'), '生命读经加载失败', () => {
+      ensureLrVolume(bookIndex).then(() => {
+        if (state.activeModule === 'lifereading') READER_MODULES.lifereading.renderMain();
+      });
+    });
+    return null;
+  }
 }
 
 /* ============ 生命读经阅读器模块 ============ */
@@ -2629,8 +2694,16 @@ async function ensureBookVolume(volume) {
   const key = state.bookSeries;
   const vols = (state.bookVolumes[key] = state.bookVolumes[key] || {});
   if (vols[volume]) return vols[volume];
+  showLoadingHint($('bookMain'), '书报加载中…');
   try { const data = await fetchJSON(`data/books/${key}-${volume}.json`); vols[volume] = data; return data; }
-  catch (e) { return null; }
+  catch (e) {
+    showLoadingError($('bookMain'), '书报加载失败', () => {
+      ensureBookVolume(volume).then(() => {
+        if (state.activeModule === 'books') READER_MODULES.books.renderMain();
+      });
+    });
+    return null;
+  }
 }
 
 // 左栏系列条（多系列切换，当前系列 active）
@@ -2852,8 +2925,16 @@ async function ensureMorningIndex() {
 }
 async function ensureMorningData(periodId) {
   if (state.morningData[periodId]) return state.morningData[periodId];
+  showLoadingHint($('morningMain'), '听抄加载中…');
   try { const data = await fetchJSON(`data/morning/${periodId}.json`); state.morningData[periodId] = data; return data; }
-  catch (e) { return null; }
+  catch (e) {
+    showLoadingError($('morningMain'), '听抄加载失败', () => {
+      ensureMorningData(periodId).then(() => {
+        if (state.activeModule === 'morning') READER_MODULES.morning.renderMain();
+      });
+    });
+    return null;
+  }
 }
 
 // 左栏期条（当年各期，当前期 active）

@@ -27,15 +27,18 @@ async function main() {
     }
   });
 
-  // 1. 启动进首页 + 无副标题
+  // 1. 启动进首页 + 无副标题 + splash 隐藏后经节非空
   await page.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'networkidle0', timeout: 30000 });
   await page.waitForSelector('#homeGrid .home-block', { timeout: 15000 });
   const homeOk = await page.evaluate(() => ({
     bodyHome: document.body.classList.contains('home'),
     blocks: [...document.querySelectorAll('#homeGrid .home-block')].map(b => b.dataset.entry),
     subCount: document.querySelectorAll('.home-block-sub').length,
+    splashHidden: document.querySelector('#splash')?.classList.contains('hidden'),
+    verse: document.querySelector('#splashVerse')?.textContent.trim() || '',
   }));
-  console.log('1. 启动进首页:', homeOk.bodyHome ? '✓' : '✗', '| 块:', homeOk.blocks.join(','), '| 副标题数:', homeOk.subCount, homeOk.subCount === 0 ? '✓' : '✗');
+  console.log('1. 启动进首页:', homeOk.bodyHome ? '✓' : '✗', '| 块:', homeOk.blocks.join(','), '| 副标题数:', homeOk.subCount, homeOk.subCount === 0 ? '✓' : '✗',
+    '| splash已隐藏:', homeOk.splashHidden ? '✓' : '✗', '| 经节:', homeOk.verse.slice(0, 12));
 
   // 2. 读经块 → 直接进上次章节(预置 创24)，无弹窗
   await page.evaluate(() => localStorage.setItem('bible-study.last', JSON.stringify({ book: 1, chapter: 24 })));

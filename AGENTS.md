@@ -35,9 +35,10 @@
 | `scripts/export.py` | 从 `../bible` 导出静态 JSON → `data/` |
 | `scripts/export-morning.py` | 从晨读 APK 资源导出听抄 → `data/morning/`（默认只导当年，`--exclude` 排除期，旧期自动清理） |
 | `scripts/export-spiritual.py` | 从 `../bible/data/raw/spiritual_food/` 导出书报 → `data/books/`（系列索引 + 元数据 + 按辑懒加载） |
+| `scripts/export-verses.py` | 从 export.py 产物 `data/bible-text.json` 派生精选经节 → `data/verses.json`（首屏 splash 随机经节数据源，~190 节几 KB） |
 | `start.bat` / `icons/` | 本地预览服务器（python http.server 8765）/ PWA 图标（icon-192/512，`resources/icon.png` 为 APK 图标源） |
 | `scripts/patch-android.mjs` | CI 帮手：注入原生插件 + AndroidManifest 权限/FileProvider（幂等） |
-| `scripts/*-test.js` | puppeteer 端到端测试（e2e / 标注 / 生命读经标注 / 生命读经模块内标注）；`download-sim-test.js` 验证 WebView fetch 下载被 CORS 拦截（根因留档），`update-logic-test.js` mock 原生插件验证 download() fallback/进度/监听清理，`lr-heading-test.js` 纲目标题提取，`home-test.js` / `home-test-mobile.js` 首页+合集链路冒烟，`lr-reader-test.js` 生命读经阅读器专项，`lr-module-annotation-test.js` 生命读经模块内划线回归（rerenderAnn 主区重渲染），`book-reader-test.js` 书报阅读器专项，`morning-reader-test.js` 听抄阅读器专项（直进/切期/切篇/层级标题渲染/笔记/划线/全局笔记跳转/恢复）；`sync-merge-test.js` sync.js flushPending 合并语义 node 单测（无浏览器，防旧快照覆盖回归）；`notes-module-test.js` 笔记管理模块专项（直进/分类树/来源tab/颜色过滤/搜索/排序/选中进面板/编辑笔记/改色/删除单条/大段笔记编辑删除/批量删除/偏好恢复） |
+| `scripts/*-test.js` | puppeteer 端到端测试（e2e / 标注 / 生命读经标注 / 生命读经模块内标注）；`download-sim-test.js` 验证 WebView fetch 下载被 CORS 拦截（根因留档），`update-logic-test.js` mock 原生插件验证 download() fallback/进度/监听清理，`lr-heading-test.js` 纲目标题提取，`home-test.js` / `home-test-mobile.js` 首页+合集链路冒烟（含 splash 经节断言），`lr-reader-test.js` 生命读经阅读器专项，`lr-module-annotation-test.js` 生命读经模块内划线回归（rerenderAnn 主区重渲染），`book-reader-test.js` 书报阅读器专项，`morning-reader-test.js` 听抄阅读器专项（直进/切期/切篇/层级标题渲染/笔记/划线/全局笔记跳转/恢复）；`sync-merge-test.js` sync.js flushPending 合并语义 node 单测（无浏览器，防旧快照覆盖回归）；`notes-module-test.js` 笔记管理模块专项（直进/分类树/来源tab/颜色过滤/搜索/排序/选中进面板/编辑笔记/改色/删除单条/大段笔记编辑删除/批量删除/偏好恢复） |
 | `data/books.json` | 66 卷目录 + 每卷章数 + 缩写 |
 | `data/bible-text.json` | 原文，键 `创1:1` / `创1:2上`，值含 `{N}`（注脚）/`[a]`（串珠）标记 |
 | `data/bible-notes.json` | 注解，键 → `{seq: 注脚文本}`（seq 为节内连续编号，可复用同一文本、跨半节连续） |
@@ -46,6 +47,7 @@
 | `data/lifereading/{缩写}.json` | 每卷生命读经：篇目 + 经文映射（verses）+ 正文。合并卷（撒母耳记/列王纪/历代志）拆分为子卷文件（撒上/撒下、王上/王下、代上/代下） |
 | `data/morning/` | 听抄：index.json（期索引 trainings）+ `{期}.json`（chapters 听抄正文，无六天晨兴/纲目） |
 | `data/books/` | 书报：index.json（系列清单）+ `{系列}.json`（元数据 volumes）+ `{系列}-{辑}.json`（按辑懒加载） |
+| `data/verses.json` | 精选经节 `[{ref,text}]`（~190 节，`export-verses.py` 派生，首屏 splash 随机经节源） |
 
 ## 数据模型（核心）
 
@@ -71,7 +73,7 @@
 
 ## 首页 + 合集块（2026-08 阶段 1）
 
-**启动先进首页**（PC/移动端通用，浏览器启动页风格）：顶部通用检索 + 正方形合集块网格。首页是全屏层 `#homeView`，与工作区 `.layout` **正交**（CSS 切换：`body.home .layout{display:none}` + `body:not(.home) #homeView{display:none}`，无 JS 频繁切 hidden）；顶栏新增常驻 `#homeBtn`（⌂）回首页。
+**启动先进首页**（PC/移动端通用，浏览器启动页风格）：顶部通用检索 + 正方形合集块网格。首页是全屏层 `#homeView`，与工作区 `.layout` **正交**（CSS 切换：`body.home .layout{display:none}` + `body:not(.home) #homeView{display:none}`，无 JS 频繁切 hidden）；顶栏新增常驻 `#homeBtn`（⌂）回首页。**首屏 splash**（`#splash`，纯静态 HTML 先行显示，含 app 名 + 随机经节 `data/verses.json`（拉取失败用 HTML 兜底节）+ spinner）：init 并行拉 books.json 与 verses.json，首页就绪后 `splashHide()`（同步 display:none 不挡交互）。**数据加载指示**（`showLoadingHint`/`showLoadingError`）：读经经文首载（`ensureBibleData`→#verseContainer）、生命读经卷（`ensureLrVolume`→#lrMain）、书报辑（`ensureBookVolume`→#bookMain）、听抄期（`ensureMorningData`→#morningMain）未缓存时显示 spinner+提示，失败显示「加载失败+重试」；`fetchJSON` 带 25s AbortController 超时。
 
 - **状态**：`state.screen`（'home'|'work'，唯一视图正交开关）、`state.activeModule`（当前阅读器模块：'bible'|'lifereading'|'books'|'morning'|'notes'）、`state.lrVolumes`（生命读经卷懒加载缓存，`selectChapter` 懒加载与阅读器共用）、`state.lrBookIndex/lrArticleId/lrSideTab`（生命读经阅读器位置与右栏 tab）
 - **切换函数**（顶层声明，e2e 测试 `page.evaluate(() => enterWork())` 直接调用）：`showHome()`（加 body.home + 移除 mobile-study + closePopupAll + 刷新块计数）、`enterWork()`（移除 body.home，幂等）
@@ -152,6 +154,7 @@ npm run feedback:close <id>      # 标记已处理
 cd scripts && python export.py          # 经文/注解/串珠/纲目/生命读经
 cd scripts && python export-morning.py  # 听抄（默认只导当年，--exclude 排除期）
 cd scripts && python export-spiritual.py # 书报系列（倪柝声文集等）
+cd scripts && python export-verses.py    # 精选经节（依赖 export.py 产出的 bible-text.json，需在其后跑）
 ```
 - 数据源路径 `../bible/data/raw/bible_root/bible.db`（只读）与 `../bible/data/raw/life_study/`（只读）；听抄源为晨读 APK 资源 `d:/迅雷下载/晨读appRes/resources/assets/public/`；书报源为 `../bible/data/raw/spiritual_food/`
 - 导出到 `data/`，改动数据源后需重跑导出
