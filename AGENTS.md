@@ -33,7 +33,8 @@
 | `capacitor.config.json` / `package.json` | APK 打包配置（`resources/icon.png` 为图标源） |
 | `config/android/` | 原生更新插件源码（ApkInstallerPlugin：download 原生下载 + install 安装；MainActivity/file_paths.xml），CI 注入 android/ 工程，不入本地构建 |
 | `scripts/export.py` | 从 `../bible` 导出静态 JSON → `data/` |
-| `scripts/export-morning.py` | 从晨读 APK 资源导出听抄 → `data/morning/`（默认只导当年，`--exclude` 排除期，旧期自动清理） |
+| `scripts/export-morning.py` | 从晨读 APK 资源导出听抄 → `data/morning/`（默认只导当年，`--exclude` 排除期，旧期自动清理；`EPUB_PERIODS` 内的期跳过并保留——其听抄由 epub 导出） |
+| `scripts/export-morning-epub.py` | 从特会信息 epub（Notion 下载，如 2026-3-MDC.epub）导出**完整听抄** → `data/morning/{期}.json`（反编译 App 资源 detail_sections 听抄被截断，每篇缺 18-27%；**2026-08 起听抄以 epub 为准**）；同时更新 index.json 该期条目 |
 | `scripts/export-spiritual.py` | 从 `../bible/data/raw/spiritual_food/` 导出书报 → `data/books/`（系列索引 + 元数据 + 按辑懒加载） |
 | `scripts/export-verses.py` | 从 export.py 产物 `data/bible-text.json` 派生精选经节 → `data/verses.json`（首屏 splash 随机经节数据源，~190 节几 KB） |
 | `start.bat` / `icons/` | 本地预览服务器（python http.server 8765）/ PWA 图标（icon-192/512，`resources/icon.png` 为 APK 图标源） |
@@ -87,7 +88,7 @@
 - **模块感知标注**：`renderLrArticle` 输出 `data-book`；`renderBookMain` 输出 `data-series/volume/book/chapter`；`renderMorningMain` 输出 `data-period/chapter`；`findAnnotatable` 加 `data-article`/`data-chapter` 守卫（**修复 renderFootnotes 注解容器误标 .lr-content 致 articleId=NaN 的隐患**）；`handleSelection` 按 data-book / data-volume / data-period 定位源文本；`navigateToAnnotation` 模块感知（lr/books/morning 模块内就地跳转，跨模块回 bible）；`buildAnnotation` 按 type 存定位字段（verse: chapter/verse/half、lr: articleId、book: series/volume/book/chapter、morning: period/chapterId）
 - **顶部搜索 `homeSearch(q)`**（轻量三条过滤，**不做全文**）：① 书卷+章正则走 `REF_ALIASES`/`resolveBookAlias` → `enterModule('bible')` 进工作区选章；② 标注 note/text 包含匹配（截 20 条，`navigateToAnnotation` 跳转）；③ 生命读经篇目标题（仅 `state.lrVolumes` 已缓存卷，不建全量索引）→ `openLrArticle` 直进阅读器
 - **测试**：e2e 类测试启动后需 `enterWork()` 切回工作区（init 后台预渲染使 DOM 存在但被 body.home 隐藏，直接 page.click 隐藏元素会抛错）；`home-test.js`（直进版冒烟）/ `home-test-mobile.js` / `lr-reader-test.js`（阅读器专项：直进/切卷/切篇/纲目/笔记/折叠/划线/恢复）为首页+阅读器链路测试
-- **数据源（已落地）**：听抄 = 反编译晨读 APK 资源 `d:/迅雷下载/晨读appRes/resources/assets/public/`（`trainings.json` + 每月 `{期}/training.json`：chapters → outline_sections/detail_sections/morning_revivals 周一~周六），`scripts/export-morning.py` 导出 `data/morning/`（**默认只导当年，`--exclude` 排除期，旧期自动清理**；当前 2026-03/04 两期 18 篇）；书报 = `../bible/data/raw/spiritual_food/倪柝声文集/`（目录索引 + md），`scripts/export-spiritual.py` 导出 `data/books/`（index.json 系列清单 + {id}.json 元数据 + {id}-{辑}.json 内容，3 辑 62 本 1325 章）。标注 type 扩展 `'book'`/`'morning'` 已落地（向后兼容旧 verse/lr）。其他 30 个书报系列（十二篮/荒漠甘泉/新约总论等）渐进加：导出脚本同构扩展 → 系列条自动多一项，前端零改动
+- **数据源（已落地）**：听抄 = 反编译晨读 APK 资源 `d:/迅雷下载/晨读appRes/resources/assets/public/`（`trainings.json` + 每月 `{期}/training.json`：chapters → outline_sections/detail_sections/morning_revivals 周一~周六），`scripts/export-morning.py` 导出 `data/morning/`（**默认只导当年，`--exclude` 排除期，旧期自动清理**；当前 2026-03/04 两期 18 篇）。**2026-08 起听抄以特会信息 epub 为准**（`export-morning-epub.py`）：epub 含完整听抄 `{n}_ts.htm` + 读经 `{n}_cv.htm`，反编译资源 detail_sections 每篇缺 18-27% 正文；epub 托管的期列入 `export-morning.py` 的 `EPUB_PERIODS`（2026-03 已迁，后续特会从 Notion 下载 epub 后 `export-morning-epub.py <epub> --period {期}` 迁移并加入集合）；书报 = `../bible/data/raw/spiritual_food/倪柝声文集/`（目录索引 + md），`scripts/export-spiritual.py` 导出 `data/books/`（index.json 系列清单 + {id}.json 元数据 + {id}-{辑}.json 内容，3 辑 62 本 1325 章）。标注 type 扩展 `'book'`/`'morning'` 已落地（向后兼容旧 verse/lr）。其他 30 个书报系列（十二篮/荒漠甘泉/新约总论等）渐进加：导出脚本同构扩展 → 系列条自动多一项，前端零改动
 
 ## 云同步
 
@@ -152,7 +153,8 @@ npm run feedback:close <id>      # 标记已处理
 
 ```bash
 cd scripts && python export.py          # 经文/注解/串珠/纲目/生命读经
-cd scripts && python export-morning.py  # 听抄（默认只导当年，--exclude 排除期）
+cd scripts && python export-morning.py  # 听抄（默认只导当年，--exclude 排除期；EPUB_PERIODS 内期跳过）
+cd scripts && python export-morning-epub.py /path/2026-3-MDC.epub --period 2026-03  # epub 完整听抄（迁移期后加进 export-morning.py 的 EPUB_PERIODS）
 cd scripts && python export-spiritual.py # 书报系列（倪柝声文集等）
 cd scripts && python export-verses.py    # 精选经节（依赖 export.py 产出的 bible-text.json，需在其后跑）
 ```

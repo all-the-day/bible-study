@@ -31,6 +31,9 @@ import sys
 PUBLIC = r"d:/迅雷下载/晨读appRes/resources/assets/public"
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "morning")
 
+# 听抄源改为 epub 的期（export-morning-epub.py 生成完整听抄），此处跳过且清理时不删
+EPUB_PERIODS = {"2026-03"}
+
 
 def flatten_detail(nodes, out):
     """detail_sections 树 → 扁平 [{level, title, paragraphs}]（听抄层级）"""
@@ -72,7 +75,7 @@ def export():
         # 期范围过滤：默认只导当年；--all 全量；--exclude 排除指定期
         if not args.all and year != this_year:
             continue
-        if path in exclude:
+        if path in exclude or path in EPUB_PERIODS:
             continue
         tjson = os.path.join(PUBLIC, path, "training.json")
         if not os.path.exists(tjson):
@@ -115,13 +118,20 @@ def export():
         total_chapters += len(chapters)
         print(f"  [OK] {path} {data.get('title','')}（{len(chapters)} 篇）")
 
+    # epub 托管的期保留在 index 与文件里（其内容由 export-morning-epub.py 生成）
+    if os.path.exists(os.path.join(OUT, "index.json")):
+        with open(os.path.join(OUT, "index.json"), encoding="utf-8") as f:
+            prev = json.load(f)
+        epub_entries = {t.get("id"): t for t in prev.get("trainings", []) if t.get("id") in EPUB_PERIODS}
+        index["trainings"].extend(epub_entries.values())
+
     with open(os.path.join(OUT, "index.json"), "w", encoding="utf-8") as f:
         json.dump(index, f, ensure_ascii=False, separators=(",", ":"))
-    # 清理旧期文件（不在本次导出范围则删除，避免 index 与实际文件不一致）
+    # 清理旧期文件（不在本次导出范围且非 epub 托管则删除，避免 index 与实际文件不一致）
     for fn in os.listdir(OUT):
         if fn.endswith(".json") and fn != "index.json":
             period_id = fn[:-5]
-            if period_id not in selected:
+            if period_id not in selected and period_id not in EPUB_PERIODS:
                 os.remove(os.path.join(OUT, fn))
                 print(f"  [del] {fn}（不在导出范围）")
     print(f"\n完成：{len(index['trainings'])} 期 / {total_chapters} 篇 -> {os.path.normpath(OUT)}")
