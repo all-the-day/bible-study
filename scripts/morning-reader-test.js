@@ -82,9 +82,14 @@ async function main() {
   const r5 = await page.evaluate(() => {
     const anns = JSON.parse(localStorage.getItem('bible-study.annotations') || '[]');
     const last = anns[anns.length - 1];
-    return { type: last && last.type, period: last && last.period, chapterId: last && last.chapterId, mark: !!document.querySelector('#morningMain mark.c4') };
+    return {
+      type: last && last.type, period: last && last.period, chapterId: last && last.chapterId,
+      mark: !!document.querySelector('#morningMain mark.c4'),
+      sideItems: document.querySelectorAll('#morningSide .hl-item').length,
+    };
   });
-  console.log('5. 晨兴划线:', r5.type === 'morning' && r5.period === '2026-03' && r5.mark ? '✓' : '✗', JSON.stringify(r5));
+  console.log('5. 晨兴划线:', r5.type === 'morning' && r5.period === '2026-03' && r5.mark && r5.sideItems >= 1 ? '✓' : '✗',
+    '| 主区高亮:', r5.mark, '| 右栏汇总条数:', r5.sideItems);
 
   // 6. 全局笔记晨兴分组 → 点击跳回
   await page.click('#homeBtn');
