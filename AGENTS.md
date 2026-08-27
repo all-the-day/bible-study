@@ -165,6 +165,7 @@ vercel --prod --yes --archive=tgz
 - 生产地址：**https://bible-study-teal-seven.vercel.app**
 - 账号 all-the-day；沿用 lingliang-search 的 `--archive=tgz` 约定
 - **关键**：`data/` 大文件在 `.gitignore` 里被忽略，但 `.vercelignore` 覆盖了它（只排除 `.vercel/` `.git/` `scripts/`），保证部署时数据能上传。改动数据后先重跑导出再部署。
+- **版本同步流程（发版必经，两步缺一不可）**：① push 触发 APK 构建 → 构建自动 patch+1 并把 `[skip ci]` 升版提交写回 main（同时改 package.json + manifest.json）；② 本地 `git pull --rebase origin main` 拉取升版提交 → 再 `vercel --prod` 重新部署，让网页版 manifest.json 与 GitHub Release 对齐。否则网页版本号落后、设置弹窗「检查更新」一直提示新版本。**注意**：push 前若本地落后（有远端升版/其他提交），需先 rebase 再 push，且**部署要在 rebase 之后的干净工作区执行**，避免把旧 manifest.json 部署上去。
 
 ## APK 打包（GitHub Actions）
 
