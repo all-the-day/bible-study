@@ -1941,7 +1941,9 @@ function renderNotesListBody(listWrap) {
       }
       listWrap.appendChild(gl);
       (bigByGroup[g.label] || []).forEach(n => listWrap.appendChild(renderNotesBigItem(n)));
-      g.items.forEach(a => listWrap.appendChild(renderNotesItem(a)));
+      const locs = g.items.map(a => hlLocText(a));
+      const locSame = locs.length > 1 && locs.every(l => l === locs[0]);
+      g.items.forEach((a, i) => listWrap.appendChild(renderNotesItem(a, locSame && i > 0)));
     });
     Object.keys(bigByGroup).forEach(label => {
       if (groups.some(g => g.label === label)) return;
@@ -1990,8 +1992,8 @@ function renderNotesBatchBar() {
   return bar;
 }
 
-function renderNotesItem(a) {
-  const div = buildHlItemBody(a, 'notes-item');
+function renderNotesItem(a, hideLoc) {
+  const div = buildHlItemBody(a, 'notes-item', hideLoc);
   div.classList.toggle('selected',
     state.notesSelectedItem && state.notesSelectedItem.kind === 'ann' && state.notesSelectedItem.id === a.id);
   if (state.notesSelectMode) {
@@ -2185,7 +2187,10 @@ function renderHighlights(anns, groupFn) {
       gl.className = 'hl-group';
       gl.textContent = g.label;
       box.appendChild(gl);
-      g.items.forEach(a => box.appendChild(renderHlItem(a)));
+      // 同组多条划线的定位标签全相同（如书报右栏固定一章）时只首条显示
+      const locs = g.items.map(a => hlLocText(a));
+      const locSame = locs.length > 1 && locs.every(l => l === locs[0]);
+      g.items.forEach((a, i) => box.appendChild(renderHlItem(a, locSame && i > 0)));
     });
   };
   const mkTab = (label, list) => {
@@ -2210,14 +2215,14 @@ function renderHighlights(anns, groupFn) {
   return section;
 }
 
-function renderHlItem(a) {
-  const div = buildHlItemBody(a);
+function renderHlItem(a, hideLoc) {
+  const div = buildHlItemBody(a, undefined, hideLoc);
   div.addEventListener('click', () => { navigateToAnnotation(a); });
   return div;
 }
 
 // 条目主体：颜色点 + 定位 + 划文本 + 笔记摘要（研读列/模块右栏与笔记管理模块共用）
-function buildHlItemBody(a, cls) {
+function buildHlItemBody(a, cls, hideLoc) {
   const div = document.createElement('div');
   div.className = cls || 'hl-item';
   const dot = document.createElement('span');
@@ -2231,11 +2236,14 @@ function buildHlItemBody(a, cls) {
   const text = document.createElement('span');
   text.className = 'hl-text';
   text.textContent = annotationText(a) || '（内容已失效）';
-  const loc = document.createElement('span');
-  loc.className = 'hl-loc';
-  loc.textContent = hlLocText(a);
+  // 同一组内定位标签全相同时（如书报右栏固定一章）只首条显示，避免视觉上像内容重复
+  if (!hideLoc) {
+    const loc = document.createElement('span');
+    loc.className = 'hl-loc';
+    loc.textContent = hlLocText(a);
+    div.appendChild(loc);
+  }
   div.appendChild(dot);
-  div.appendChild(loc);
   div.appendChild(text);
   if (a.note) {
     const noteEl = document.createElement('div');
