@@ -428,7 +428,7 @@ sup.xref-ref:hover { color: var(--brand-dark); }
 .note-item .note-meta { color: var(--text-muted); font-size: 12px; margin-bottom: 4px; }
 .empty-hint { color: var(--text-muted); text-align: center; padding: 30px 0; font-size: 14px; }
 .lr-content { white-space: pre-wrap; font-size: 17px; line-height: 2; }
-.lr-para, .bk-para {
+.lr-para {
   margin-bottom: 10px;
   text-indent: 2em;
   background: var(--surface);
@@ -437,9 +437,13 @@ sup.xref-ref:hover { color: var(--brand-dark); }
   padding: 14px 16px;
   box-shadow: var(--shadow-sm);
 }
-/* 书报容器无 font-size，段落自带；生命读经继承 .lr-content 的 17px */
-.bk-para { font-size: 15px; line-height: 2; color: var(--text); }
-/* 书报标题：与正文卡片区分（左对齐 + 加粗 + 字号递进 + 间距），不做逐级缩进 */
+/* 书报正文：无卡片样式，纯段落（标题见 .bk-head） */
+.bk-para {
+  margin-bottom: 10px;
+  text-indent: 2em;
+  font-size: 15px; line-height: 2; color: var(--text);
+}
+/* 书报标题：与正文区分（左对齐 + 加粗 + 字号递进 + 间距），不做逐级缩进 */
 .book-content { text-align: justify; }
 .bk-head {
   font-weight: 700;

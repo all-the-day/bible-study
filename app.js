@@ -1133,7 +1133,8 @@ function renderFootnotes() {
     label.textContent = it.label;
     const text = document.createElement('div');
     text.className = 'lr-content';
-    text.innerHTML = linkifyRefs(it.text);
+    // 注解归属本章书卷：相对引用（如「二一25，33。」）默认落到本书
+    text.innerHTML = linkifyRefs(it.text, acr);
     div.appendChild(label);
     div.appendChild(text);
     body.appendChild(div);
@@ -1251,7 +1252,11 @@ function renderLrArticle(a, bookIndex) {
   content.dataset.book = bi;   // 模块感知标注：选区→偏移换算时定位所属卷
   const lrAnns = state.annotations.filter(x =>
     x.type === 'lr' && x.book === bi && x.articleId === a.id);
-  renderLrContent(content, a.content || '', lrAnns, `lrh-${a.id}`);
+  // 相对引用默认书卷：以本篇所属卷为准（如 创的篇目里「二五11」即创25:11）
+  // book index 为 1 起始（创=1），books 数组是 0 起始，须 find 按 index 匹配
+  const book = (state.books && state.books.find(b => b.index === bi)) || null;
+  const acr = (book && book.acronym) || null;
+  renderLrContent(content, a.content || '', lrAnns, `lrh-${a.id}`, acr);
   div.appendChild(content);
   return div;
 }
@@ -3964,7 +3969,9 @@ function showFootnotePopup(n, key) {
   const notes = key ? (state.bibleNotes || {})[key] : null;
   if (!notes || !notes[+n]) { openPopup(`注${n}`, '<div class="empty-hint">未找到注解</div>'); return; }
   const note = notes[+n];
-  openPopup(`${key} 注${n}`, `<div class="fn-body">${linkifyRefs(note)}</div>`);
+  // key 形如「创26:24」，取前导书卷缩写作相对引用的默认上下文
+  const acr = (key || '').match(/^\D+/);
+  openPopup(`${key} 注${n}`, `<div class="fn-body">${linkifyRefs(note, acr ? acr[0] : null)}</div>`);
 }
 
 function showXrefPopup(letter, key) {
@@ -4098,19 +4105,107 @@ function buildRefRegex() {
   return new RegExp('(' + aliasAlt + ')' + tail, 'g');
 }
 
-function detectRefs(text) {
-  const re = buildRefRegex();
-  const refs = [];
-  let m;
-  while ((m = re.exec(text)) !== null) {
-    refs.push({ start: m.index, end: m.index + m[0].length, refText: m[0] });
+// 相对引用（无书卷前缀，靠前文全书引用或 defaultAcronym 提供上下文）：
+// 中文章+阿拉伯节（二五11 / 二六15～22 / 三9上）+ 纯阿拉伯节（33，需已有章上下文）。
+// 与 resolveRefString 的相对引用规则一致。
+function buildRelativeRefRegex() {
+  const cn = '一二三四五六七八九十百〇○';
+  return new RegExp('(?:[' + cn + ']+\\d+(?:[-~～]\\d+)?[上下]?|\\d{1,3}(?:[-~～]\\d{1,3})?[上下]?)', 'g');
+}
+
+// 纯阿拉伯节相对引用要求右边界为分隔符/句末标点，防误匹配词中/日期数字（如 1920年、25章）
+const REL_DIGIT_RIGHT = /[\s，,、;；。！？）)」』》…]/;
+
+// 书卷缩写 → 章数（books.json），用于过滤书卷推断错误的相对引用（如「弗32:28」弗只有6章）
+let _bookChaptersMap = null;
+function bookChapterCount(acronym) {
+  if (!_bookChaptersMap) {
+    _bookChaptersMap = {};
+    (state.books || []).forEach(b => { _bookChaptersMap[b.acronym] = b.chapters; });
   }
+  return _bookChaptersMap[acronym] || 0;
+}
+
+// 相对引用解析出的节必须真实存在于经文数据（防书卷/节号推断错误给出错误链接）；
+// bibleText 未加载（如 lr/书报/听抄模块直进）时跳过校验，重渲染后生效
+function verseKeyExists(key) {
+  const bt = state.bibleText;
+  if (!bt) return true;
+  const base = key.replace(/[上下]$/, '').replace(/～\d+.*$/, '');
+  if (bt[base]) return true;
+  if (bt[base + '上'] || bt[base + '下']) return true;
+  return false;
+}
+
+function detectRefs(text, defaultAcronym) {
+  text = text || '';
+  const fullRe = buildRefRegex();
+  const relRe = buildRelativeRefRegex();
+  const refs = [];
+  let curAcronym = defaultAcronym || null, curChapter = null;
+  fullRe.lastIndex = 0;
+  let segStart = 0;
+  let m;
+  for (;;) {
+    const nextFull = fullRe.exec(text);
+    const segEnd = nextFull ? nextFull.index : text.length;
+    // 上一引用之后、下一引用之前：扫描相对引用（无上下文则不识别）
+    if (curAcronym && segStart < segEnd) {
+      const seg = text.slice(segStart, segEnd);
+      relRe.lastIndex = 0;
+      let rm;
+      while ((rm = relRe.exec(seg)) !== null) {
+        const absStart = segStart + rm.index;
+        const absEnd = absStart + rm[0].length;
+        const body = rm[0];
+        // 左边界须为分隔符/标点/文本开头，避免误匹配词中数字；
+        // 纯数字形式不接在「:」后（防 25:11 被拆出 11 误判为相对引用）
+        const before = text[absStart - 1];
+        if (before) {
+          const leftOk = /^\d/.test(body)
+            ? /[\s，,、;；（(「『"“—–]/.test(before)
+            : /[\s，,、;；：:（(「『"“—–]/.test(before);
+          if (!leftOk) continue;
+        }
+        if (/^\d/.test(body) && absEnd < text.length) {
+          // 纯阿拉伯节须以分隔符/句末结尾（防 1920年、25章 之类被误判）
+          if (!REL_DIGIT_RIGHT.test(text[absEnd])) continue;
+        }
+        const half = /[上下]$/.test(body) ? body.slice(-1) : '';
+        const core = half ? body.slice(0, -1) : body;
+        const mm = core.match(/^([一二三四五六七八九十百〇○]+)?(\d+)(?:[-~～](\d+))?$/);
+        if (!mm) continue;
+        const ch = mm[1] ? cnToInt(mm[1]) : curChapter;
+        if (!ch) continue;
+        // 章越界 → 书卷推断错误（如 弗 的文章里裸写「一一九66」实为诗篇），不包裹以免给出错误链接
+        const maxCh = bookChapterCount(curAcronym);
+        if (maxCh && ch > maxCh) continue;
+        // data-refs 用完整规范引用（书卷前缀），点击弹窗可直接解析
+        const key = `${curAcronym}${ch}:${mm[2]}${half}` + (mm[3] ? `～${mm[3]}` : '');
+        if (!verseKeyExists(key)) continue;
+        refs.push({ start: absStart, end: absEnd, refText: key });
+        if (mm[1]) curChapter = ch;
+      }
+    }
+    if (!nextFull) break;
+    const start = nextFull.index, end = nextFull.index + nextFull[0].length;
+    refs.push({ start, end, refText: nextFull[0] });
+    // 全书引用建立上下文，供后续相对引用使用
+    const alias = _refAliasesSorted.find(a => nextFull[0].startsWith(a));
+    if (alias) {
+      curAcronym = REF_ALIASES[alias];
+      const r = parseRefTail(curAcronym, nextFull[0].slice(alias.length), null);
+      if (r && r.chapter) curChapter = r.chapter;
+    }
+    segStart = end;
+  }
+  refs.sort((a, b) => a.start - b.start);
   return refs;
 }
 
-// 纯文本 → HTML，把经文引用包成 <span class="ref-link">
-function linkifyRefs(text) {
-  const refs = detectRefs(text || '');
+// 纯文本 → HTML，把经文引用包成 <span class="ref-link">；defaultAcronym 提供相对引用的默认书卷
+function linkifyRefs(text, defaultAcronym) {
+  const refs = detectRefs(text || '', defaultAcronym);
   if (!refs.length) return escapeHtml(text || '');
   let html = '', cursor = 0;
   for (const r of refs) {
@@ -4153,8 +4248,8 @@ function detectLrHeading(line) {
 }
 
 // 渲染单行：经文引用包 ref-link，叠加标注 mark（baseOffset 为该行在全文中的偏移）
-function renderLrLine(parent, text, baseOffset, annotations) {
-  const refs = detectRefs(text || '');
+function renderLrLine(parent, text, baseOffset, annotations, defaultAcronym) {
+  const refs = detectRefs(text || '', defaultAcronym);
   let cursor = 0;
   const appendText = (t, base) => {
     if (!annotations.length) parent.appendChild(document.createTextNode(t));
@@ -4172,7 +4267,7 @@ function renderLrLine(parent, text, baseOffset, annotations) {
   if (cursor < text.length) appendText(text.slice(cursor), baseOffset + cursor);
 }
 
-function renderLrContent(parent, content, annotations, idPrefix) {
+function renderLrContent(parent, content, annotations, idPrefix, defaultAcronym) {
   const lines = (content || '').split('\n');
   let offset = 0;
   let hIdx = 0;
@@ -4188,7 +4283,7 @@ function renderLrContent(parent, content, annotations, idPrefix) {
       div.id = `${idPrefix}-${hIdx}`;
       hIdx++;
     }
-    renderLrLine(div, line, offset, annotations);
+    renderLrLine(div, line, offset, annotations, defaultAcronym);
     parent.appendChild(div);
     offset += line.length + 1;
   }
