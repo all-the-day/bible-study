@@ -40,3 +40,8 @@ builds/
 # 反馈收件箱本地快照（pull 生成，不入库）
 scripts/feedback/inbox.md
 case/
+
+# 本地自测产物（截图/浏览器快照/AI 生成图片，不入库）
+.shots/
+.playwright-cli/
+generated-images/

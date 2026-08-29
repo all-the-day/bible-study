@@ -37,6 +37,12 @@ def read_md(path):
     if lines and TITLE_RE.match(lines[0]):
         title = TITLE_RE.match(lines[0]).group(1).strip()
     body = [ln.strip() for ln in lines[1:] if ln.strip()]
+    # 剥离尾部爬取元数据：`---` 分隔线 + `**来源**/**URL**/**获取时间**` 行（不属正文）
+    META_RE = re.compile(r"^\*\*(来源|URL|获取时间)\*\*")
+    while body and (body[-1] == "---" or META_RE.match(body[-1])):
+        body.pop()
+    if body and body[-1] == "---":
+        body.pop()
     if not title and body:
         title = body[0]
         body = body[1:]

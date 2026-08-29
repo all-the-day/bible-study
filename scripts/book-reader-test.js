@@ -27,14 +27,14 @@ async function main() {
   const r1 = await page.evaluate(() => ({
     modBooks: document.body.classList.contains('body-mod-books'),
     crumb: document.querySelector('#chapterLabel').textContent.slice(0, 18),
-    volBtns: document.querySelectorAll('.bk-vol-strip-btn').length,
+    filter: !!document.querySelector('#bookNav input'),
     bookCount: document.querySelectorAll('.bk-nav-book').length,
     title: document.querySelector('.bk-title')?.textContent,
     paraCount: document.querySelectorAll('.bk-para').length,
     sideTabs: [...document.querySelectorAll('#bookSide .lr-side-tab')].map(t => t.textContent).join('|'),
     actionsHidden: getComputedStyle(document.querySelector('#viewModeBtn')).display === 'none',
   }));
-  console.log('1. 书报直进:', r1.modBooks && r1.volBtns === 3 && r1.bookCount === 20 && r1.crumb.includes('灵修指微') ? '✓' : '✗',
+  console.log('1. 书报直进:', r1.modBooks && r1.filter && r1.bookCount === 20 && r1.crumb.includes('灵修指微') ? '✓' : '✗',
     '| crumb:', r1.crumb, '| 章数:', r1.paraCount > 0 ? '>' + r1.paraCount : '✗', '| tabs:', r1.sideTabs);
 
   // 2. 右栏章列表 → 切第2章
@@ -55,15 +55,23 @@ async function main() {
   }));
   console.log('3. 切书:', r3.crumb.includes('十字架的道') && r3.crumb.includes('第1章') ? '✓' : '✗', '|', r3.crumb);
 
-  // 4. 辑条切第2辑 → 第1本第1章
-  await page.evaluate(() => { document.querySelectorAll('.bk-vol-strip-btn')[1].click(); });
-  await new Promise((r) => setTimeout(r, 2500));
+  // 4. crumb 弹窗（辑 Tab + 书列表）切第2辑 → 第1本第1章
+  await page.evaluate(() => openBookPicker());
+  await new Promise((r) => setTimeout(r, 800));
+  await page.evaluate(() => document.querySelectorAll('#bkpVols .chp-book')[1].click());
+  await new Promise((r) => setTimeout(r, 600));
+  const r4a = await page.evaluate(() => ({
+    tabActive: document.querySelector('#bkpVols .chp-book.active')?.textContent,
+    pickerBooks: document.querySelectorAll('#bkpBooks .bk-nav-book').length,
+  }));
+  await page.evaluate(() => document.querySelector('#bkpBooks .bk-nav-book').click());
+  await new Promise((r) => setTimeout(r, 2000));
   const r4 = await page.evaluate(() => ({
     crumb: document.querySelector('#chapterLabel').textContent.slice(0, 22),
-    bookCount: document.querySelectorAll('.bk-nav-book').length,
-    volActive: document.querySelector('.bk-vol-strip-btn.active')?.textContent,
+    bookCount: document.querySelectorAll('#bookNav .bk-nav-book').length,
   }));
-  console.log('4. 切辑:', r4.volActive === '第二辑' && r4.bookCount === 26 ? '✓' : '✗', '|', r4.crumb, '| 书数:', r4.bookCount);
+  console.log('4. 弹窗切辑:', r4a.tabActive === '第二辑' && r4a.pickerBooks === 26 && r4.bookCount === 26 ? '✓' : '✗',
+    '| Tab:', r4a.tabActive, '|', r4.crumb, '| 书数:', r4.bookCount);
 
   // 5. 划线标注 → 保存 + 高亮
   await page.evaluate(() => {
@@ -124,9 +132,9 @@ async function main() {
   await new Promise((r) => setTimeout(r, 2500));
   const r7 = await page.evaluate(() => ({
     crumb: document.querySelector('#chapterLabel').textContent.slice(0, 22),
-    volActive: document.querySelector('.bk-vol-strip-btn.active')?.textContent,
+    volMeta: (state.bookMeta.volumes[state.bookVolume - 1] || {}).title,
   }));
-  console.log('7. 回首页再进恢复:', r7.volActive === '第二辑' && r7.crumb.includes('复刊基督徒报') && r7.crumb.includes('第1章') ? '✓' : '✗', '|', r7.crumb);
+  console.log('7. 回首页再进恢复:', r7.volMeta === '第二辑' && r7.crumb.includes('复刊基督徒报') && r7.crumb.includes('第1章') ? '✓' : '✗', '|', r7.crumb);
 
   console.log('\nJS 错误:', errors.length ? errors : '无');
   await browser.close();

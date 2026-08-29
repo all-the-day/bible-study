@@ -46,16 +46,24 @@ async function main() {
   const noteKey = Object.keys(r3)[0];
   console.log('3. 篇级笔记持久化:', r3[noteKey] === '阅读器测试笔记' ? '✓' : '✗', '| key:', noteKey);
 
-  // 4. 切卷(罗马书) → 第一篇 + crumb/卷条 active
-  await page.evaluate(() => document.querySelector('.lr-vol-strip-btn[data-b="45"]').click());
+  // 4. 切卷(罗马书) → crumb 篇目弹窗（卷 Tab + 篇目列表）两级跳转
+  await page.evaluate(() => openLrArticleList(state.lrBookIndex));
+  await new Promise((r) => setTimeout(r, 800));
+  await page.evaluate(() => document.querySelector('#lrpVols .chp-book[data-b="45"]').click());
+  await new Promise((r) => setTimeout(r, 800));
+  const r4a = await page.evaluate(() => ({
+    tabActive: document.querySelector('#lrpVols .chp-book.active')?.textContent,
+    artCount: document.querySelectorAll('#lrpArts .lr-art-cell').length,
+  }));
+  await page.evaluate(() => document.querySelector('#lrpArts .lr-art-cell').click());
   await new Promise((r) => setTimeout(r, 2000));
   const r4 = await page.evaluate(() => ({
     book: document.querySelector('#bookName').textContent,
     art: document.querySelector('#lrMain .lr-content')?.dataset.article,
-    volActive: document.querySelector('.lr-vol-strip-btn.active')?.textContent,
     artCount: document.querySelectorAll('.lr-nav-art').length,
   }));
-  console.log('4. 切卷罗马书:', r4.book === '罗马书' && r4.art === '1' && r4.volActive === '罗' ? '✓' : '✗', '| 篇目:', r4.artCount);
+  console.log('4. 弹窗切卷罗马书:', r4a.tabActive === '罗' && r4.book === '罗马书' && r4.art === '1' ? '✓' : '✗',
+    '| Tab:', r4a.tabActive, '| 弹窗篇目:', r4a.artCount, '| 左栏篇目:', r4.artCount);
 
   // 5. 模块主区划线 → 工具条出现（验证 handleSelection 卷定位）
   await page.evaluate(() => {
@@ -94,9 +102,9 @@ async function main() {
   const r7 = await page.evaluate(() => ({
     book: document.querySelector('#bookName').textContent,
     crumb: document.querySelector('#chapterLabel').textContent.slice(0, 12),
-    volActive: document.querySelector('.lr-vol-strip-btn.active')?.textContent,
+    artActive: document.querySelector('.lr-nav-art.active')?.textContent.slice(0, 6),
   }));
-  console.log('7. 回首页再进恢复:', r7.book === '罗马书' && r7.volActive === '罗' ? '✓' : '✗', '|', r7.crumb);
+  console.log('7. 回首页再进恢复:', r7.book === '罗马书' ? '✓' : '✗', '|', r7.crumb, '| 左栏active:', r7.artActive);
 
   console.log('\nJS 错误:', errors.length ? errors : '无');
   await browser.close();

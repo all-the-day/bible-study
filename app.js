@@ -83,6 +83,9 @@ const state = {
   notesSelectMode: false,
   notesSelected: new Set(),   // 多选模式选中的标注 id
   notesCollapsed: new Set(),  // 分类树折叠节点
+  lrArtFilter: '',       // 生命读经左栏篇目筛选
+  bkBookFilter: '',      // 书报左栏书筛选
+  mrFilter: '',          // 听抄左栏篇筛选
   notesGroup: null,           // 左栏树选中的叶子分组（过滤主区）
   notesSelectedItem: null,    // 右栏编辑目标：{kind:'ann',id} | {kind:'note',dict,key}
 };
@@ -483,6 +486,8 @@ function showHome() {
   state.screen = 'home';
   document.body.classList.add('home');
   document.body.classList.remove('mobile-study');
+  // 清除模块残留类：body-mod-* 会隐藏顶栏按钮（如 #feedbackBtn），不清会导致回首页后顶栏与首次进入不一致
+  [...document.body.classList].filter(c => c.startsWith('body-mod-')).forEach(c => document.body.classList.remove(c));
   closePopupAll();
   const hb = $('homeBtn');
   if (hb) hb.classList.add('active');
@@ -495,6 +500,8 @@ function showHome() {
 function enterWork() {
   state.screen = 'work';
   document.body.classList.remove('home');
+  // 恢复模块类（showHome 会清除，防止 body-mod-* 残留影响首页顶栏样式）
+  applyModuleBodyClass(state.activeModule);
   const hb = $('homeBtn');
   if (hb) hb.classList.remove('active');
 }
@@ -535,7 +542,6 @@ const READER_MODULES = {
       applyLayout();
     },
     async renderNav() {
-      renderLrVolStrip(state.lrBookIndex);
       const vol = await ensureLrVolume(state.lrBookIndex);
       renderLrArticleList(state.lrBookIndex, vol);
     },
@@ -588,9 +594,7 @@ const READER_MODULES = {
       applyLayout();
     },
     async renderNav() {
-      renderBookSeriesStrip();
       await ensureBookMeta();
-      renderBookVolStrip();
       renderBookNavBooks();
     },
     async renderMain() { await renderBookMain(); },
@@ -602,7 +606,7 @@ const READER_MODULES = {
       $('chapterLabel').textContent = book ? `${book.title} · 第${state.bookChapter + 1}章` : '';
     },
     onMenu() { toggleNavCollapsed(); },
-    onCrumbClick() { state.bookSideTab = 'toc'; renderBookSide(); },
+    onCrumbClick() { openBookPicker(); },
   },
   morning: {
     id: 'morning',
@@ -620,7 +624,6 @@ const READER_MODULES = {
       applyLayout();
     },
     async renderNav() {
-      renderMorningPeriodStrip();
       await ensureMorningData(state.morningPeriod);
       renderMorningChapterList();
     },
@@ -800,6 +803,46 @@ function homeSearch(q) {
   return out.slice(0, 25);
 }
 
+// 顶栏快捷搜索（桌面端）：复用 homeSearch 五条链路，Enter 直达第一项，点击任意项跳转
+function bindTopSearch() {
+  const input = $('topSearch'), box = $('topSearchResults');
+  if (!input || !box) return;
+  let items = [];
+  const close = () => { box.hidden = true; };
+  const render = () => {
+    const q = input.value.trim();
+    if (!q) { items = []; close(); return; }
+    items = homeSearch(q).slice(0, 6);
+    box.hidden = false;
+    box.innerHTML = items.length
+      ? items.map((it, i) => `
+          <div class="tsr-item${i === 0 ? ' hot' : ''}" data-i="${i}">
+            <span class="tsr-loc">${i === 0 ? '📌 ' : ''}${escapeHtml(it.loc)}</span>
+            <span class="tsr-text">${escapeHtml(it.text || '')}</span>
+          </div>`).join('')
+      : '<div class="tsr-empty">无匹配结果</div>';
+  };
+  input.addEventListener('input', render);
+  input.addEventListener('focus', render);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && items.length) {
+      items[0].go();
+      input.value = ''; items = []; close(); input.blur();
+    } else if (e.key === 'Escape') {
+      close(); input.blur();
+    }
+  });
+  // mousedown 抢在 input blur 之前处理点击跳转
+  box.addEventListener('mousedown', (e) => {
+    const it = e.target.closest('.tsr-item');
+    if (!it) return;
+    e.preventDefault();
+    items[+it.dataset.i].go();
+    input.value = ''; items = []; close(); input.blur();
+  });
+  input.addEventListener('blur', () => setTimeout(close, 150));
+}
+
 // 书卷名/缩写 → book index（复用 REF_ALIASES 全名/简称/缩写映射）
 function resolveBookAlias(name) {
   for (const alias of _refAliasesSorted) {
@@ -954,6 +997,14 @@ function colorBg(id) {
   const c = COLORS.find(x => x.id === id);
   if (!c) return 'rgba(255,235,59,.4)';
   return `rgba(${parseInt(c.hex.slice(1,3),16)},${parseInt(c.hex.slice(3,5),16)},${parseInt(c.hex.slice(5,7),16)},.4)`;
+}
+
+// 浅色背景（用于划线汇总条目整行底色，alpha 默认 8% 让文字仍是深色）
+function colorBgSoft(id, alpha) {
+  const a = (alpha === undefined) ? .08 : alpha;
+  const c = COLORS.find(x => x.id === id);
+  if (!c) return `rgba(255,235,59,${a})`;
+  return `rgba(${parseInt(c.hex.slice(1,3),16)},${parseInt(c.hex.slice(3,5),16)},${parseInt(c.hex.slice(5,7),16)},${a})`;
 }
 
 /* 重渲染前保存、重渲染后恢复滚动位置，避免标注后页面/面板跳到顶部。
@@ -1523,6 +1574,9 @@ function bigNoteLoc(type, key) {
 // 大段笔记的挂组标签（与 annGroupLabel 对应，供混排挂组）
 function bigNoteGroupLabel(n) {
   const parts = n.key.split(':');
+  if (n.type === 'verse' || n.type === 'lr') {
+    if (isNaN(+parts[0])) return '其他';  // 键格式异常容错，避免「第NaN卷」
+  }
   if (n.type === 'verse') return `${bookName(+parts[0])} · 第${parts[1]}章`;
   if (n.type === 'lr') return `${bookName(+parts[0])} · 生命读经`;
   if (n.type === 'book') {
@@ -1655,10 +1709,13 @@ function renderNotesTree() {
   SOURCES.forEach(src => {
     const total = annOf(src.types).length + bigOf(src.types).length;
     if (src.id !== 'all' && total === 0) return;
-    const collapsed = state.notesCollapsed.has(src.id);
+    const isAll = src.id === 'all';
+    // "全部"是根节点（不可折叠、不展开子节点），避免与"经文/生命读经/书报/听抄"下的子项双索引冗余
+    if (isAll) state.notesCollapsed.delete('all');
+    const collapsed = isAll ? undefined : state.notesCollapsed.has(src.id);
     const active = state.notesSource === src.id && !state.notesGroup;
     wrap.appendChild(mkTreeNode(src.label, total, active, collapsed, () => {
-      if (active) { toggleNotesCollapsed(src.id); return; }
+      if (active && !isAll) { toggleNotesCollapsed(src.id); return; }
       state.notesSource = src.id;
       state.notesGroup = null;
       state.notesSelectedItem = null;
@@ -1667,10 +1724,9 @@ function renderNotesTree() {
       renderNotesList();
       renderNotesPanel();
     }));
-    if (!collapsed) {
-      const children = buildNotesTreeChildren(src.id, annOf(src.types), bigOf(src.types));
-      if (children) wrap.appendChild(children);
-    }
+    if (isAll || collapsed) return;
+    const children = buildNotesTreeChildren(src.id, annOf(src.types), bigOf(src.types));
+    if (children) wrap.appendChild(children);
   });
   nav.appendChild(wrap);
 }
@@ -2047,10 +2103,18 @@ function renderNotesPanel() {
   side.innerHTML = '';
   const item = state.notesSelectedItem;
   if (!item) {
-    const hint = document.createElement('div');
-    hint.className = 'notes-panel-hint';
-    hint.textContent = '点击左侧条目在此查看与编辑\n（编辑笔记 / 改色 / 下划线 / 删除）';
-    side.appendChild(hint);
+    const empty = document.createElement('div');
+    empty.className = 'notes-panel-empty';
+    empty.innerHTML = `
+      <svg viewBox="0 0 48 48" width="42" height="42" fill="none" stroke="currentColor" stroke-width="2.4"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M14 6h14l8 8v28H14z"/>
+        <path d="M28 6v8h8"/>
+        <path d="M18 26h12M18 31h12M18 21h5"/>
+      </svg>
+      <div class="notes-panel-empty-title">未选中条目</div>
+      <div class="notes-panel-empty-desc">点击左侧条目在此查看与编辑<br>编辑笔记 / 改色 / 下划线 / 删除</div>`;
+    side.appendChild(empty);
     return;
   }
   if (item.kind === 'ann') {
@@ -2149,7 +2213,7 @@ function renderNotesPanel() {
   }
 }
 
-function renderHighlights(anns, groupFn) {
+function renderHighlights(anns, groupFn, opts) {
   const section = document.createElement('div');
   section.className = 'hl-section';
   const header = document.createElement('div');
@@ -2168,9 +2232,8 @@ function renderHighlights(anns, groupFn) {
   const bookItems = anns.filter(a => a.type === 'book');
   const morningItems = anns.filter(a => a.type === 'morning');
   const doGroup = groupFn || groupHl;
-  // 来源 tab：全部 / 经文 / 生命读经 / 书报 / 晨兴
-  const tabs = document.createElement('div');
-  tabs.className = 'hl-tabs';
+  const hideGroupHeader = !!(opts && opts.hideGroupHeader);
+  const hideItemLoc = !!(opts && opts.hideItemLoc);
   const box = document.createElement('div');
   const renderList = (list) => {
     box.innerHTML = '';
@@ -2183,33 +2246,46 @@ function renderHighlights(anns, groupFn) {
       return;
     }
     groups.forEach(g => {
-      const gl = document.createElement('div');
-      gl.className = 'hl-group';
-      gl.textContent = g.label;
-      box.appendChild(gl);
-      // 同组多条划线的定位标签全相同（如书报右栏固定一章）时只首条显示
+      // 右栏（书报/生命读经/听抄）的 anns 已按 chapter/article 过滤，
+      // 组标签 = 当前模块元数据、单条 loc = 当前章，都是冗余信息
+      if (!hideGroupHeader) {
+        const gl = document.createElement('div');
+        gl.className = 'hl-group';
+        gl.textContent = g.label;
+        box.appendChild(gl);
+      }
+      // 同组多条划线的定位标签全相同时（如书报右栏固定一章）只首条显示
       const locs = g.items.map(a => hlLocText(a));
       const locSame = locs.length > 1 && locs.every(l => l === locs[0]);
-      g.items.forEach((a, i) => box.appendChild(renderHlItem(a, locSame && i > 0)));
+      g.items.forEach((a, i) => box.appendChild(renderHlItem(a, hideItemLoc || (locSame && i > 0))));
     });
   };
-  const mkTab = (label, list) => {
-    const t = document.createElement('button');
-    t.className = 'hl-tab';
-    t.textContent = `${label}（${list.length}）`;
-    t.addEventListener('click', () => {
-      tabs.querySelectorAll('.hl-tab').forEach(x => x.classList.toggle('active', x === t));
-      renderList(list);
-    });
-    return t;
-  };
-  const tabAll = mkTab('全部', anns);
-  const tabsArr = [tabAll, mkTab('经文', verseItems), mkTab('生命读经', lrItems)];
-  if (bookItems.length) tabsArr.push(mkTab('书报', bookItems));
-  if (morningItems.length) tabsArr.push(mkTab('听抄', morningItems));
-  tabs.append(...tabsArr);
-  tabAll.classList.add('active');
-  section.appendChild(tabs);
+  // 单一来源（书报/生命读经/听抄右栏天然如此）跳过来源 tab：避免"全部(N)=经文/书报(N)"的冗余
+  // 读经研读列（anns 混合 verse+lr）保留 tab 用于切换
+  const typeSet = new Set(anns.map(a => a.type));
+  const showTabs = typeSet.size > 1;
+  if (showTabs) {
+    // 来源 tab：全部 / 经文 / 生命读经 / 书报 / 晨兴
+    const tabs = document.createElement('div');
+    tabs.className = 'hl-tabs';
+    const mkTab = (label, list) => {
+      const t = document.createElement('button');
+      t.className = 'hl-tab';
+      t.textContent = `${label}（${list.length}）`;
+      t.addEventListener('click', () => {
+        tabs.querySelectorAll('.hl-tab').forEach(x => x.classList.toggle('active', x === t));
+        renderList(list);
+      });
+      return t;
+    };
+    const tabAll = mkTab('全部', anns);
+    const tabsArr = [tabAll, mkTab('经文', verseItems), mkTab('生命读经', lrItems)];
+    if (bookItems.length) tabsArr.push(mkTab('书报', bookItems));
+    if (morningItems.length) tabsArr.push(mkTab('听抄', morningItems));
+    tabs.append(...tabsArr);
+    tabAll.classList.add('active');
+    section.appendChild(tabs);
+  }
   section.appendChild(box);
   renderList(anns);
   return section;
@@ -2221,17 +2297,24 @@ function renderHlItem(a, hideLoc) {
   return div;
 }
 
-// 条目主体：颜色点 + 定位 + 划文本 + 笔记摘要（研读列/模块右栏与笔记管理模块共用）
+// 条目主体：左侧色条 + 定位 + 划文本 + 笔记摘要（研读列/模块右栏与笔记管理模块共用）
+// 视觉：4px 色条 + 整行 8% 同色背景，文字深色；underline 类型保留白底+橙下划线
 function buildHlItemBody(a, cls, hideLoc) {
   const div = document.createElement('div');
   div.className = cls || 'hl-item';
+  if (a.underline) {
+    // 下划线型无颜色分类，用统一橙色表达"有标注但无分类"，与有色标注的色条/底色模式对齐
+    div.style.backgroundColor = 'rgba(235,108,5,.08)';
+  } else {
+    div.style.backgroundColor = colorBgSoft(a.colorId);   // 8% 同色背景
+  }
   const dot = document.createElement('span');
   dot.className = 'hl-dot';
   if (a.underline) {
-    dot.style.background = 'transparent';
-    dot.style.borderBottom = '2px solid #eb6c05';
+    dot.style.background = '#eb6c05';   // 4px 橙实色条，承载"有标注无分类"的语义
+    dot.style.borderBottom = 'none';
   } else {
-    dot.style.background = colorBg(a.colorId);
+    dot.style.background = colorBg(a.colorId);   // 40% 透明度，色条比背景更明显
   }
   const text = document.createElement('span');
   text.className = 'hl-text';
@@ -2519,21 +2602,42 @@ async function navigateToAnnotation(a) {
 
 /* ============ 生命读经（篇目弹窗 / 卷缓存） ============ */
 // 篇目列表弹窗（crumb 点击 / 全局笔记入口），点击 → 统一入口 openLrArticle
+// 篇目选择弹窗（crumb 点击 / 移动端 ☰ 共用）：顶部 66 卷 Tab + 下方当前卷篇目列表，两级快速跨卷切换
 async function openLrArticleList(bookIndex) {
-  const vol = await ensureLrVolume(bookIndex);
-  if (!vol) { showToast('该卷生命读经数据缺失'); return; }
-  openPopup(`${vol.name} · 生命读经`, `
-    <div class="lr-art-list">
-      ${(vol.articles || []).map(a => `
-        <button class="lr-art-cell" data-id="${a.id}">${escapeHtml(a.title)}</button>`).join('')}
-    </div>`);
-  $('popupBody').querySelector('.lr-art-list').addEventListener('click', (e) => {
+  let cur = bookIndex;
+  openPopup('生命读经 · 选择篇目', `
+    <div class="chp-books" id="lrpVols">
+      ${state.books.map(b => `<button class="chp-book${b.index === cur ? ' active' : ''}" data-b="${b.index}">${escapeHtml(b.acronym)}</button>`).join('')}
+    </div>
+    <div class="lr-art-list" id="lrpArts"></div>`);
+  const tabs = $('lrpVols');
+  const listEl = $('lrpArts');
+  const renderArts = async () => {
+    const vol = await ensureLrVolume(cur);
+    if (!vol) { listEl.innerHTML = '<div class="empty-hint">该卷生命读经数据缺失</div>'; return; }
+    listEl.innerHTML = (vol.articles || []).map(a =>
+      `<button class="lr-art-cell${cur === state.lrBookIndex && a.id === state.lrArticleId ? ' active' : ''}" data-id="${a.id}">${escapeHtml(a.title)}</button>`).join('');
+    const act = listEl.querySelector('.lr-art-cell.active');
+    if (act) act.scrollIntoView({ block: 'nearest' });
+  };
+  await renderArts();
+  polishVolStrip(tabs);
+  tabs.addEventListener('click', async (e) => {
+    const b = e.target.closest('.chp-book');
+    if (!b || +b.dataset.b === cur) return;
+    cur = +b.dataset.b;
+    tabs.querySelectorAll('.chp-book').forEach(x => x.classList.toggle('active', +x.dataset.b === cur));
+    b.scrollIntoView({ block: 'nearest', inline: 'center' });
+    await renderArts();
+  });
+  listEl.addEventListener('click', (e) => {
     const cell = e.target.closest('.lr-art-cell');
     if (!cell) return;
-    const art = (vol.articles || []).find(a => a.id === +cell.dataset.id);
+    const vol = state.lrVolumes[cur];
+    const art = vol && (vol.articles || []).find(a => a.id === +cell.dataset.id);
     if (!art) return;
     closePopupAll();
-    openLrArticle(bookIndex, art);
+    openLrArticle(cur, art);
   });
 }
 
@@ -2563,28 +2667,49 @@ async function ensureLrVolume(bookIndex) {
 /* ============ 生命读经阅读器模块 ============ */
 let _lrSpy = null;   // 模块右栏纲目滚动高亮句柄（切篇/切 tab 前解绑防堆积）
 
-// 左栏卷条（66 卷横向紧凑，当前卷 active）
-function renderLrVolStrip(curBookIndex) {
-  const nav = $('lrNav');
-  let strip = nav.querySelector('.lr-vol-strip');
-  if (!strip) { strip = document.createElement('div'); strip.className = 'lr-vol-strip'; nav.prepend(strip); }
-  strip.innerHTML = state.books.map(b =>
-    `<button class="lr-vol-strip-btn${b.index === curBookIndex ? ' active' : ''}" data-b="${b.index}">${escapeHtml(b.acronym)}</button>`).join('');
-  strip.querySelectorAll('.lr-vol-strip-btn').forEach(btn => {
-    btn.addEventListener('click', () => selectLrVolume(+btn.dataset.b));
-  });
+// 卷条/辑条/期条通用体验：滚轮纵向转横向滚动（原生横向滚动条已隐藏，见 style.css）+ 当前项滚入可视区居中。
+// 横向 Tab 行通用体验（弹窗书卷/辑/期 Tab 复用）：滚轮纵向转横向滚动 + 当前项滚入可视区居中。
+// 原生横向滚动条已隐藏（style.css .chp-books）。
+function polishVolStrip(strip) {
+  if (!strip) return;
+  strip.addEventListener('wheel', (e) => {
+    if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;   // 已是横向滚动的交给默认行为
+    if (strip.scrollWidth <= strip.clientWidth) return;
+    e.preventDefault();
+    strip.scrollLeft += e.deltaY;
+  }, { passive: false });
+  const act = strip.querySelector('.active');
+  if (act) act.scrollIntoView({ inline: 'center', block: 'nearest' });
 }
 
-// 左栏篇目列表（当前卷全部篇，当前篇 active）
+// 左栏篇目列表（当前卷全部篇）：顶部轻量筛选框 + 列表主体（筛选只刷新列表主体，保输入焦点），当前篇 active + scrollIntoView
 function renderLrArticleList(bookIndex, vol) {
   const nav = $('lrNav');
   let list = nav.querySelector('.lr-nav-articles');
   if (!list) { list = document.createElement('div'); list.className = 'lr-nav-articles'; nav.appendChild(list); }
-  list.innerHTML = ((vol && vol.articles) || []).map(a =>
-    `<button class="lr-nav-art${a.id === state.lrArticleId ? ' active' : ''}" data-id="${a.id}">${escapeHtml(a.title)}</button>`).join('');
-  list.querySelectorAll('.lr-nav-art').forEach(btn => {
-    btn.addEventListener('click', () => selectLrArticle(+btn.dataset.id));
+  const arts = (vol && vol.articles) || [];
+  const matchQ = (arr, q) => q ? arr.filter(a => a.title.includes(q) || String(a.id).includes(q)) : arr;
+  const html = (arr) => arr.map(a =>
+    `<button class="lr-nav-art${a.id === state.lrArticleId ? ' active' : ''}" data-id="${a.id}">${escapeHtml(a.title)}</button>`).join('')
+    || '<div class="empty-hint">无匹配篇目</div>';
+  list.innerHTML = `
+    <div class="nav-search"><input type="text" placeholder="筛选篇目（标题/编号）…" autocomplete="off" value="${escapeHtml(state.lrArtFilter || '')}"></div>
+    <div class="lr-art-items">${html(matchQ(arts, (state.lrArtFilter || '').trim()))}</div>`;
+  const inp = list.querySelector('input');
+  const items = list.querySelector('.lr-art-items');
+  const bindArtButtons = () => {
+    items.querySelectorAll('.lr-nav-art').forEach(btn => {
+      btn.addEventListener('click', () => selectLrArticle(+btn.dataset.id));
+    });
+  };
+  inp.addEventListener('input', () => {
+    state.lrArtFilter = inp.value;
+    items.innerHTML = html(matchQ(arts, state.lrArtFilter.trim()));
+    bindArtButtons();
   });
+  bindArtButtons();
+  const act = items.querySelector('.lr-nav-art.active');
+  if (act) act.scrollIntoView({ block: 'center' });
 }
 
 // 右栏：纲目 | 笔记（state.lrSideTab）
@@ -2652,7 +2777,7 @@ function renderLrNotes(body) {
   body.appendChild(ta);
   const anns = state.annotations.filter(a =>
     a.type === 'lr' && a.book === state.lrBookIndex && a.articleId === state.lrArticleId);
-  body.appendChild(renderHighlights(anns));
+  body.appendChild(renderHighlights(anns, undefined, { hideGroupHeader: true, hideItemLoc: true }));
 }
 
 // 同卷切篇：重渲染主区 + 右栏 + crumb + 左栏 active，正文滚顶
@@ -2660,6 +2785,8 @@ async function selectLrArticle(articleId) {
   state.lrArticleId = articleId;
   save(LS_LR_LAST, { book: state.lrBookIndex, articleId });
   document.querySelectorAll('.lr-nav-art').forEach(x => x.classList.toggle('active', +x.dataset.id === articleId));
+  const actArt = document.querySelector('.lr-nav-art.active');
+  if (actArt) actArt.scrollIntoView({ block: 'center', behavior: 'smooth' });
   const mod = READER_MODULES.lifereading;
   await mod.renderMain();
   mod.renderSide();
@@ -2719,55 +2846,97 @@ async function ensureBookVolume(volume) {
   }
 }
 
-// 左栏系列条（多系列切换，当前系列 active）
-function renderBookSeriesStrip() {
-  const nav = $('bookNav');
-  let strip = nav.querySelector('.bk-series-strip');
-  if (!strip) { strip = document.createElement('div'); strip.className = 'bk-series-strip'; nav.prepend(strip); }
-  const list = (state.bookSeriesIndex && state.bookSeriesIndex.series) || [];
-  if (list.length <= 1) { strip.style.display = 'none'; return; }
-  strip.style.display = '';
-  strip.innerHTML = list.map(s =>
-    `<button class="bk-series-btn${s.id === state.bookSeries ? ' active' : ''}" data-s="${s.id}">${escapeHtml(s.name)}</button>`).join('');
-  strip.querySelectorAll('.bk-series-btn').forEach(btn => {
-    btn.addEventListener('click', () => selectBookSeries(btn.dataset.s));
-  });
-}
-
-// 左栏辑条（meta.volumes，当前辑 active）
-function renderBookVolStrip() {
-  const nav = $('bookNav');
-  let strip = nav.querySelector('.bk-vol-strip');
-  if (!strip) { strip = document.createElement('div'); strip.className = 'bk-vol-strip'; nav.prepend(strip); }
-  strip.innerHTML = (state.bookMeta && state.bookMeta.volumes || []).map((v, i) =>
-    `<button class="bk-vol-strip-btn${i + 1 === state.bookVolume ? ' active' : ''}" data-v="${i + 1}">${escapeHtml(v.title)}</button>`).join('');
-  strip.querySelectorAll('.bk-vol-strip-btn').forEach(btn => {
-    btn.addEventListener('click', () => selectBookVolume(+btn.dataset.v));
-  });
-}
-
-// 左栏书列表（当前辑全部书，当前书 active）
+// 左栏书列表（当前辑全部书）：顶部轻量筛选框 + 列表主体（筛选只刷新列表主体，保输入焦点），当前书 active + scrollIntoView
 function renderBookNavBooks() {
   const nav = $('bookNav');
   let list = nav.querySelector('.bk-nav-books');
   if (!list) { list = document.createElement('div'); list.className = 'bk-nav-books'; nav.appendChild(list); }
   const metaVol = state.bookMeta && state.bookMeta.volumes[state.bookVolume - 1];
-  list.innerHTML = (metaVol && metaVol.books || []).map((b, i) =>
+  const books = (metaVol && metaVol.books) || [];
+  const matchQ = (q) => q ? books.map((b, i) => ({ b, i })).filter(x => x.b.title.includes(q)) : books.map((b, i) => ({ b, i }));
+  const html = (arr) => arr.map(({ b, i }) =>
     `<button class="bk-nav-book${i === state.bookBook ? ' active' : ''}" data-b="${i}">
        <span class="bkb-title">${escapeHtml(b.title)}</span>
        <span class="bkb-count">${b.chapters.length}章</span>
-     </button>`).join('');
-  list.querySelectorAll('.bk-nav-book').forEach(btn => {
-    btn.addEventListener('click', () => selectBookItem(+btn.dataset.b));
+     </button>`).join('') || '<div class="empty-hint">无匹配书卷</div>';
+  list.innerHTML = `
+    <div class="nav-search"><input type="text" placeholder="筛选书卷…" autocomplete="off" value="${escapeHtml(state.bkBookFilter || '')}"></div>
+    <div class="bk-book-items">${html(matchQ((state.bkBookFilter || '').trim()))}</div>`;
+  const inp = list.querySelector('input');
+  const items = list.querySelector('.bk-book-items');
+  const bindBookButtons = () => {
+    items.querySelectorAll('.bk-nav-book').forEach(btn => {
+      btn.addEventListener('click', () => selectBookItem(+btn.dataset.b));
+    });
+  };
+  inp.addEventListener('input', () => {
+    state.bkBookFilter = inp.value;
+    items.innerHTML = html(matchQ(state.bkBookFilter.trim()));
+    bindBookButtons();
+  });
+  bindBookButtons();
+  const act = items.querySelector('.bk-nav-book.active');
+  if (act) act.scrollIntoView({ block: 'center' });
+}
+
+// 选书弹窗（crumb 点击 / 移动端 ☰ 共用）：顶部辑 Tab + 下方当前辑书列表，两级快速跨辑切换
+async function openBookPicker() {
+  await ensureBookMeta();
+  const vols = (state.bookMeta && state.bookMeta.volumes) || [];
+  let curV = state.bookVolume;
+  openPopup('书报 · 选择书卷', `
+    ${vols.length > 1 ? `<div class="chp-books" id="bkpVols">
+      ${vols.map((v, i) => `<button class="chp-book${i + 1 === curV ? ' active' : ''}" data-v="${i + 1}">${escapeHtml(v.title)}</button>`).join('')}
+    </div>` : ''}
+    <div class="bk-picker-list" id="bkpBooks"></div>`);
+  const tabs = $('bkpVols');
+  const listEl = $('bkpBooks');
+  const renderBooks = () => {
+    const metaVol = vols[curV - 1];
+    listEl.innerHTML = ((metaVol && metaVol.books) || []).map((b, i) =>
+      `<button class="bk-nav-book${curV === state.bookVolume && i === state.bookBook ? ' active' : ''}" data-b="${i}">
+         <span class="bkb-title">${escapeHtml(b.title)}</span>
+         <span class="bkb-count">${b.chapters.length}章</span>
+       </button>`).join('');
+    const act = listEl.querySelector('.bk-nav-book.active');
+    if (act) act.scrollIntoView({ block: 'nearest' });
+  };
+  renderBooks();
+  if (tabs) {
+    polishVolStrip(tabs);
+    tabs.addEventListener('click', async (e) => {
+      const b = e.target.closest('.chp-book');
+      if (!b || +b.dataset.v === curV) return;
+      curV = +b.dataset.v;
+      tabs.querySelectorAll('.chp-book').forEach(x => x.classList.toggle('active', +x.dataset.v === curV));
+      b.scrollIntoView({ block: 'nearest', inline: 'center' });
+      renderBooks();
+    });
+  }
+  listEl.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.bk-nav-book');
+    if (!btn) return;
+    const book = +btn.dataset.b;
+    closePopupAll();
+    if (curV !== state.bookVolume) await selectBookVolume(curV);
+    if (book !== state.bookBook) await selectBookItem(book);
   });
 }
 
 // 主区：当前章正文（按行 data-base 渲染，标注坐标系 = chapter.content）
-function renderBookContent(parent, content, annotations) {
+// 正文内容渲染：跳过正文头部与 .bk-title 重复的章标题行、与 crumb 重复的书名行
+// （源 md 首部常带「书名 + 章名」两行，章名与 ch.title 相同会与 .bk-title 重复渲染；
+// 偏移照常累计，标注坐标系不变）
+function renderBookContent(parent, content, annotations, chapterTitle, bookTitle) {
   const lines = (content || '').split('\n');
+  const norm = (s) => (s || '').replace(/[\s\u3000]/g, '');
+  const skipTitles = new Set([norm(chapterTitle), norm(bookTitle)]);
+  let leading = true;
   let offset = 0;
   for (const line of lines) {
     if (line.trim() === '') { offset += line.length + 1; continue; }
+    if (leading && skipTitles.has(norm(line))) { offset += line.length + 1; continue; }
+    leading = false;
     const div = document.createElement('div');
     const heading = detectLrHeading(line);
     div.className = heading ? `bk-head lr-h${heading.level}` : 'bk-para';
@@ -2799,7 +2968,7 @@ async function renderBookMain() {
   content.dataset.volume = state.bookVolume;
   content.dataset.book = state.bookBook;
   content.dataset.chapter = state.bookChapter;
-  renderBookContent(content, ch.content || '', anns);
+  renderBookContent(content, ch.content || '', anns, ch.title, book.title);
   main.appendChild(content);
 }
 
@@ -2854,7 +3023,7 @@ function renderBookNotes(body) {
   const anns = state.annotations.filter(a =>
     a.type === 'book' && a.series === state.bookSeries && a.volume === state.bookVolume &&
     a.book === state.bookBook && a.chapter === state.bookChapter);
-  body.appendChild(renderHighlights(anns));
+  body.appendChild(renderHighlights(anns, undefined, { hideGroupHeader: true, hideItemLoc: true }));
 }
 
 // 切系列 → 第 1 辑第 1 本第 1 章（系列条点击）
@@ -2899,6 +3068,8 @@ async function selectBookItem(book) {
   save(LS_BOOK_LAST, { series: state.bookSeries, volume: state.bookVolume, book, chapter: 0 });
   const mod = READER_MODULES.books;
   document.querySelectorAll('.bk-nav-book').forEach(x => x.classList.toggle('active', +x.dataset.b === book));
+  const actBook = document.querySelector('.bk-nav-book.active');
+  if (actBook) actBook.scrollIntoView({ block: 'center', behavior: 'smooth' });
   await mod.renderMain();
   mod.renderSide();
   mod.renderCrumb();
@@ -2909,8 +3080,9 @@ async function selectBookItem(book) {
 async function selectBookChapter(volume, book, chapter) {
   state.bookVolume = volume; state.bookBook = book; state.bookChapter = chapter;
   save(LS_BOOK_LAST, { series: state.bookSeries, volume, book, chapter });
-  document.querySelectorAll('.bk-vol-strip-btn').forEach(x => x.classList.toggle('active', +x.dataset.v === volume));
   document.querySelectorAll('.bk-nav-book').forEach(x => x.classList.toggle('active', +x.dataset.b === book));
+  const actBk = document.querySelector('.bk-nav-book.active');
+  if (actBk) actBk.scrollIntoView({ block: 'center', behavior: 'smooth' });
   const mod = READER_MODULES.books;
   await mod.renderMain();
   mod.renderSide();
@@ -2950,30 +3122,35 @@ async function ensureMorningData(periodId) {
   }
 }
 
-// 左栏期条（当年各期，当前期 active）
-function renderMorningPeriodStrip() {
-  const nav = $('morningNav');
-  let strip = nav.querySelector('.morning-period-strip');
-  if (!strip) { strip = document.createElement('div'); strip.className = 'morning-period-strip'; nav.prepend(strip); }
-  const list = (state.morningIndex && state.morningIndex.trainings) || [];
-  strip.innerHTML = list.map(t =>
-    `<button class="morning-period-btn${t.id === state.morningPeriod ? ' active' : ''}" data-p="${t.id}">${escapeHtml(t.title || t.season || t.id)}</button>`).join('');
-  strip.querySelectorAll('.morning-period-btn').forEach(btn => {
-    btn.addEventListener('click', () => selectMorningPeriod(btn.dataset.p));
-  });
-}
-
-// 左栏篇列表（当前期全部篇，当前篇 active）
+// 左栏篇列表（当前期全部篇）：顶部轻量筛选框 + 列表主体（筛选只刷新列表主体，保输入焦点），当前篇 active + scrollIntoView
 function renderMorningChapterList() {
   const nav = $('morningNav');
   let list = nav.querySelector('.morning-nav-chapters');
   if (!list) { list = document.createElement('div'); list.className = 'morning-nav-chapters'; nav.appendChild(list); }
   const data = state.morningData[state.morningPeriod];
-  list.innerHTML = ((data && data.chapters) || []).map(c =>
-    `<button class="morning-nav-art${c.number === state.morningChapterId ? ' active' : ''}" data-n="${c.number}">${escapeHtml(c.title)}</button>`).join('');
-  list.querySelectorAll('.morning-nav-art').forEach(btn => {
-    btn.addEventListener('click', () => selectMorningChapter(+btn.dataset.n));
+  const chapters = (data && data.chapters) || [];
+  const matchQ = (arr, q) => q ? arr.filter(c => c.title.includes(q) || String(c.number).includes(q)) : arr;
+  const html = (arr) => arr.map(c =>
+    `<button class="morning-nav-art${c.number === state.morningChapterId ? ' active' : ''}" data-n="${c.number}">${escapeHtml(c.title)}</button>`).join('')
+    || '<div class="empty-hint">无匹配篇目</div>';
+  list.innerHTML = `
+    <div class="nav-search"><input type="text" placeholder="筛选篇目（标题/编号）…" autocomplete="off" value="${escapeHtml(state.mrFilter || '')}"></div>
+    <div class="mr-art-items">${html(matchQ(chapters, (state.mrFilter || '').trim()))}</div>`;
+  const inp = list.querySelector('input');
+  const items = list.querySelector('.mr-art-items');
+  const bindArtButtons = () => {
+    items.querySelectorAll('.morning-nav-art').forEach(btn => {
+      btn.addEventListener('click', () => selectMorningChapter(+btn.dataset.n));
+    });
+  };
+  inp.addEventListener('input', () => {
+    state.mrFilter = inp.value;
+    items.innerHTML = html(matchQ(chapters, state.mrFilter.trim()));
+    bindArtButtons();
   });
+  bindArtButtons();
+  const act = items.querySelector('.morning-nav-art.active');
+  if (act) act.scrollIntoView({ block: 'center' });
 }
 
 // 主区：当前篇听抄（信息正文层级标题 + 段落），content 逐行 data-base 渲染供标注
@@ -3038,7 +3215,7 @@ function renderMorningSide() {
   body.appendChild(ta);
   const anns = state.annotations.filter(a =>
     a.type === 'morning' && a.period === state.morningPeriod && a.chapterId === state.morningChapterId);
-  body.appendChild(renderHighlights(anns));
+  body.appendChild(renderHighlights(anns, undefined, { hideGroupHeader: true, hideItemLoc: true }));
   side.appendChild(body);
 }
 
@@ -3047,6 +3224,8 @@ async function selectMorningChapter(chapterId) {
   state.morningChapterId = chapterId;
   save(LS_MORNING_LAST, { period: state.morningPeriod, chapterId });
   document.querySelectorAll('.morning-nav-art').forEach(x => x.classList.toggle('active', +x.dataset.n === chapterId));
+  const actArt = document.querySelector('.morning-nav-art.active');
+  if (actArt) actArt.scrollIntoView({ block: 'center', behavior: 'smooth' });
   READER_MODULES.morning.renderMain();
   renderMorningSide();
   READER_MODULES.morning.renderCrumb();
@@ -3078,19 +3257,40 @@ async function openMorningArticle(periodId, chapterId) {
   }
 }
 
-// crumb 点击 → 当前期篇目弹窗
+// 篇目选择弹窗（crumb 点击 / 移动端 ☰ 共用）：顶部期 Tab + 下方当前期篇列表，两级快速跨期切换
 async function openMorningArticleList() {
-  const data = await ensureMorningData(state.morningPeriod);
-  if (!data) { showToast('该期数据缺失'); return; }
-  openPopup(`${data.title || state.morningPeriod} · 篇目`, `
-    <div class="lr-art-list">
-      ${data.chapters.map(c => `<button class="lr-art-cell" data-n="${c.number}">${escapeHtml(c.title)}</button>`).join('')}
-    </div>`);
-  $('popupBody').querySelector('.lr-art-list').addEventListener('click', (e) => {
+  const trainings = (state.morningIndex && state.morningIndex.trainings) || [];
+  let cur = state.morningPeriod;
+  openPopup('听抄 · 选择篇目', `
+    <div class="chp-books" id="mrpPeriods">
+      ${trainings.map(t => `<button class="chp-book${t.id === cur ? ' active' : ''}" data-p="${t.id}">${escapeHtml(t.title || t.season || t.id)}</button>`).join('')}
+    </div>
+    <div class="lr-art-list" id="mrpArts"></div>`);
+  const tabs = $('mrpPeriods');
+  const listEl = $('mrpArts');
+  const renderArts = async () => {
+    const data = await ensureMorningData(cur);
+    if (!data) { listEl.innerHTML = '<div class="empty-hint">该期数据缺失</div>'; return; }
+    listEl.innerHTML = data.chapters.map(c =>
+      `<button class="lr-art-cell${cur === state.morningPeriod && c.number === state.morningChapterId ? ' active' : ''}" data-n="${c.number}">${escapeHtml(c.title)}</button>`).join('');
+    const act = listEl.querySelector('.lr-art-cell.active');
+    if (act) act.scrollIntoView({ block: 'nearest' });
+  };
+  await renderArts();
+  polishVolStrip(tabs);
+  tabs.addEventListener('click', async (e) => {
+    const b = e.target.closest('.chp-book');
+    if (!b || b.dataset.p === cur) return;
+    cur = b.dataset.p;
+    tabs.querySelectorAll('.chp-book').forEach(x => x.classList.toggle('active', x.dataset.p === cur));
+    b.scrollIntoView({ block: 'nearest', inline: 'center' });
+    await renderArts();
+  });
+  listEl.addEventListener('click', (e) => {
     const cell = e.target.closest('.lr-art-cell');
     if (!cell) return;
     closePopupAll();
-    openMorningArticle(state.morningPeriod, +cell.dataset.n);
+    openMorningArticle(cur, +cell.dataset.n);
   });
 }
 
@@ -3101,6 +3301,8 @@ let editingAnnId = null;
 function bindEvents() {
   // 首页：合集块点击 + 顶部搜索 + ⌂ 回首页
   bindHomeEvents();
+  // 顶栏快捷搜索（桌面端）
+  bindTopSearch();
   // 隐藏/显示注号
   $('hideMarksBtn').addEventListener('click', () => {
     state.hideMarks = !state.hideMarks;
@@ -3115,6 +3317,11 @@ function bindEvents() {
       if (mod && mod.onMenu) mod.onMenu();
       return;
     }
+    // 移动端按模块分发：阅读器模块 ☰ → 层级选择弹窗（卷/辑/期 Tab + 篇目）
+    if (state.activeModule === 'lifereading') { openLrArticleList(state.lrBookIndex); return; }
+    if (state.activeModule === 'books') { openBookPicker(); return; }
+    if (state.activeModule === 'morning') { openMorningArticleList(); return; }
+    if (state.activeModule === 'notes') return;
     if (document.body.classList.contains('mobile-study')) {
       // 研读视图：只有生命读经 tab 提供导航，注解/我的笔记 tab 不动作
       if (state.activeTab === 'lifereading') openLrNavSheet();
