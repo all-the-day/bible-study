@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# pre-commit 快速质量门（几秒）：语法检查（镜像 .github/workflows/check-js.yml）+ 无浏览器单测。
+# 全量浏览器测试放到 pre-push（push 只在部署时发生）。
+cd "$(dirname "$0")/../.." || exit 1
+
+FAIL=0
+check_file() {
+  local f="$1"
+  if [ "${f##*.}" = "json" ]; then
+    node -e "JSON.parse(require('fs').readFileSync('$f','utf8'))" >/dev/null 2>&1 || { echo "pre-commit: JSON 语法错误 $f"; FAIL=1; }
+  else
+    node --check "$f" >/dev/null 2>&1 || { echo "pre-commit: 语法错误 $f"; FAIL=1; }
+  fi
+}
+
+for f in app.js sync.js manifest.json sw.js scripts/*.js scripts/*.mjs; do
+  [ -f "$f" ] || continue
+  check_file "$f"
+done
+
+# 无浏览器单测（合并语义回归）
+node scripts/sync-merge-test.js >/dev/null 2>&1 || { echo "pre-commit: sync-merge-test 失败"; FAIL=1; }
+
+[ $FAIL -eq 0 ] && exit 0
+echo "pre-commit: 修复后重新 commit（确认无误可用 --no-verify 跳过）"
+exit 1

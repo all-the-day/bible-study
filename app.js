@@ -3406,18 +3406,6 @@ function bindEvents() {
     applyLayout();
     renderStudy(); // 重新渲染，让纲目索引出现/消失
   });
-  $('notesBtn').addEventListener('click', () => {
-    if (state.screen === 'home') enterWork();   // 桌面端从首页点 ✎ → 先进工作区
-    $('studyCol').classList.toggle('open');
-    if (state.viewMode === 'full') {
-      state.viewMode = 'default';
-      applyLayout();
-      save(LS_VIEW_MODE, state.viewMode);
-    }
-    state.activeTab = 'mynotes';
-    document.querySelectorAll('.study-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'mynotes'));
-    renderStudy();
-  });
   // 反馈弹窗
   $('feedbackBtn').addEventListener('click', openFeedbackModal);
   // 移动端模式切换 pill（读经/研读，替代原底部导航按钮）

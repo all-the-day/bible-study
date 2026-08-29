@@ -804,7 +804,7 @@ body.home .crumb { display: none; }                    /* 首页不显示章节 
 body.home #menuBtn { display: none; }                  /* ☰ 只服务工作区导航 */
 body.home #modePill { display: none; }                 /* 首页是第三种态，隐藏读经|研读 pill */
 body.home #viewModeBtn, body.home #hideMarksBtn,
-body.home #studyFullBtn, body.home #notesBtn { display: none !important; }
+body.home #studyFullBtn { display: none !important; }
 body.home .mobile-nav { display: none; }
 #homeView {
   position: fixed; inset: 52px 0 0; z-index: 20;       /* 顶栏 z30 之上、popup z60 之下 */
@@ -886,13 +886,13 @@ body.home .mobile-nav { display: none; }
 .body-mod-morning #morningSide { display: flex; flex-direction: column; min-height: 0; }
 /* 生命读经/书报/晨兴模块：顶栏只留 ⚙️（双页/隐藏注号/研读全屏/笔记/反馈 隐藏；翻章按钮无意义） */
 .body-mod-lifereading #viewModeBtn, .body-mod-lifereading #hideMarksBtn, .body-mod-lifereading #studyFullBtn,
-.body-mod-lifereading #feedbackBtn, .body-mod-lifereading #notesBtn { display: none !important; }
+.body-mod-lifereading #feedbackBtn { display: none !important; }
 .body-mod-lifereading .crumb-nav { display: none; }
 .body-mod-books #viewModeBtn, .body-mod-books #hideMarksBtn, .body-mod-books #studyFullBtn,
-.body-mod-books #feedbackBtn, .body-mod-books #notesBtn { display: none !important; }
+.body-mod-books #feedbackBtn { display: none !important; }
 .body-mod-books .crumb-nav { display: none; }
 .body-mod-morning #viewModeBtn, .body-mod-morning #hideMarksBtn, .body-mod-morning #studyFullBtn,
-.body-mod-morning #feedbackBtn, .body-mod-morning #notesBtn { display: none !important; }
+.body-mod-morning #feedbackBtn { display: none !important; }
 .body-mod-morning .crumb-nav { display: none; }
 .body-mod-notes #navCol > .nav-search,
 .body-mod-notes #bookList, .body-mod-notes #chapterList { display: none; }
@@ -902,7 +902,7 @@ body.home .mobile-nav { display: none; }
 .body-mod-notes #notesMain { display: block; }
 .body-mod-notes #notesSide { display: flex; flex-direction: column; min-height: 0; }
 .body-mod-notes #viewModeBtn, .body-mod-notes #hideMarksBtn, .body-mod-notes #studyFullBtn,
-.body-mod-notes #feedbackBtn, .body-mod-notes #notesBtn { display: none !important; }
+.body-mod-notes #feedbackBtn { display: none !important; }
 .body-mod-notes .crumb-nav { display: none; }
 
 /* 生命读经阅读器：左栏（筛选框 + 篇目列表；层级上移至 crumb 弹窗，见 openLrArticleList） */
@@ -1139,7 +1139,7 @@ body.home .mobile-nav { display: none; }
     width: auto; border-left: none;
     transform: translateX(100%); transition: transform .2s;
   }
-  .study-col.open { transform: translateX(0); }   /* 兼容旧逻辑（notesBtn 等） */
+  .study-col.open { transform: translateX(0); }
   body.mobile-study .study-col { transform: translateX(0); }
   body.mobile-study .text-col { display: none; }
 
@@ -1151,7 +1151,7 @@ body.home .mobile-nav { display: none; }
   .text-col { padding: 16px 16px calc(68px + env(safe-area-inset-bottom)); }
 
   /* 顶栏重构：☰ 左 · 标题(点击选章) 居中 · 读经|研读 pill + ⚙️ 右；次要操作收进设置菜单 */
-  #viewModeBtn, #studyFullBtn, #notesBtn, #hideMarksBtn, #feedbackBtn { display: none !important; }
+  #viewModeBtn, #studyFullBtn, #hideMarksBtn, #feedbackBtn { display: none !important; }
   .mode-pill {
     display: flex; background: rgba(255,255,255,.16);
     border-radius: 999px; padding: 2px; margin-right: 2px;

@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# pre-push 全量测试：push 只在部署时发生（触发 APK 构建），部署前先跑完整回归。
+# 跳过：git push --no-verify
+exec "$(dirname "$0")/../../scripts/run-all-tests.sh"

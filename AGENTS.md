@@ -39,7 +39,9 @@
 | `scripts/export-verses.py` | 从 export.py 产物 `data/bible-text.json` 派生精选经节 → `data/verses.json`（首屏 splash 随机经节数据源，~190 节几 KB） |
 | `start.bat` / `icons/` | 本地预览服务器（python http.server 8765）/ PWA 图标（icon-192/512，`resources/icon.png` 为 APK 图标源） |
 | `scripts/patch-android.mjs` | CI 帮手：注入原生插件 + AndroidManifest 权限/FileProvider（幂等） |
-| `scripts/*-test.js` | puppeteer 端到端测试（e2e / 标注 / 生命读经标注 / 生命读经模块内标注）；`download-sim-test.js` 验证 WebView fetch 下载被 CORS 拦截（根因留档），`update-logic-test.js` mock 原生插件验证 download() fallback/进度/监听清理，`lr-heading-test.js` 纲目标题提取，`home-test.js` / `home-test-mobile.js` 首页+合集链路冒烟（含 splash 经节断言），`lr-reader-test.js` 生命读经阅读器专项，`lr-module-annotation-test.js` 生命读经模块内划线回归（rerenderAnn 主区重渲染），`book-reader-test.js` 书报阅读器专项，`morning-reader-test.js` 听抄阅读器专项（直进/切期/切篇/层级标题渲染/笔记/划线/全局笔记跳转/恢复）；`sync-merge-test.js` sync.js flushPending 合并语义 node 单测（无浏览器，防旧快照覆盖回归）；`notes-module-test.js` 笔记管理模块专项（直进/分类树/来源tab/颜色过滤/搜索/排序/选中进面板/编辑笔记/改色/删除单条/大段笔记编辑删除/批量删除/偏好恢复）；`ref-link-test.js` 经文引用识别专项（相对引用/上下文/误判防护/章越界过滤/篇63 DOM 渲染） |
+| `scripts/*-test.js` | puppeteer 端到端测试（e2e / 标注 / 生命读经标注 / 生命读经模块内标注）；`download-sim-test.js` 验证 WebView fetch 下载被 CORS 拦截（根因留档），`update-logic-test.js` mock 原生插件验证 download() fallback/进度/监听清理，`lr-heading-test.js` 纲目标题提取，`home-test.js` / `home-test-mobile.js` 首页+合集链路冒烟（含 splash 经节断言），`lr-reader-test.js` 生命读经阅读器专项，`lr-module-annotation-test.js` 生命读经模块内划线回归（rerenderAnn 主区重渲染），`book-reader-test.js` 书报阅读器专项，`morning-reader-test.js` 听抄阅读器专项（直进/切期/切篇/层级标题渲染/笔记/划线/全局笔记跳转/恢复）；`sync-merge-test.js` sync.js flushPending 合并语义 node 单测（无浏览器，防旧快照覆盖回归）；`notes-module-test.js` 笔记管理模块专项（直进/分类树/来源tab/颜色过滤/搜索/排序/选中进面板/编辑笔记/改色/删除单条/大段笔记编辑删除/批量删除/偏好恢复）；`ref-link-test.js` 经文引用识别专项（相对引用/上下文/误判防护/章越界过滤/篇63 DOM 渲染）；`run-all-tests.sh` 全量运行器（确保 8765 服务器 → 顺序跑全部测试 → 按输出解析判定，失败=非零退出或含 ✗/FAIL/JS 错误；`SKIP="home-test …"` 可跳过） |
+| `scripts/run-all-tests.sh` | 全量测试运行器（见「测试与 Git 钩子」节） |
+| `scripts/install-hooks.sh` | 安装 git hooks 到 `.git/hooks/`（pre-commit 快速质量门 + pre-push 全量测试） |
 | `data/books.json` | 66 卷目录 + 每卷章数 + 缩写 |
 | `data/bible-text.json` | 原文，键 `创1:1` / `创1:2上`，值含 `{N}`（注脚）/`[a]`（串珠）标记 |
 | `data/bible-notes.json` | 注解，键 → `{seq: 注脚文本}`（seq 为节内连续编号，可复用同一文本、跨半节连续） |
@@ -184,6 +186,14 @@ vercel --prod --yes --archive=tgz
 - **发版流程（版本号自动升级）**：push 触发构建时若 release 版本与 package.json 相同则**自动 patch+1**（构建成功后 `[skip ci]` 提交推送，不二次触发），手动改版本号优先；跨 minor 发版仍可用 `.github/workflows/release-bump.yml`（workflow_dispatch 填 `x.y.z`）显式指定；release 标题「读经 v{version} · 云同步版」，notes 自动取最近 8 条提交
 - **签名**：固定 debug keystore 提交在 `config/android/debug.keystore`（JKS，alias `androiddebugkey`，密码 `android`），`patch-android.mjs` 强制改写 `signingConfigs.debug` 指向它（绝对路径+密码），保证**每次构建签名一致**——覆盖安装/App 内更新不丢本地数据；**无上架需求，不配 release 签名**——产物仅限自装/小范围安装测试
 - JS 质量门槛：`.github/workflows/check-js.yml` 在改动 JS/JSON 时 `node --check` 全量检查（几秒），语法错误先于 APK 构建拦截
+
+## 测试与 Git 钩子
+
+- **理念**：不要求每次小改动手跑测试。`pre-commit` 只做快速质量门（几秒），全量浏览器测试放到 `pre-push`（push 只在部署时发生）
+- **pre-commit**（`scripts/git-hooks/pre-commit`）：`node --check` 全量 JS/JSON（镜像 check-js.yml）+ `sync-merge-test.js` 无浏览器单测；失败则阻止 commit（`--no-verify` 可跳过）
+- **pre-push**（`scripts/git-hooks/pre-push`）：调 `scripts/run-all-tests.sh` 全量跑 14 个测试（约 10 分钟），失败则阻止 push（部署前置保证）
+- **安装**：`bash scripts/install-hooks.sh` 复制到 `.git/hooks/`（本地配置不入库；新 clone 需重装）
+- **run-all-tests.sh**：确保 8765 服务器（无则临时启动，退出时清理）→ 顺序跑全部测试 → 输出解析判定（非零退出 或 含 `✗`/`FAIL ` /`JS 错误: [` 判失败，因为测试断言失败不设退出码）；`SKIP="home-test book-reader-test"` 可跳过部分测试
 
 ## 修改守则
 
