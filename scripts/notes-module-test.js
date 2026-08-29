@@ -22,6 +22,7 @@ async function main() {
   });
 
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  await page.evaluateOnNewDocument(() => { window.BIBLE_SKIP_UPDATE = true; });   // 跳过启动静默更新检查（省 GitHub API 配额）
 
   await page.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'networkidle0', timeout: 30000 });
   await page.waitForSelector('#homeGrid .home-block', { timeout: 15000 });

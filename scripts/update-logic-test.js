@@ -22,6 +22,7 @@ async function main() {
   const page = await browser.newPage();
 
   console.log('=== update.js 原生下载逻辑模拟（mock ApkInstaller 插件） ===\n');
+  await page.evaluateOnNewDocument(() => { window.BIBLE_SKIP_UPDATE = true; });   // 跳过启动静默更新检查（省 GitHub API 配额）
   await page.goto('http://localhost:' + PORT + '/', { waitUntil: 'domcontentloaded', timeout: 15000 });
 
   const source = fs.readFileSync(path.join(ROOT, 'update.js'), 'utf8');

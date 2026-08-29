@@ -248,6 +248,7 @@ def export_lifereading(name_to_acronym):
         for f in out_dir.glob('*.json'):
             f.unlink()
     out_dir.mkdir(parents=True, exist_ok=True)
+    titles = []  # 全卷篇目标题索引（模块级搜索用，避免拉全量 28MB 正文）
     for book_name, entry in mapping.get('books', {}).items():
         base_acronym = name_to_acronym.get(book_name, book_name[:1])
         rel_map = rel_by_book.get(book_name, {})
@@ -296,7 +297,11 @@ def export_lifereading(name_to_acronym):
                 json.dumps(payload, ensure_ascii=False),
                 encoding='utf-8',
             )
-    print(f'生命读经导出：{len(mapping.get("books", {}))} 卷')
+            for a in payload['articles']:
+                titles.append({'acronym': acronym, 'id': a['id'], 'title': a['title']})
+    (DATA_DIR / 'lr-titles.json').write_text(
+        json.dumps(titles, ensure_ascii=False), encoding='utf-8')
+    print(f'生命读经导出：{len(mapping.get("books", {}))} 卷 + 篇目标题索引 {len(titles)} 条')
 
 
 def main():

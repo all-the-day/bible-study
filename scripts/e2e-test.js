@@ -11,6 +11,7 @@ const puppeteer = require('D:/coder/aiWorkSpace/bible-reader/node_modules/puppet
   const errors = [];
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
+  await page.evaluateOnNewDocument(() => { window.BIBLE_SKIP_UPDATE = true; });   // 跳过启动静默更新检查（省 GitHub API 配额）
 
   await page.goto('http://localhost:8765/', { waitUntil: 'networkidle0', timeout: 30000 });
   await page.waitForSelector('.verse', { timeout: 15000 });

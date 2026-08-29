@@ -28,6 +28,7 @@ async function main() {
   });
 
   // 1. 启动进首页 + 无副标题 + splash 隐藏后经节非空
+  await page.evaluateOnNewDocument(() => { window.BIBLE_SKIP_UPDATE = true; });   // 跳过启动静默更新检查（省 GitHub API 配额）
   await page.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'networkidle0', timeout: 30000 });
   await page.waitForSelector('#homeGrid .home-block', { timeout: 15000 });
   const homeOk = await page.evaluate(() => ({
@@ -69,7 +70,7 @@ async function main() {
     lrVisible: getComputedStyle(document.querySelector('#lrMain')).display === 'block',
     crumb: document.querySelector('#chapterLabel').textContent.slice(0, 12),
     artCount: document.querySelectorAll('.lr-nav-art').length,
-    filter: !!document.querySelector('#lrNav input'),
+    filter: (() => { const el = document.querySelector('#lrNav input'); return !!el && getComputedStyle(el).display !== 'none'; })(),
     sideTabs: [...document.querySelectorAll('.lr-side-tab')].map(t => t.textContent).join('|'),
     actionsHidden: getComputedStyle(document.querySelector('#viewModeBtn')).display === 'none',
   }));

@@ -27,6 +27,7 @@ async function main() {
   page.on('console', (m) => m.type() === 'error' && consoleErrors.push(m.text()));
 
   console.log('=== 模拟 WebView 跨域下载（origin: http://localhost:' + PORT + '） ===\n');
+  await page.evaluateOnNewDocument(() => { window.BIBLE_SKIP_UPDATE = true; });   // 跳过启动静默更新检查（省 GitHub API 配额）
   await page.goto('http://localhost:' + PORT + '/', { waitUntil: 'domcontentloaded', timeout: 15000 });
 
   for (const url of SOURCES) {

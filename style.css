@@ -89,34 +89,8 @@ body {
 .crumb #bookName { white-space: nowrap; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; }
 .crumb #chapterLabel { font-weight: 400; opacity: .9; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .topbar-actions { display: flex; gap: 4px; align-items: center; }
-/* 顶栏快捷搜索（桌面端）：低对比度胶囊 + 结果浮层；移动端隐藏（首页搜索 + ☰ 弹窗覆盖） */
-.top-search { position: relative; flex: 1; max-width: 340px; }
-.top-search input {
-  width: 100%; box-sizing: border-box;
-  border: 1px solid rgba(255,255,255,.35); background: rgba(255,255,255,.16);
-  border-radius: 20px; padding: 6px 14px; font-size: 13px; color: #fff;
-  outline: none; transition: background .15s;
-}
-.top-search input::placeholder { color: rgba(255,255,255,.65); }
-.top-search input:focus { background: rgba(255,255,255,.26); border-color: rgba(255,255,255,.6); }
-.top-search-results {
-  position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 50;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
-  box-shadow: var(--shadow-lg); max-height: 340px; overflow-y: auto; padding: 4px;
-}
-.tsr-item { display: flex; gap: 8px; align-items: baseline; padding: 8px 10px; border-radius: 6px; cursor: pointer; }
-.tsr-item:hover, .tsr-item.hot { background: var(--surface-alt); }
-.tsr-loc { color: var(--brand); font-size: 12px; font-weight: 600; flex-shrink: 0; white-space: nowrap; }
-.tsr-text { font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tsr-empty { padding: 14px; text-align: center; color: var(--text-muted); font-size: 13px; }
-/* 首页已居中放置主搜索框，顶栏快捷搜索仅阅读器视图显示，避免两处重复 */
-body.home .top-search { display: none; }
 @media (max-width: 900px) {
-  .top-search { display: none; }
   .crumb { flex: 1; }
-}
-@media (min-width: 901px) {
-  .crumb { flex: 0 1 auto; }
 }
 .top-btn {
   border: 1px solid rgba(255,255,255,.4); background: transparent; color: #fff;
@@ -888,21 +862,22 @@ body.home .mobile-nav { display: none; }
 /* ── 阅读器模块容器切换（默认 bible；body-mod-lifereading / body-mod-books / body-mod-morning / body-mod-notes 切换） ── */
 #lrNav, #lrMain, #lrSide, #bookNav, #bookMain, #bookSide, #morningNav, #morningMain, #morningSide,
 #notesNav, #notesMain, #notesSide { display: none; }
-.body-mod-lifereading .nav-search,
+/* 只隐藏读经模块的搜索框（#navCol 直接子元素）；#lrNav/#bookNav/#morningNav 内的模块搜索框保留 */
+.body-mod-lifereading #navCol > .nav-search,
 .body-mod-lifereading #bookList, .body-mod-lifereading #chapterList { display: none; }
 .body-mod-lifereading #chapterTheme, .body-mod-lifereading #verseContainer { display: none; }
 .body-mod-lifereading #studyTabs, .body-mod-lifereading #studyBody { display: none; }
 .body-mod-lifereading #lrNav  { display: flex; flex-direction: column; min-height: 0; flex: 1; }
 .body-mod-lifereading #lrMain { display: block; }
 .body-mod-lifereading #lrSide { display: flex; flex-direction: column; min-height: 0; }
-.body-mod-books .nav-search,
+.body-mod-books #navCol > .nav-search,
 .body-mod-books #bookList, .body-mod-books #chapterList { display: none; }
 .body-mod-books #chapterTheme, .body-mod-books #verseContainer { display: none; }
 .body-mod-books #studyTabs, .body-mod-books #studyBody { display: none; }
 .body-mod-books #bookNav  { display: flex; flex-direction: column; min-height: 0; flex: 1; }
 .body-mod-books #bookMain { display: block; }
 .body-mod-books #bookSide { display: flex; flex-direction: column; min-height: 0; }
-.body-mod-morning .nav-search,
+.body-mod-morning #navCol > .nav-search,
 .body-mod-morning #bookList, .body-mod-morning #chapterList { display: none; }
 .body-mod-morning #chapterTheme, .body-mod-morning #verseContainer { display: none; }
 .body-mod-morning #studyTabs, .body-mod-morning #studyBody { display: none; }
@@ -919,7 +894,7 @@ body.home .mobile-nav { display: none; }
 .body-mod-morning #viewModeBtn, .body-mod-morning #hideMarksBtn, .body-mod-morning #studyFullBtn,
 .body-mod-morning #feedbackBtn, .body-mod-morning #notesBtn { display: none !important; }
 .body-mod-morning .crumb-nav { display: none; }
-.body-mod-notes .nav-search,
+.body-mod-notes #navCol > .nav-search,
 .body-mod-notes #bookList, .body-mod-notes #chapterList { display: none; }
 .body-mod-notes #chapterTheme, .body-mod-notes #verseContainer { display: none; }
 .body-mod-notes #studyTabs, .body-mod-notes #studyBody { display: none; }
@@ -985,6 +960,8 @@ body.home .mobile-nav { display: none; }
 }
 .bk-nav-book:hover { background: var(--surface-alt); }
 .bk-nav-book .bkb-count { font-size: 11px; color: var(--text-muted); margin-left: 6px; }
+/* 模块级搜索结果条目前的来源前缀（卷名/期名，弱化处理） */
+.nav-result-loc { font-size: 11px; color: var(--text-muted); margin-right: 6px; flex-shrink: 0; }
 /* 弹窗内的书列表（openBookPicker）：普通滚动列表 */
 .bk-picker-list { max-height: 56vh; overflow-y: auto; padding: 6px; }
 

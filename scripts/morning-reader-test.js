@@ -16,6 +16,7 @@ async function main() {
   await page.setViewport({ width: 1280, height: 800 });
   const errors = [];
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+  await page.evaluateOnNewDocument(() => { window.BIBLE_SKIP_UPDATE = true; });   // 跳过启动静默更新检查（省 GitHub API 配额）
 
   await page.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'networkidle0', timeout: 30000 });
   await page.waitForSelector('#homeGrid .home-block', { timeout: 15000 });
@@ -27,7 +28,7 @@ async function main() {
   const r1 = await page.evaluate(() => ({
     modMorning: document.body.classList.contains('body-mod-morning'),
     crumb: document.querySelector('#chapterLabel').textContent.slice(0, 20),
-    filter: !!document.querySelector('#morningNav input'),
+    filter: (() => { const el = document.querySelector('#morningNav input'); return !!el && getComputedStyle(el).display !== 'none'; })(),
     artCount: document.querySelectorAll('.morning-nav-art').length,
     heads: document.querySelectorAll('.morning-head').length,
     paras: document.querySelectorAll('.morning-para').length,

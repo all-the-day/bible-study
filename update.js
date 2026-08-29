@@ -61,6 +61,8 @@
 
   /* 查最新 release：失败静默返回 null */
   function check() {
+    // 自动化/测试环境跳过（BIBLE_SKIP_UPDATE）：避免每次启动消耗 GitHub API 匿名配额（60 次/小时/IP）
+    if (window.BIBLE_SKIP_UPDATE) return Promise.resolve(null);
     return fetchJSON(API_URL)
       .then((release) => {
         const version = parseVersion(release.name) || parseVersion(release.tag_name);
