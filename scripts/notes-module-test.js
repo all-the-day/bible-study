@@ -1,6 +1,7 @@
 /* 笔记管理模块专项测试：直进 / 分类树计数 / 来源 tab / 颜色过滤 / 搜索 / 排序 /
  * 条目选中进右栏 / 编辑笔记 / 改色 / 删除单条（确认框）/ 大段笔记编辑与删除 /
- * 批量删除 / 偏好持久化恢复 */
+ * 批量删除 / 偏好持久化恢复
+ * 关键语义：模块只收纳「带笔记的标注 + 大段笔记」，纯划线（无 note）不显示 */
 const { spawn } = require('child_process');
 const ROOT = require('path').resolve(__dirname, '..');
 const PORT = 8765;
@@ -27,12 +28,12 @@ async function main() {
   await page.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'networkidle0', timeout: 30000 });
   await page.waitForSelector('#homeGrid .home-block', { timeout: 15000 });
 
-  // 预置数据：4 条不同类型标注 + 2 条大段笔记（chapterNotes/morningNotes）
+  // 预置数据：4 条不同类型标注（t2 带笔记、t4 纯下划线无笔记=应被模块排除）+ 2 条大段笔记（chapterNotes/morningNotes）
   await page.evaluate(() => {
     const now = Date.now();
     const anns = [
       { id: 't1', type: 'verse', book: 1, chapter: 24, verse: 5, half: '', start: 0, end: 4, text: '耶和华啊', prefix: '', suffix: '', colorId: 'c1', underline: false, note: '测试经文笔记', createdAt: now - 5000 },
-      { id: 't2', type: 'lr', book: 1, articleId: 60, start: 0, end: 6, text: '圣灵启示', prefix: '', suffix: '', colorId: 'c2', underline: false, note: '', createdAt: now - 4000 },
+      { id: 't2', type: 'lr', book: 1, articleId: 60, start: 0, end: 6, text: '圣灵启示', prefix: '', suffix: '', colorId: 'c2', underline: false, note: '圣灵启示笔记', createdAt: now - 4000 },
       { id: 't3', type: 'morning', period: '2026-03', chapterId: 2, start: 0, end: 5, text: '早晨复兴', prefix: '', suffix: '', colorId: 'c4', underline: false, note: '听抄笔记', createdAt: now - 3000 },
       { id: 't4', type: 'book', series: 'ni', volume: 2, book: 0, chapter: 0, start: 0, end: 5, text: '十字架的道', prefix: '', suffix: '', colorId: 'c5', underline: true, note: '', createdAt: now - 2000 },
     ];
@@ -59,13 +60,14 @@ async function main() {
   console.log('1. 直进:', r1.mod && r1.nav && r1.main && r1.side && r1.crumb === '笔记管理' ? '✓' : '✗',
     '| 树节点:', r1.treeNodes.join(','));
 
-  // 2. 全部列表：4 标注 + 2 大段笔记 = 6 条目，分组含「创世记 · 第24章」
+  // 2. 全部列表：3 条带笔记标注 + 2 大段笔记 = 5 条目；纯划线 t4（十字架的道）应被排除
   const r2 = await page.evaluate(() => ({
     items: document.querySelectorAll('.notes-item').length,
     groups: [...document.querySelectorAll('.notes-group')].map(g => g.textContent).join('|'),
     tabs: [...document.querySelectorAll('.notes-tab')].map(t => t.textContent).join(','),
+    excluded: ![...document.querySelectorAll('.notes-item')].some(el => el.textContent.includes('十字架的道')),
   }));
-  console.log('2. 全部列表:', r2.items === 6 ? '✓' : '✗', '| 条目:', r2.items, '| 分组:', r2.groups);
+  console.log('2. 全部列表:', r2.items === 5 && r2.excluded ? '✓' : '✗', '| 条目:', r2.items, '| 纯划线排除:', r2.excluded, '| 分组:', r2.groups);
 
   // 3. 来源 tab 过滤：经文 → 1 标注 + 1 大段笔记
   await page.evaluate(() => { [...document.querySelectorAll('.notes-tab')].find(t => t.textContent === '经文').click(); });
@@ -124,6 +126,7 @@ async function main() {
     ta: !!document.querySelector('#notesSide .lr-note-ta'),
   }));
   console.log('7. 选中进面板:', r7.title === '生命读经标注' && r7.ta ? '✓' : '✗', '|', r7.title);
+  await page.evaluate(() => { document.querySelector('#notesSide .lr-note-ta').value = ''; });
   await page.type('#notesSide .lr-note-ta', '面板编辑笔记');
   await wait(300);
   const r7b = await page.evaluate(() => {
@@ -168,7 +171,8 @@ async function main() {
   const r9c = await page.evaluate(() => !('1:24' in JSON.parse(localStorage.getItem('bible-study.chapterNotes') || '{}')));
   console.log('   大段笔记删除:', r9c ? '✓' : '✗');
 
-  // 10. 批量删除：多选 → 勾 2 条 → 删除所选
+  // 10. 批量删除：多选 → 勾 2 条（标注才有勾选框，大段笔记无）→ 删除所选
+  //     此时列表 = t1、t3（带笔记标注）+ 听抄大段笔记；纯划线 t4 已被模块排除
   await page.evaluate(() => { [...document.querySelectorAll('.notes-sort')].find(b => b.textContent === '多选').click(); });
   await wait(400);
   const r10a = await page.evaluate(() => ({
@@ -186,7 +190,7 @@ async function main() {
   await page.evaluate(() => { document.querySelector('#cfOk').click(); });
   await wait(500);
   const r10c = await page.evaluate(() => JSON.parse(localStorage.getItem('bible-study.annotations') || '[]').length);
-  console.log('10. 批量删除:', r10a.checks === 3 && r10a.bar && r10b === '已选 2 条' && r10c === 1 ? '✓' : '✗',
+  console.log('10. 批量删除:', r10a.checks === 2 && r10a.bar && r10b === '已选 2 条' && r10c === 1 ? '✓' : '✗',
     '| 复选:', r10a.checks, '| 计数:', r10b, '| 剩余标注:', r10c);
 
   // 11. 偏好持久化：切听抄 tab → 重载 → 再进模块 tab 仍为听抄
@@ -201,7 +205,7 @@ async function main() {
     active: document.querySelector('.notes-tab.active')?.textContent,
     items: document.querySelectorAll('.notes-item').length,
   }));
-  console.log('11. 偏好恢复:', r11.active === '听抄' && r11.items >= 1 ? '✓' : '✗', '|', JSON.stringify(r11));
+  console.log('11. 偏好恢复:', r11.active === '听抄' ? '✓' : '✗', '|', JSON.stringify(r11));
 
   console.log('\nJS 错误:', errors.length ? errors : '无');
   await browser.close();

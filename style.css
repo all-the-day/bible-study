@@ -533,11 +533,10 @@ sup.xref-ref:hover { color: var(--brand-dark); }
 .hl-item {
   display: flex; align-items: baseline; gap: 8px;
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius-sm); padding: 8px 10px 8px 14px; margin-bottom: 6px;
-  cursor: pointer; box-shadow: var(--shadow-sm); overflow: hidden;
+  border-radius: var(--radius-sm); padding: 8px 10px; margin-bottom: 6px;
+  cursor: pointer; box-shadow: var(--shadow-sm);
 }
 .hl-item:hover { border-color: var(--brand); }
-.hl-dot { width: 4px; border-radius: 0; flex-shrink: 0; align-self: stretch; margin: -8px 0 -8px -14px; }
 .hl-loc { color: var(--brand); font-weight: 600; font-size: 12px; flex-shrink: 0; white-space: nowrap; }
 .hl-text {
   font-size: 14px; color: var(--text); flex: 1;
@@ -1071,8 +1070,6 @@ body.home .mobile-nav { display: none; }
   cursor: pointer; box-shadow: var(--shadow-sm);
 }
 .notes-item:hover { border-color: var(--brand); }
-/* 笔记管理条目：hl-dot 位于定位标签之后（DOM 顺序 loc→dot→text），须去掉 .hl-item 的贴边负 margin，否则色条左移叠住标签 */
-.notes-item .hl-dot { margin: -8px 0; }
 .notes-item.selected { border-color: var(--brand); background: rgba(102,126,234,.06); }
 .notes-item-check { flex: none; align-self: center; }
 .notes-item-time { flex: none; font-size: 11px; color: var(--text-muted); align-self: center; }

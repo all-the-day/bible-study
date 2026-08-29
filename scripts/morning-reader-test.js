@@ -91,6 +91,12 @@ async function main() {
   const r5 = await page.evaluate(() => {
     const anns = JSON.parse(localStorage.getItem('bible-study.annotations') || '[]');
     const last = anns[anns.length - 1];
+    // 笔记管理只收纳带 note 的标注——补一条笔记并同步内存态，供第 6 步在模块内选中
+    if (last) {
+      last.note = '听抄测试笔记';
+      localStorage.setItem('bible-study.annotations', JSON.stringify(anns));
+      state.annotations = anns;
+    }
     return {
       type: last && last.type, period: last && last.period, chapterId: last && last.chapterId,
       mark: !!document.querySelector('#morningMain mark.c4'),

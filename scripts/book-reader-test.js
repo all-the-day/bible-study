@@ -95,6 +95,12 @@ async function main() {
   const r5 = await page.evaluate(() => {
     const anns = JSON.parse(localStorage.getItem('bible-study.annotations') || '[]');
     const last = anns[anns.length - 1];
+    // 笔记管理只收纳带 note 的标注——补一条笔记并同步内存态，供第 6 步在模块内选中
+    if (last) {
+      last.note = '书报测试笔记';
+      localStorage.setItem('bible-study.annotations', JSON.stringify(anns));
+      state.annotations = anns;
+    }
     return { type: last && last.type, vol: last && last.volume, mark: !!document.querySelector('#bookMain mark.c2') };
   });
   console.log('5. 书报划线:', r5.type === 'book' && r5.vol === 2 && r5.mark ? '✓' : '✗', JSON.stringify(r5));

@@ -1616,7 +1616,8 @@ function mkTreeNode(label, count, active, collapsed, onClick) {
 
 /* ---- 过滤与排序（来源 tab / 颜色 / 搜索 / 树选中分组 / 排序） ---- */
 function notesFiltered() {
-  let anns = state.annotations.filter(a => state.notesSource === 'all' || a.type === state.notesSource);
+  // 同 renderNotesTree：只取带笔记的标注（纯划线不进笔记管理）
+  let anns = state.annotations.filter(a => a.note && a.note.trim() && (state.notesSource === 'all' || a.type === state.notesSource));
   let bigNotes = collectBigNotes().filter(n => state.notesSource === 'all' || n.type === state.notesSource);
   const g = state.notesGroup;
   if (g) {
@@ -1655,7 +1656,9 @@ function renderNotesTree() {
   nav.innerHTML = '';
   const wrap = document.createElement('div');
   wrap.className = 'notes-tree';
-  const anns = state.annotations;
+  // 笔记管理只收纳「自己做的笔记」：带 note 的标注 + 大段笔记；纯划线（无笔记）不在此列
+  // （各阅读器右栏「划线汇总」仍展示全部标记）
+  const anns = state.annotations.filter(a => a.note && a.note.trim());
   const bigNotes = collectBigNotes();
   const SOURCES = [
     { id: 'all', label: '全部', types: null },
@@ -2102,9 +2105,12 @@ function renderNotesPanel() {
       save(LS_ANNOTATIONS, state.annotations);
     });
     ta.addEventListener('blur', () => {
-      // 无颜色/无下划线且笔记清空 → 等同删除该条（与 saveNote 行为一致）
-      if (!a.note && !a.colorId && !a.underline) { deleteAnn(a.id); return; }
+      // 笔记清空后：无颜色/无下划线 → 等同删除该条（与 saveNote 行为一致）；
+      // 仍有颜色/下划线 → 降级为纯划线，退出笔记管理（阅读器右栏划线汇总仍可见），清空选中
+      const hasNote = (a.note || '').trim();
+      if (!hasNote && !a.colorId && !a.underline) { deleteAnn(a.id); return; }
       renderNotesList();
+      if (!hasNote) { state.notesSelectedItem = null; renderNotesPanel(); }
     });
     side.appendChild(ta);
     const row = document.createElement('div');
@@ -2179,7 +2185,11 @@ function renderHighlights(anns, groupFn, opts) {
   section.className = 'hl-section';
   const header = document.createElement('div');
   header.className = 'hl-header';
-  header.textContent = '划线汇总';
+  // 计数区分「划线」与「笔记」：带 note 的条目单独计数（切来源 tab 时同步刷新）
+  const setHeader = (list) => {
+    const noted = list.filter(a => a.note && a.note.trim()).length;
+    header.textContent = `划线汇总 ${list.length}${noted ? ` · 笔记 ${noted}` : ''}`;
+  };
   section.appendChild(header);
   if (!anns.length) {
     const hint = document.createElement('div');
@@ -2218,7 +2228,10 @@ function renderHighlights(anns, groupFn, opts) {
       // 同组多条划线的定位标签全相同时（如书报右栏固定一章）只首条显示
       const locs = g.items.map(a => hlLocText(a));
       const locSame = locs.length > 1 && locs.every(l => l === locs[0]);
-      g.items.forEach((a, i) => box.appendChild(renderHlItem(a, hideItemLoc || (locSame && i > 0))));
+      // 带笔记的条目置顶（笔记=自己做的内容，划线=阅读标记）
+      const noted = g.items.filter(a => a.note && a.note.trim());
+      const plain = g.items.filter(a => !(a.note && a.note.trim()));
+      [...noted, ...plain].forEach((a, i) => box.appendChild(renderHlItem(a, hideItemLoc || (locSame && i > 0))));
     });
   };
   // 单一来源（书报/生命读经/听抄右栏天然如此）跳过来源 tab：避免"全部(N)=经文/书报(N)"的冗余
@@ -2235,6 +2248,7 @@ function renderHighlights(anns, groupFn, opts) {
       t.textContent = `${label}（${list.length}）`;
       t.addEventListener('click', () => {
         tabs.querySelectorAll('.hl-tab').forEach(x => x.classList.toggle('active', x === t));
+        setHeader(list);
         renderList(list);
       });
       return t;
@@ -2248,6 +2262,7 @@ function renderHighlights(anns, groupFn, opts) {
     section.appendChild(tabs);
   }
   section.appendChild(box);
+  setHeader(anns);
   renderList(anns);
   return section;
 }
@@ -2264,18 +2279,10 @@ function buildHlItemBody(a, cls, hideLoc) {
   const div = document.createElement('div');
   div.className = cls || 'hl-item';
   if (a.underline) {
-    // 下划线型无颜色分类，用统一橙色表达"有标注但无分类"，与有色标注的色条/底色模式对齐
+    // 下划线型无颜色分类，用统一橙色底表达"有标注但无分类"，与有色标注底色模式对齐
     div.style.backgroundColor = 'rgba(235,108,5,.08)';
   } else {
     div.style.backgroundColor = colorBgSoft(a.colorId);   // 8% 同色背景
-  }
-  const dot = document.createElement('span');
-  dot.className = 'hl-dot';
-  if (a.underline) {
-    dot.style.background = '#eb6c05';   // 4px 橙实色条，承载"有标注无分类"的语义
-    dot.style.borderBottom = 'none';
-  } else {
-    dot.style.background = colorBg(a.colorId);   // 40% 透明度，色条比背景更明显
   }
   const text = document.createElement('span');
   text.className = 'hl-text';
@@ -2287,7 +2294,6 @@ function buildHlItemBody(a, cls, hideLoc) {
     loc.textContent = hlLocText(a);
     div.appendChild(loc);
   }
-  div.appendChild(dot);
   div.appendChild(text);
   if (a.note) {
     const noteEl = document.createElement('div');
