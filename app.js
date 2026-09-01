@@ -3896,7 +3896,9 @@ function buildAnnotation(r, partial) {
   }
   return {
     id: 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-    book: r.type === 'verse' || r.type === 'lr' ? state.currentBook.index : (r.volume || 0),
+    // verse：读经模块内书卷恒为当前书卷；lr：必须取选区所属卷（data-book），
+    // 生命读经模块浏览的卷 ≠ state.currentBook（读经模块遗留位置），不能用 currentBook.index
+    book: r.type === 'verse' ? state.currentBook.index : (r.type === 'lr' ? r.book : (r.volume || 0)),
     type: r.type,
     start: r.start,
     end: r.end,

@@ -71,6 +71,40 @@ async function main() {
   const r4 = await page.evaluate(() => document.querySelectorAll('#lrMain mark.c1').length);
   console.log('4. 切篇切回高亮回放:', r4 > 0 ? '✓' : '✗', '| mark.c1:', r4);
 
+  // 5. 跨卷回归：切到非创世记的卷（读经模块 currentBook 仍=创世记）划线，
+  //    标注 book 字段必须是所选卷（回归点：曾误用 state.currentBook.index 导致高亮消失/跳转失灵）
+  await page.evaluate(() => selectLrVolume(40));   // 马太福音生命读经
+  await new Promise((r) => setTimeout(r, 2500));
+  await page.evaluate(() => {
+    const content = document.querySelector('#lrMain .lr-content');
+    const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+    let t = walker.nextNode();
+    while (t && t.parentElement.tagName === 'SUP') t = walker.nextNode();
+    const range = document.createRange();
+    range.setStart(t, 0);
+    range.setEnd(t, Math.min(4, t.textContent.length));
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+  });
+  await new Promise((r) => setTimeout(r, 300));
+  await page.click('#floatTool .sw.c2');
+  await new Promise((r) => setTimeout(r, 400));
+  const r5 = await page.evaluate(() => {
+    const anns = JSON.parse(localStorage.getItem('bible-study.annotations') || '[]');
+    const a = anns[anns.length - 1];
+    return {
+      book: a && a.book,
+      currentBook: state.currentBook.index,
+      lrBookIndex: state.lrBookIndex,
+      markInLrMain: document.querySelectorAll('#lrMain mark.c2').length,
+    };
+  });
+  console.log('5. 跨卷标注 book 字段:', r5.book === 40 && r5.currentBook === 1 ? '✓' : '✗',
+    '| book:', r5.book, '| currentBook:', r5.currentBook, '| lrBookIndex:', r5.lrBookIndex,
+    '| mark.c2:', r5.markInLrMain);
+
   console.log('\nJS 错误:', errors.length ? errors : '无');
   await browser.close();
   server.kill();
