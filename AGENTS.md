@@ -29,7 +29,7 @@
 | `index.html` / `style.css` / `app.js` | 单页应用全部逻辑 |
 | `sync.js` | 标注/笔记云同步客户端（duoban.xyz 通用 KV API） |
 | `update.js` | App 内检查更新客户端（GitHub Releases 查版本 + 原生下载 APK + 安装；下载走 ApkInstallerPlugin 原生 HTTP，不用 WebView fetch——CORS 根因见「App 内更新」节） |
-| `manifest.json` / `sw.js` | PWA 安装与离线缓存 |
+| `manifest.json` / `sw.js` | PWA 安装与离线缓存（网络优先；**跨域请求不代理不缓存**——防 duoban.xyz 同步数据残留 Cache Storage） |
 | `capacitor.config.json` / `package.json` | APK 打包配置（`resources/icon.png` 为图标源） |
 | `config/android/` | 原生更新插件源码（ApkInstallerPlugin：download 原生下载 + install 安装；MainActivity/file_paths.xml），CI 注入 android/ 工程，不入本地构建 |
 | `scripts/export.py` | 从 `../bible` 导出静态 JSON → `data/` |
@@ -39,7 +39,7 @@
 | `scripts/export-verses.py` | 从 export.py 产物 `data/bible-text.json` 派生精选经节 → `data/verses.json`（首屏 splash 随机经节数据源，~190 节几 KB） |
 | `start.bat` / `icons/` | 本地预览服务器（python http.server 8765）/ PWA 图标（icon-192/512，`resources/icon.png` 为 APK 图标源） |
 | `scripts/patch-android.mjs` | CI 帮手：注入原生插件 + AndroidManifest 权限/FileProvider（幂等） |
-| `scripts/*-test.js` | puppeteer 端到端测试（e2e / 标注 / 生命读经标注 / 生命读经模块内标注）；`download-sim-test.js` 验证 WebView fetch 下载被 CORS 拦截（根因留档），`update-logic-test.js` mock 原生插件验证 download() fallback/进度/监听清理，`lr-heading-test.js` 纲目标题提取，`home-test.js` / `home-test-mobile.js` 首页+合集链路冒烟（含 splash 经节断言），`lr-reader-test.js` 生命读经阅读器专项，`lr-module-annotation-test.js` 生命读经模块内划线回归（rerenderAnn 主区重渲染），`book-reader-test.js` 书报阅读器专项，`morning-reader-test.js` 听抄阅读器专项（直进/切期/切篇/层级标题渲染/笔记/划线/全局笔记跳转/恢复）；`sync-merge-test.js` sync.js flushPending 合并语义 node 单测（无浏览器，防旧快照覆盖回归）；`notes-module-test.js` 笔记管理模块专项（直进/分类树/来源tab/颜色过滤/搜索/排序/选中进面板/编辑笔记/改色/删除单条/大段笔记编辑删除/批量删除/偏好恢复）；`ref-link-test.js` 经文引用识别专项（相对引用/上下文/误判防护/章越界过滤/别名切分回退/章…节至…节范围/串珠前缀格式/篇63 DOM 渲染）；`run-all-tests.sh` 全量运行器（确保 8765 服务器 → 顺序跑全部测试 → 按输出解析判定，失败=非零退出或含 ✗/FAIL/JS 错误；`SKIP="home-test …"` 可跳过） |
+| `scripts/*-test.js` | puppeteer 端到端测试（e2e / 标注 / 生命读经标注 / 生命读经模块内标注）；`download-sim-test.js` 验证 WebView fetch 下载被 CORS 拦截（根因留档），`update-logic-test.js` mock 原生插件验证 download() fallback/进度/监听清理，`lr-heading-test.js` 纲目标题提取，`home-test.js` / `home-test-mobile.js` 首页+合集链路冒烟（含 splash 经节断言），`lr-reader-test.js` 生命读经阅读器专项，`lr-module-annotation-test.js` 生命读经模块内划线回归（rerenderAnn 主区重渲染 + 跨卷 book 字段），`book-reader-test.js` 书报阅读器专项，`morning-reader-test.js` 听抄阅读器专项（直进/切期/切篇/层级标题渲染/笔记/划线/全局笔记跳转/恢复）；`sync-merge-test.js` sync.js 合并/推送语义 node 单测（无浏览器；flushPending/pullAll 拉取失败不清空本地/schedulePush 防抖+串行+落笔即标 pending/直推先合并，防旧快照覆盖与失败盲推回归）；`notes-module-test.js` 笔记管理模块专项（直进/分类树/来源tab/颜色过滤/搜索/排序/选中进面板/编辑笔记/改色/删除单条/大段笔记编辑删除/批量删除/偏好恢复）；`ref-link-test.js` 经文引用识别专项（相对引用/上下文/误判防护/章越界过滤/别名切分回退/章…节至…节范围/串珠前缀格式/篇63 DOM 渲染）；`run-all-tests.sh` 全量运行器（确保 8765 服务器 → 顺序跑全部测试 → 按输出解析判定，失败=非零退出或含 ✗/FAIL/JS 错误；`SKIP="home-test …"` 可跳过） |
 | `scripts/run-all-tests.sh` | 全量测试运行器（见「测试与 Git 钩子」节） |
 | `scripts/install-hooks.sh` | 安装 git hooks 到 `.git/hooks/`（pre-commit 快速质量门 + pre-push 全量测试） |
 | `data/books.json` | 66 卷目录 + 每卷章数 + 缩写 |
@@ -102,7 +102,7 @@
 | API | `https://duoban.xyz/bible-api/api/kv/{key}`（GET/PUT/DELETE） |
 | 服务器 key | `u{uid}:bible-study:annotations`、`u{uid}:bible-study:chapterNotes`、`u{uid}:bible-study:lrNotes`、`u{uid}:bible-study:bookNotes`、`u{uid}:bible-study:morningNotes`（uid 来自账号） |
 | 客户端 | `sync.js`（`window.BibleStudySync`） |
-| 策略 | 服务器为主：启动 `pullAll` 覆盖本地（pending 的 key 跳过）；写时 `putRemote` 防抖；失败标 pending，启动 `flushPending` 重试——**推送前先 GET 服务器当前值合并**（数组按 id 并集、同 id 本机赢；对象浅合并本机赢；拉取失败则本轮不推保留 pending），防止旧快照整体覆盖其他设备的新数据 |
+| 策略 | 服务器为主：启动 `pullAll` 覆盖本地（pending 的 key 跳过；**拉取失败/超时（undefined）与 key 不存在（null）都跳过写入**，防止把本地键写成 `"undefined"` 清空数据后盲推覆盖云端）；写时 `schedulePush` **防抖 800ms + 按 key 串行**：落笔即标 pending（本地有未确认推送的改动，防抖窗口内关页面下次启动 `flushPending` 重推不丢），到点后 `putRemoteMerged` **先 GET 服务器当前值合并再 PUT**（与 flushPending 同语义：数组按 id 并集、同 id 本机赢；对象浅合并本机赢；**拉取失败不盲推**，标 pending 交给下次启动重试），防止旧快照整体覆盖其他设备的新数据。**注意：删除无 tombstone**——并集合并会让其他设备已删的标注复活，删除只在本设备生效（跨端删除语义待定） |
 | 同步范围 | **只同步用户数据**（annotations / chapterNotes / lrNotes / bookNotes / morningNotes）；布局偏好（viewMode / hideMarks / studyWidth 等）保持设备本地 |
 
 **账号与授权（RFC 8628 简化版）**：
