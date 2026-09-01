@@ -1,5 +1,5 @@
-const CACHE = 'bible-study-v5';
-const DATA_CACHE = 'bible-study-data-v5';
+const CACHE = 'bible-study-v6';
+const DATA_CACHE = 'bible-study-data-v6';
 const ASSETS = ['/', '/index.html', '/style.css', '/app.js', '/sync.js', '/update.js', '/manifest.json'];
 
 self.addEventListener('install', (e) => {
@@ -17,6 +17,9 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
+  // 跨域请求（duoban.xyz KV 同步 / GitHub API）不代理、不缓存：
+  // 防标注/笔记数据残留 Cache Storage（共用设备隐私），也防离线时回退陈旧 KV
+  if (url.origin !== self.location.origin) return;
 
   // 数据 JSON：网络优先、失败回退缓存（数据会随 export.py 重跑更新，需即时生效）
   if (url.pathname.startsWith('/data/')) {
@@ -29,7 +32,7 @@ self.addEventListener('fetch', (e) => {
           }
           return res;
         })
-        .catch(() => caches.match(e.request))
+        .catch(() => caches.match(e.request).then((r) => r || Response.error()))
     );
     return;
   }
@@ -44,6 +47,6 @@ self.addEventListener('fetch', (e) => {
         }
         return res;
       })
-      .catch(() => caches.match(e.request))
+      .catch(() => caches.match(e.request).then((r) => r || Response.error()))
   );
 });

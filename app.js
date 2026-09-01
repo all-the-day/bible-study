@@ -4628,7 +4628,14 @@ function showRefsPopup(title, refString) {
 }
 
 function escapeHtml(s) {
-  return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // 引号必须转义：本函数不仅用于文本上下文，还用于 value="…"/data-refs="…" 等 HTML 属性拼接，
+  // 云同步来的数据（a.id/a.title 等）若含引号可属性逃逸 → XSS
+  return (s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 /* ============ 检查更新（update.js） ============ */
