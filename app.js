@@ -114,7 +114,9 @@ const SYNC_KEYS = [LS_ANNOTATIONS, LS_CHAPTER_NOTES, LS_LR_NOTES, LS_BOOK_NOTES,
 function save(key, val) {
   localStorage.setItem(key, JSON.stringify(val));
   if (syncActive() && SYNC_KEYS.includes(key)) {
-    Sync.putRemote(key, val);
+    // 防抖推送（sync.js schedulePush）：合并 800ms 内的连续写为一次推送；
+    // 推送前先拉服务器当前值合并（防旧快照覆盖其他设备），落笔即标 pending（防抖窗口内关页面不丢数据）
+    Sync.schedulePush(key);
   }
 }
 

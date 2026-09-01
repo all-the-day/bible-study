@@ -43,9 +43,13 @@
   function setPending(list) {
     try { localStorage.setItem(PENDING_KEY, JSON.stringify(list)); } catch (e) {}
   }
+  /* 修订号：每次标 pending 自增，用于识别「推送/flush 进行中又发生了新写」——
+     此时成功后的 clearPending/写回会丢新值，必须保留 pending 等下轮重推 */
+  const pendingRev = {};
   function markPending(localKey) {
     const list = getPending();
     if (!list.includes(localKey)) list.push(localKey);
+    pendingRev[localKey] = (pendingRev[localKey] || 0) + 1;
     setPending(list);
   }
   function clearPending(localKey) {
@@ -157,16 +161,69 @@
     return local;
   }
 
-  /** 启动时重试所有 pending 的本地改动（推送前先拉取服务器当前值合并，防止旧快照覆盖新数据） */
+  /* 运行时直推（save() 防抖后调用）：推送前先拉服务器当前值合并（与 flushPending 同语义），
+     并按 key 串行化——同 key 的推送不会并发在途，消除「先发的旧快照后到覆盖新数据」与
+     pending 清除竞态（旧推送成功清掉新推送失败标的 pending） */
+  const inflight = {};
+  function putRemoteMerged(localKey) {
+    const run = async () => {
+      const rev = pendingRev[localKey] || 0;
+      let local = null;
+      try { local = JSON.parse(localStorage.getItem(localKey)); } catch (e) { local = null; }
+      if (local === null || local === undefined) return false; // 无本地值不推（防 undefined 盲推）
+      const remote = await fetchRemote(localKey);
+      if (remote === undefined) {
+        // 拉不到服务器当前值：不盲推（可能覆盖其他设备新数据），标 pending 交给下次启动 flush 重试
+        markPending(localKey);
+        notify();
+        return false;
+      }
+      const ok = await putRemote(localKey, mergeRemoteLocal(remote, local));
+      // 推送期间（GET/PUT 在途）又有新写：putRemote 的 clearPending 会误清新写的 pending，恢复它
+      if (ok && rev !== (pendingRev[localKey] || 0)) markPending(localKey);
+      return ok;
+    };
+    const p = (inflight[localKey] || Promise.resolve()).then(run, run);
+    inflight[localKey] = p.catch(() => {});
+    return p;
+  }
+
+  /* 防抖推送入口（app.js save() 每次本地写调用）：
+     落笔即标 pending（本地有未确认推送的改动），推送成功由 putRemote 清除。
+     页面在防抖窗口内关闭 → pending 已在，下次启动 flushPending 重推，不丢数据 */
+  const pushTimers = {};
+  const pushResolvers = {};
+  function schedulePush(localKey, delay = 800) {
+    markPending(localKey);
+    notify(); // 状态行立即转「有改动待同步」
+    clearTimeout(pushTimers[localKey]);
+    if (pushResolvers[localKey]) pushResolvers[localKey](); // 被合并的旧调度立即解决（其推送由本次调度承担）
+    return new Promise((resolve) => {
+      pushResolvers[localKey] = resolve;
+      pushTimers[localKey] = setTimeout(() => {
+        delete pushTimers[localKey];
+        delete pushResolvers[localKey];
+        resolve(putRemoteMerged(localKey));
+      }, delay);
+    });
+  }
+
+  /** 启动时重试所有 pending 的本地改动（推送前先拉取服务器当前值合并，防止旧快照覆盖其他数据） */
   async function flushPending(getterByKey) {
     for (const localKey of getPending()) {
       const local = getterByKey(localKey);
       if (local === undefined) continue;
+      const rev = pendingRev[localKey] || 0;
       const remote = await fetchRemote(localKey);
       if (remote === undefined) continue; // 拉不到服务器当前值就本轮不推，保留 pending 下轮再试
       const merged = mergeRemoteLocal(remote, local);
       const ok = await putRemote(localKey, merged);
       if (ok) {
+        if (rev !== (pendingRev[localKey] || 0)) {
+          // flush 期间又有新写：不写回 merged（会覆盖更新的本地值），恢复 pending 下轮重推
+          markPending(localKey);
+          continue;
+        }
         try { localStorage.setItem(localKey, JSON.stringify(merged)); } catch (e) {}
       }
     }
@@ -178,7 +235,9 @@
     let anyRemote = false;
     localKeys.forEach((k, i) => {
       const v = results[i];
-      if (v !== null) {
+      // v 可能是 null（key 不存在）或 undefined（请求失败/超时）：都不得写入本地，
+      // 否则 JSON.stringify(undefined) 会把本地键写成字符串 "undefined"，清空数据后盲推覆盖云端
+      if (v != null) {
         try {
           localStorage.setItem(k, JSON.stringify(v));
           anyRemote = true;
@@ -198,6 +257,8 @@
   window.BibleStudySync = {
     getRemote,
     putRemote,
+    putRemoteMerged,
+    schedulePush,
     pullAll,
     flushPending,
     onStatus,
