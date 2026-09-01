@@ -4254,7 +4254,9 @@ const BOOK_ALIASES = {
   '马太福音':'太','马可福音':'可','路加福音':'路','约翰福音':'约','使徒行传':'徒','罗马书':'罗','哥林多前书':'林前','哥林多后书':'林后','加拉太书':'加','以弗所书':'弗','腓立比书':'腓','歌罗西书':'西','帖撒罗尼迦前书':'帖前','帖撒罗尼迦后书':'帖后','提摩太前书':'提前','提摩太后书':'提后','提多书':'多','腓利门书':'门','希伯来书':'来','雅各书':'雅','彼得前书':'彼前','彼得后书':'彼后','约翰一书':'约壹','约翰二书':'约贰','约翰三书':'约参','犹大书':'犹','启示录':'启',
   // 简称别名
   '但以理':'但','以西结':'结','以赛亚':'赛','耶利米':'耶','出埃及':'出','腓立比':'腓','以弗所':'弗','歌罗西':'西','加拉太':'加','马太':'太','约翰':'约','罗马':'罗','哀歌':'哀','行传':'徒','雅各':'雅',
-  '约一':'约壹','约二':'约贰','约三':'约参',
+  // 注意：本数据源（恢复本串珠/注解）里「约一/约二/约三」= 约翰福音第 1/2/3 章
+  // （创1:1 串珠「约一1，2」= 约1:1-2、箴8:35「约三36」= 约3:36），
+  // 约翰书信一律写作「约壹/约贰/约参」，故不得把 约一/约二/约三 映射到 约翰一/二/三书
 };
 
 // 统一引用别名：全名/简称 → 缩写，加上 books.json 里的缩写 → 缩写
@@ -4282,7 +4284,9 @@ function cnToInt(s) {
 }
 
 function resolveRefString(raw) {
-  const tokens = (raw || '').split(/[，,、;；\s]+/).filter(Boolean);
+  // 全角「：」也是分隔符：串珠常见「2～5：代上一5～7」格式，前半是节范围不是引用
+  // （半角「:」不能拆，规范 key 形如 创1:2上）
+  const tokens = (raw || '').split(/[，,、;；：\s]+/).filter(Boolean);
   const out = [];
   let curAcronym = null, curChapter = null;
   // 单节 key 入列；整节不存在时兼容上下半节 key（如 创25:9 只有 创25:9上/下）
@@ -4293,17 +4297,32 @@ function resolveRefString(raw) {
     else if (bt[key + '下']) out.push(key + '下');
     else out.push(key); // bibleText 未加载时兜底，弹窗会过滤不存在的节
   };
-  for (const token of tokens) {
-    let matched = null;
+  for (const rawToken of tokens) {
+    // 引导词不影响引用本身（串珠常见「参创三五23～26」「见申十二5注1」的 参/见）
+    const token = rawToken.replace(/^(?:参看|参阅|参见|参考|参|见)/, '');
+    if (!token) continue;
+    // 同一 token 可能有多套别名切分（如「约一14」：约壹 第14章 ✗ 越界 → 约 一章14节 ✓），
+    // 逐个尝试前缀别名：优先采纳能解析出「真实存在的节」的切分，否则退回只解出章号的切分
+    let chosen = null;
     for (const alias of _refAliasesSorted) {
-      if (token.startsWith(alias)) { matched = { acronym: REF_ALIASES[alias], rest: token.slice(alias.length) }; break; }
+      if (!token.startsWith(alias)) continue;
+      const acronym = REF_ALIASES[alias];
+      const rest = token.slice(alias.length);
+      if (!rest) continue;
+      const r = parseRefTail(acronym, rest, null);
+      if (!r) continue;
+      const maxCh = bookChapterCount(acronym);
+      if (r.chapter && maxCh && r.chapter > maxCh) continue;   // 章号越界 → 该切分不成立
+      const probe = r.key || (r.range ? `${acronym}${r.chapter}:${r.range[0]}` : '');
+      if (probe && verseKeyExists(probe)) { chosen = { acronym, r }; break; }
+      if (!chosen) chosen = { acronym, r };   // 仅解出章号的切分兜底
     }
-    if (matched) {
-      curAcronym = matched.acronym;
-      const r = parseRefTail(matched.acronym, matched.rest, null);
+    if (chosen) {
+      curAcronym = chosen.acronym;
+      const r = chosen.r;
       if (r) {
-        // 节范围（如 9～10、19～26）展开为单节 key
-        if (r.range) for (let v = r.range[0]; v <= r.range[1]; v++) pushKey(`${matched.acronym}${r.chapter}:${v}`);
+        // 节范围（如 9～10、19～26、二章六至九节）展开为单节 key
+        if (r.range) for (let v = r.range[0]; v <= r.range[1]; v++) pushKey(`${chosen.acronym}${r.chapter}:${v}`);
         else if (r.key) pushKey(r.key);
         if (r.chapter) curChapter = r.chapter;
       }
@@ -4343,15 +4362,24 @@ function parseRefTail(acronym, rest, defChapter) {
       return { key: `${acronym}${ch}:${m[2]}${half}`, chapter: ch };
     }
   }
-  // 中文章节式（三章十九节）
-  m = rest.match(/^第?([一二三四五六七八九十百〇○]+)章([一二三四五六七八九十百〇○]+)节$/);
+  // 中文章节式（三章十九节 / 二章六至九节 / 二章六节至九节）
+  m = rest.match(/^第?([一二三四五六七八九十百〇○]+)章([一二三四五六七八九十百〇○]+)节?(?:[-~～至到]([一二三四五六七八九十百〇○]+)节?)?$/);
   if (m) {
-    const ch = cnToInt(m[1]), v = cnToInt(m[2]);
-    if (ch && v) return { key: `${acronym}${ch}:${v}${half}`, chapter: ch };
+    const ch = cnToInt(m[1]), v = cnToInt(m[2]), v2 = m[3] ? cnToInt(m[3]) : null;
+    if (ch && v) {
+      if (v2 && v2 > v) return { range: [v, v2], chapter: ch };
+      return { key: `${acronym}${ch}:${v}${half}`, chapter: ch };
+    }
   }
   // 纯章号（约一1 → 约壹 第1章，节由后续 token 提供）
   m = rest.match(/^(\d+)$/);
-  if (m) return { key: null, chapter: +m[1] };
+  if (m) {
+    const n = +m[1];
+    // 章号越界（如「犹16」，犹大书仅1章）→ 实为第1章第n节，经文存在才采信
+    const maxCh = bookChapterCount(acronym);
+    if (maxCh && n > maxCh && verseKeyExists(`${acronym}1:${n}`)) return { key: `${acronym}1:${n}`, chapter: 1 };
+    return { key: null, chapter: n };
+  }
   m = rest.match(/^([一二三四五六七八九十百〇○]+)$/);
   if (m) { const ch = cnToInt(m[1]); if (ch) return { key: null, chapter: ch }; }
   return null;
@@ -4365,8 +4393,10 @@ function buildRefRegex() {
   const aliasAlt = _refAliasesSorted.map(escapeRegex).join('|');
   // 只识别带节号/范围/「章…节」的引用；不识别裸「书卷+中文数字」（如 利百、雅各一、
   // 创世记十一、创世记二十五），避免人名/描述性章节范围被误判为经文引用
-  const tail = '(?:\\d+:\\d+(?:[-~～]\\d+)?|[' + cn + ']+\\d+(?:[-~～]\\d+)?[上下]?|第?[' + cn + ']+章[' + cn + ']+节)';
-  return new RegExp('(' + aliasAlt + ')' + tail, 'g');
+  const tail = '(?:\\d+:\\d+(?:[-~～]\\d+)?|[' + cn + ']+\\d+(?:[-~～]\\d+)?[上下]?'
+    + '|第?[' + cn + ']+章[' + cn + ']+节?(?:[-~～至到][' + cn + ']+节?)?)';
+  // 引导词（参/见/参看…）可选前缀，不参与捕获（组 1=书卷别名，组 2=章節尾）
+  return new RegExp('(?:参看|参阅|参见|参考|[参见])?(' + aliasAlt + ')(' + tail + ')', 'g');
 }
 
 // 相对引用（无书卷前缀，靠前文全书引用或 defaultAcronym 提供上下文）：
@@ -4455,10 +4485,12 @@ function detectRefs(text, defaultAcronym) {
     const start = nextFull.index, end = nextFull.index + nextFull[0].length;
     refs.push({ start, end, refText: nextFull[0] });
     // 全书引用建立上下文，供后续相对引用使用
-    const alias = _refAliasesSorted.find(a => nextFull[0].startsWith(a));
+    // 必须用正则实际匹配到的别名（捕获组 1）：正则可能回溯到较短别名
+    // （如「约一14」实际是 约 + 一14），用 startsWith 反查会取到最长别名而错判书卷
+    const alias = nextFull[1];
     if (alias) {
       curAcronym = REF_ALIASES[alias];
-      const r = parseRefTail(curAcronym, nextFull[0].slice(alias.length), null);
+      const r = parseRefTail(curAcronym, nextFull[2], null);
       if (r && r.chapter) curChapter = r.chapter;
     }
     segStart = end;

@@ -60,8 +60,32 @@ async function main() {
   check('6. 章越界过滤（三二28 不识别）', r.includes('弗一10') && r.includes('弗3:2') && !r.includes('弗32:28'), JSON.stringify(r));
 
   // 7. 节不存在过滤：约壹1:18 不存在（约壹1仅10节），18 不识别
-  r = await refsOf('（约一1，18，启十九13。）');
-  check('7. 节不存在过滤（18 不识别）', r.includes('约一1') && !r.includes('18') && r.includes('启十九13'), JSON.stringify(r));
+  r = await refsOf('（约壹一1，18。）');
+  check('7. 节不存在过滤（约壹1:18 不识别）', r.includes('约壹一1') && !r.includes('约壹1:18'), JSON.stringify(r));
+
+  // 7b. 书卷切分回退（反馈 #6）：数据源里 约一/约二/约三 = 约翰福音第 1/2/3 章，
+  //     「约一14」= 约1:14，不能被最长别名 约一→约壹 抢走（约壹只有5章，14 越界）
+  r = await refsOf('（约一14。）');
+  check('7b. 约一14 识别为引用', r.length === 1 && r[0] === '约一14', JSON.stringify(r));
+  let keys = await page.evaluate(() => resolveRefString('约一14'));
+  check('7c. 约一14 解析为 约1:14', JSON.stringify(keys) === JSON.stringify(['约1:14']), JSON.stringify(keys));
+  r = await refsOf('（约二11，约三16。）');
+  check('7d. 约二11/约三16 归约翰福音', r.includes('约二11') && r.includes('约三16'), JSON.stringify(r));
+  keys = await page.evaluate(() => resolveRefString('约二11，约三16'));
+  check('7e. 约二11/约三16 解析为 约2:11、约3:16',
+    JSON.stringify(keys) === JSON.stringify(['约2:11', '约3:16']), JSON.stringify(keys));
+
+  // 7f. 章…节至…节 范围（反馈 #7）：「彼后二章六至九节」
+  r = await refsOf('我们若读彼后二章六至九节');
+  check('7f. 二章六至九节 识别为引用', r.length === 1 && r[0] === '彼后二章六至九节', JSON.stringify(r));
+  keys = await page.evaluate(() => resolveRefString('彼后二章六至九节'));
+  check('7g. 展开为 彼后2:6～2:9',
+    JSON.stringify(keys) === JSON.stringify(['彼后2:6', '彼后2:7', '彼后2:8', '彼后2:9']), JSON.stringify(keys));
+  keys = await page.evaluate(() => resolveRefString('创一章一节至二节'));
+  // 创1:2 数据本身分上下半节，范围展开走 pushKey 兜底 → 创1:2上
+  check('7h. 「一节至二节」写法', JSON.stringify(keys) === JSON.stringify(['创1:1', '创1:2上']), JSON.stringify(keys));
+  keys = await page.evaluate(() => resolveRefString('创一章一节'));
+  check('7i. 单节不受影响', JSON.stringify(keys) === JSON.stringify(['创1:1']), JSON.stringify(keys));
 
   // 8. 纯数字误判防护：25章 / 25:11 / 1920年 不识别
   r = await refsOf('（创二四62，25章）');
@@ -96,6 +120,28 @@ async function main() {
     return span ? span.dataset.refs : null;
   });
   check('11. renderLrArticle 默认书卷接线（bookIndex=1 → 创25:11）', r === '创25:11', JSON.stringify(r));
+
+  // 12. 串珠「节范围：引用」格式（全角冒号是分隔符，前半的 2～5 不是引用）
+  keys = await page.evaluate(() => resolveRefString('2～5：代上一5～7'));
+  check('12. 「2～5：代上一5～7」→ 代上1:5～7',
+    keys.length === 3 && keys[0] === '代上1:5' && keys[2] === '代上1:7', JSON.stringify(keys));
+
+  // 13. 引导词前缀（串珠常见「参创三五23～26」）
+  keys = await page.evaluate(() => resolveRefString('参创三五23～26'));
+  check('13a. 参 前缀解析', keys.length === 4 && keys[0] === '创35:23' && keys[3] === '创35:26', JSON.stringify(keys));
+  r = await refsOf('（参申三三6～25）');
+  check('13b. 正文「参申三三6～25」成链接', r.length === 1 && r[0] === '参申三三6～25', JSON.stringify(r));
+
+  // 13c. 双字引导词（参看）：正文按捕获组取别名与章節尾，不能用 startsWith 反查
+  r = await refsOf('（参看申三三6～25）');
+  check('13c. 正文「参看申三三6～25」成链接', r.length === 1 && r[0] === '参看申三三6～25', JSON.stringify(r));
+  keys = await page.evaluate(() => resolveRefString('参看申三三6～25'));
+  check('13d. 参看 前缀解析为 申33:6～25',
+    keys.length === 20 && keys[0] === '申33:6' && keys[19] === '申33:25', JSON.stringify(keys));
+
+  // 14. 单章书卷的裸节号（犹16 = 犹1:16）
+  keys = await page.evaluate(() => resolveRefString('犹16'));
+  check('14. 犹16 → 犹1:16', JSON.stringify(keys) === JSON.stringify(['犹1:16']), JSON.stringify(keys));
 
   console.log(`\n${pass} passed, ${fail} failed`);
   console.log('JS 错误:', errors.length ? errors : '无');
