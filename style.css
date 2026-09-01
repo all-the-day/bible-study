@@ -54,6 +54,15 @@ body {
   border: 3px solid rgba(255,255,255,.25); border-top-color: #fff;
   border-radius: 50%; animation: spin .9s linear infinite;
 }
+/* 启动关键数据加载失败：splash 上的错误提示 + 重试 */
+.splash-error {
+  margin-top: 18px; display: flex; flex-direction: column; align-items: center; gap: 12px;
+  color: rgba(255,255,255,.9); font-size: 14px;
+}
+.splash-retry-btn {
+  padding: 8px 26px; border: none; border-radius: 8px; cursor: pointer;
+  background: #fff; color: #667eea; font-size: 14px; font-weight: 600;
+}
 /* 模块数据加载指示（ensure* 未缓存时占位，渲染后被内容替换） */
 .loading-hint {
   display: flex; align-items: center; justify-content: center; gap: 10px;

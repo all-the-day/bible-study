@@ -411,6 +411,29 @@ function splashHide() {
   if (s) s.classList.add('hidden');
 }
 
+// 启动关键数据（books.json）加载失败：splash 上显示错误提示 + 重试按钮
+function splashShowError(retryFn) {
+  const s = $('splash');
+  if (!s) return;
+  const spin = s.querySelector('.splash-spinner');
+  if (spin) spin.remove();
+  let err = s.querySelector('.splash-error');
+  if (!err) {
+    err = document.createElement('div');
+    err.className = 'splash-error';
+    s.appendChild(err);
+  }
+  err.innerHTML = '';
+  const label = document.createElement('div');
+  label.textContent = '数据加载失败，请检查网络后重试';
+  const btn = document.createElement('button');
+  btn.className = 'splash-retry-btn';
+  btn.textContent = '重试';
+  btn.addEventListener('click', retryFn);
+  err.appendChild(label);
+  err.appendChild(btn);
+}
+
 // 模块数据加载指示（ensure* 未缓存时占位；渲染完成后被内容替换）
 function showLoadingHint(container, text) {
   if (!container) return;
@@ -434,11 +457,18 @@ function showLoadingError(container, msg, retryFn) {
 
 async function init() {
   // 首屏：splash 已由 HTML 静态显示（app.js 加载前即可见），这里并行拉取经节与书卷目录
-  const versesP = fetchJSON('data/verses.json').catch(() => null);
-  const [booksData, versesData] = await Promise.all([
-    fetchJSON('data/books.json'),
-    versesP,
-  ]);
+  // 关键数据加载失败：splash 显示错误+重试（不静默挂死；重试整个 init——失败发生在任何绑定之前，可安全重入）
+  let booksData, versesData;
+  try {
+    const versesP = fetchJSON('data/verses.json').catch(() => null);
+    [booksData, versesData] = await Promise.all([
+      fetchJSON('data/books.json'),
+      versesP,
+    ]);
+  } catch (e) {
+    splashShowError(() => init());
+    return;
+  }
   if (versesData && versesData.length) splashSetVerse(versesData[Math.floor(Math.random() * versesData.length)]);
   state.books = booksData;
   state.books.forEach(b => state.bookIndexByIdx[b.acronym + b.index] = b);
@@ -2818,11 +2848,18 @@ async function selectLrVolume(bookIndex) {
 
 // 统一入口（首页搜索 / crumb 篇目 / 全局笔记 / 合集块）：模块内切篇，模块外进模块
 async function openLrArticle(bookIndex, art) {
-  if (state.activeModule === 'lifereading') {
+  if (state.activeModule === 'lifereading' && state.screen === 'work') {
     if (bookIndex !== state.lrBookIndex) await selectLrVolume(bookIndex);
     if (state.lrArticleId !== art.id) await selectLrArticle(art.id);
   } else {
+    // 模块外进入，含「同模块但停在首页」：enterModule 同模块幂等不重渲染，需补切到目标篇目，
+    // 否则内容在隐藏层更新、界面停在首页（无可见反应）
+    const sameModule = state.activeModule === 'lifereading';
     await enterModule('lifereading', { bookIndex, articleId: art.id });
+    if (sameModule) {
+      if (bookIndex !== state.lrBookIndex) await selectLrVolume(bookIndex);
+      if (state.lrArticleId !== art.id) await selectLrArticle(art.id);
+    }
   }
 }
 
@@ -3128,13 +3165,21 @@ async function openBookResult(v, b, c) {
 
 // 统一入口（首页块 / 搜索 / 全局笔记）：模块内切章，模块外进模块
 async function openBookChapter(volume, book, chapter, series) {
-  if (state.activeModule === 'books') {
+  if (state.activeModule === 'books' && state.screen === 'work') {
     if (series && series !== state.bookSeries) await selectBookSeries(series);
     if (volume !== state.bookVolume || book !== state.bookBook || chapter !== state.bookChapter) {
       await selectBookChapter(volume, book, chapter);
     }
   } else {
+    // 同「同模块但停在首页」场景：enterModule 幂等不重渲染，补切目标章（见 openLrArticle）
+    const sameModule = state.activeModule === 'books';
     await enterModule('books', { series, volume, book, chapter });
+    if (sameModule) {
+      if (series && series !== state.bookSeries) await selectBookSeries(series);
+      if (volume !== state.bookVolume || book !== state.bookBook || chapter !== state.bookChapter) {
+        await selectBookChapter(volume, book, chapter);
+      }
+    }
   }
 }
 
@@ -3314,11 +3359,17 @@ async function selectMorningPeriod(periodId) {
 
 // 统一入口（首页块 / 搜索 / 全局笔记）：模块内切篇，模块外进模块
 async function openMorningArticle(periodId, chapterId) {
-  if (state.activeModule === 'morning') {
+  if (state.activeModule === 'morning' && state.screen === 'work') {
     if (periodId !== state.morningPeriod) await selectMorningPeriod(periodId);
     if (state.morningChapterId !== chapterId) await selectMorningChapter(chapterId);
   } else {
+    // 同「同模块但停在首页」场景：enterModule 幂等不重渲染，补切目标篇（见 openLrArticle）
+    const sameModule = state.activeModule === 'morning';
     await enterModule('morning', { period: periodId, chapterId });
+    if (sameModule) {
+      if (periodId !== state.morningPeriod) await selectMorningPeriod(periodId);
+      if (state.morningChapterId !== chapterId) await selectMorningChapter(chapterId);
+    }
   }
 }
 
