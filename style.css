@@ -88,6 +88,15 @@ body {
   color: #fff;
   box-shadow: var(--shadow-md);
 }
+/* 阅读进度条：固定顶边 2px 细线，随 #textCol 滚动指示当前阅读进度（晨读 app 同款，纯 UI）
+   顶栏 z30 之上，弹窗 z50+ 之下——不盖弹窗、不挡交互（pointer-events:none） */
+.reading-progress {
+  position: fixed; top: 0; left: 0; height: 2px; width: 0%;
+  background: #fff; opacity: .9; z-index: 35;
+  pointer-events: none; transition: width .08s linear;
+}
+/* 首页本身滚动，不显示阅读进度条 */
+body.home .reading-progress { display: none; }
 .icon-btn {
   border: none; background: transparent; color: #fff;
   font-size: 20px; cursor: pointer; padding: 4px 8px;

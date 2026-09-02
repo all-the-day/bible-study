@@ -737,6 +737,22 @@ function toggleNavCollapsed() {
 }
 
 // 首页合集块点击委托 + 顶部搜索
+// 阅读进度条（反馈 #10，晨读 app 同款）：绑定工作区唯一滚动容器 #textCol，
+// 滚动时更新顶条宽度指示当前阅读进度；纯 UI 实时计算，不存储
+function bindReadingProgress() {
+  const bar = $('readingProgress');
+  const scroller = $('textCol');
+  if (!bar || !scroller) return;
+  const update = () => {
+    const max = scroller.scrollHeight - scroller.clientHeight;
+    bar.style.width = (max > 0 ? Math.min(100, (scroller.scrollTop / max) * 100) : 0) + '%';
+  };
+  scroller.addEventListener('scroll', update, { passive: true });
+  window.addEventListener('resize', update);
+  update();
+}
+
+// 首页合集块点击委托 + 顶部搜索
 function bindHomeEvents() {
   $('homeGrid').addEventListener('click', (e) => {
     const tile = e.target.closest('.home-block');
@@ -3414,9 +3430,9 @@ async function openMorningArticleList() {
 let pendingRange = null;
 let editingAnnId = null;
 
-function bindEvents() {
-  // 首页：合集块点击 + 顶部搜索 + ⌂ 回首页
+function bindEvents() {  // 首页：合集块点击 + 顶部搜索 + ⌂ 回首页
   bindHomeEvents();
+  bindReadingProgress();
   // 隐藏/显示注号
   $('hideMarksBtn').addEventListener('click', () => {
     state.hideMarks = !state.hideMarks;
