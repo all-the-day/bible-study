@@ -87,6 +87,19 @@ async function main() {
   keys = await page.evaluate(() => resolveRefString('创一章一节'));
   check('7i. 单节不受影响', JSON.stringify(keys) === JSON.stringify(['创1:1']), JSON.stringify(keys));
 
+  // 7j. 全称简体引用（反馈 #8）：正文「路加十七章二十七节」→ 路加别名缺失时会把「加」
+  //     当加拉太书识别成加17:27（越界死链），需整词命中 路17:27
+  r = await refsOf('在路加十七章二十七节，当主说到挪亚的日子');
+  check('7j. 路加十七章二十七节 识别为引用', r.length === 1 && r[0] === '路加十七章二十七节', JSON.stringify(r));
+  keys = await page.evaluate(() => resolveRefString('路加十七章二十七节'));
+  check('7k. 解析为 路17:27', JSON.stringify(keys) === JSON.stringify(['路17:27']), JSON.stringify(keys));
+  r = await refsOf('马可十六章九节');
+  check('7l. 马可十六章九节 识别为引用', r.length === 1 && r[0] === '马可十六章九节', JSON.stringify(r));
+
+  // 7m. 章数越界守卫：别名虽匹配但章号超出书卷章数（如伪造的加拉太17章）→ 不包裹成死链
+  r = await refsOf('有人引用加拉太十七章二十七节');
+  check('7m. 越界全量引用不包裹', r.length === 0, JSON.stringify(r));
+
   // 8. 纯数字误判防护：25章 / 25:11 / 1920年 不识别
   r = await refsOf('（创二四62，25章）');
   check('8a. 25章 不识别', r.length === 1 && r[0] === '创二四62', JSON.stringify(r));
