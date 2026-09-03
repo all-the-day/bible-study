@@ -100,6 +100,19 @@ async function main() {
   r = await refsOf('有人引用加拉太十七章二十七节');
   check('7m. 越界全量引用不包裹', r.length === 0, JSON.stringify(r));
 
+  // 7n. 半节后缀回退（反馈 #12）：听抄正文「太十一29上，十七5下，彼前二21」——
+  //     太11:29/太17:5 在数据里是整节（未拆分上下半），带 上/下 后缀引用须回退整节，
+  //     否则弹窗「未收录」；相对引用「十七5下」也要带半节解析
+  keys = await page.evaluate(() => resolveRefString('太十一29上，十七5下，彼前二21'));
+  check('7n. 半节引用回退整节（太11:29/太17:5/彼前2:21）',
+    JSON.stringify(keys) === JSON.stringify(['太11:29', '太17:5', '彼前2:21']), JSON.stringify(keys));
+  keys = await page.evaluate(() => resolveRefString('太11:29上，太17:5下'));
+  check('7o. 规范 key 带半节同样回退', JSON.stringify(keys) === JSON.stringify(['太11:29', '太17:5']), JSON.stringify(keys));
+  keys = await page.evaluate(() => resolveRefString('民十一29上'));
+  check('7p. 民11:29 半节引用回退', JSON.stringify(keys) === JSON.stringify(['民11:29']), JSON.stringify(keys));
+  keys = await page.evaluate(() => resolveRefString('创一2下'));
+  check('7q. 真实半节数据不受影响（创1:2下）', JSON.stringify(keys) === JSON.stringify(['创1:2下']), JSON.stringify(keys));
+
   // 8. 纯数字误判防护：25章 / 25:11 / 1920年 不识别
   r = await refsOf('（创二四62，25章）');
   check('8a. 25章 不识别', r.length === 1 && r[0] === '创二四62', JSON.stringify(r));

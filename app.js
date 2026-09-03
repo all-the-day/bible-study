@@ -4361,13 +4361,19 @@ function resolveRefString(raw) {
   const tokens = (raw || '').split(/[，,、;；：\s]+/).filter(Boolean);
   const out = [];
   let curAcronym = null, curChapter = null;
-  // 单节 key 入列；整节不存在时兼容上下半节 key（如 创25:9 只有 创25:9上/下）
+  // 单节 key 入列；整节不存在时兼容上下半节 key（如 创25:9 只有 创25:9上/下）；
+  // 引用带 上/下 后缀但该节在数据里未拆分（如 太11:29 整节无半节）→ 剥后缀回退整节，
+  // 否则弹窗「未收录」（引用的半节是语意的一半，展示整节可接受）
   const pushKey = (key) => {
     const bt = state.bibleText || {};
     if (bt[key]) out.push(key);
     else if (bt[key + '上']) out.push(key + '上');
     else if (bt[key + '下']) out.push(key + '下');
-    else out.push(key); // bibleText 未加载时兜底，弹窗会过滤不存在的节
+    else {
+      const base = key.replace(/[上下]$/, '');
+      if (base !== key && bt[base]) out.push(base);
+      else out.push(key); // bibleText 未加载时兜底，弹窗会过滤不存在的节
+    }
   };
   for (const rawToken of tokens) {
     // 引导词不影响引用本身（串珠常见「参创三五23～26」「见申十二5注1」的 参/见）
@@ -4399,13 +4405,13 @@ function resolveRefString(raw) {
         if (r.chapter) curChapter = r.chapter;
       }
     } else if (curAcronym) {
-      // 相对引用：纯数字节（2）或 中文章+阿拉伯节（三9）
+      // 相对引用：纯数字节（2）或 中文章+阿拉伯节（三9 / 十七5下，半节后缀保留交由 pushKey 归一）
       const m = token.match(/^(\d+)$/);
       if (m && curChapter) { pushKey(`${curAcronym}${curChapter}:${m[1]}`); continue; }
-      const m2 = token.match(/^([一二三四五六七八九十百〇○]+)(\d+)$/);
+      const m2 = token.match(/^([一二三四五六七八九十百〇○]+)(\d+)([上下])?$/);
       if (m2) {
         const ch = cnToInt(m2[1]);
-        if (ch) { pushKey(`${curAcronym}${ch}:${m2[2]}`); curChapter = ch; }
+        if (ch) { pushKey(`${curAcronym}${ch}:${m2[2]}${m2[3] || ''}`); curChapter = ch; }
       }
     }
   }
