@@ -1164,15 +1164,12 @@ body.home .mobile-nav { display: none; }
   body.mobile-study .study-body { padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
 
   .text-col { padding: 16px 16px calc(68px + env(safe-area-inset-bottom)); }
-  /* 生命读经模块主区（反馈 #11）：移动端去掉层叠卡片的多余留白——
-     原 textCol16 + lrMain20 + lr-item(14+边框) + lr-para(16+边框) 累加
-     正文首字距屏边达 ~67px；移动端只保留单层卡片，正文段落卡片化仅限桌面 */
-  body.body-mod-lifereading .text-col { padding: 12px 8px calc(60px + env(safe-area-inset-bottom)); }
-  body.body-mod-lifereading .lr-main { padding: 4px 6px; }
-  body.body-mod-lifereading #lrMain .lr-item { padding: 10px 12px; }
-  body.body-mod-lifereading #lrMain .lr-para {
-    background: transparent; border: none; box-shadow: none;
-    padding: 0; margin-bottom: 8px;
+  /* 生命读经模块主区（反馈 #11，方案 A 定稿）：移动端去掉外层 .lr-item 文章卡片，
+     段落卡片直接沿用原 .lr-para 样式（不加新背景/阴影覆盖）——与桌面同为段落卡观感 */
+  body.body-mod-lifereading .text-col { padding: 10px 10px calc(60px + env(safe-area-inset-bottom)); }
+  body.body-mod-lifereading .lr-main { padding: 2px; }
+  body.body-mod-lifereading #lrMain .lr-item {
+    background: transparent; border: none; box-shadow: none; padding: 0;
   }
 
   /* 顶栏重构：☰ 左 · 标题(点击选章) 居中 · 读经|研读 pill + ⚙️ 右；次要操作收进设置菜单 */
