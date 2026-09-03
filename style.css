@@ -980,7 +980,9 @@ body.home .mobile-nav { display: none; }
 /* 模块级搜索结果条目前的来源前缀（卷名/期名，弱化处理） */
 .nav-result-loc { font-size: 11px; color: var(--text-muted); margin-right: 6px; flex-shrink: 0; }
 /* 弹窗内的书列表（openBookPicker）：普通滚动列表 */
-.bk-picker-list { max-height: 56vh; overflow-y: auto; padding: 6px; }
+.bk-picker-list { max-height: 40vh; overflow-y: auto; padding: 6px; }
+/* 弹窗内章网格区（openBookPicker 三级：辑→书→章，反馈 #14） */
+.bk-picker-chapters { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
 
 /* 书报阅读器：主区 + 右栏 */
 .bk-main { padding: 16px 20px; }

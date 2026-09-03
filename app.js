@@ -2962,27 +2962,44 @@ function renderBookNavBooks() {
   renderBody();
 }
 
-// 选书弹窗（crumb 点击 / 移动端 ☰ 共用）：顶部辑 Tab + 下方当前辑书列表，两级快速跨辑切换
+// 选书弹窗（crumb 点击 / 移动端 ☰ 共用）：辑 Tab + 书列表 + 章网格三级
+// （反馈 #14：书报原只有辑/书两级，移动端右栏抽屉延后导致无法选章）
 async function openBookPicker() {
   await ensureBookMeta();
   const vols = (state.bookMeta && state.bookMeta.volumes) || [];
   let curV = state.bookVolume;
-  openPopup('书报 · 选择书卷', `
+  let curB = curV === state.bookVolume ? state.bookBook : 0;   // 当前选中书（弹窗内）
+  openPopup('书报 · 选书选章', `
     ${vols.length > 1 ? `<div class="chp-books" id="bkpVols">
       ${vols.map((v, i) => `<button class="chp-book${i + 1 === curV ? ' active' : ''}" data-v="${i + 1}">${escapeHtml(v.title)}</button>`).join('')}
     </div>` : ''}
-    <div class="bk-picker-list" id="bkpBooks"></div>`);
+    <div class="bk-picker-list" id="bkpBooks"></div>
+    <div class="bk-picker-chapters" id="bkpChapters"></div>`);
   const tabs = $('bkpVols');
   const listEl = $('bkpBooks');
+  const gridEl = $('bkpChapters');
+  const renderChapters = (v, b) => {
+    const metaVol = vols[v];
+    const book = metaVol && metaVol.books[b];
+    if (!book) { gridEl.innerHTML = ''; return; }
+    let html = `<div class="chp-title">${escapeHtml(book.title)} · 选择章</div><div class="chp-grid">`;
+    (book.chapters || []).forEach((t, ci) => {
+      const act = (v + 1 === state.bookVolume && b === state.bookBook && ci === state.bookChapter) ? ' active' : '';
+      html += `<button class="chp-cell${act}" data-v="${v + 1}" data-b="${b}" data-c="${ci}">${ci + 1}</button>`;
+    });
+    html += '</div>';
+    gridEl.innerHTML = html;
+  };
   const renderBooks = () => {
     const metaVol = vols[curV - 1];
     listEl.innerHTML = ((metaVol && metaVol.books) || []).map((b, i) =>
-      `<button class="bk-nav-book${curV === state.bookVolume && i === state.bookBook ? ' active' : ''}" data-b="${i}">
+      `<button class="bk-nav-book${i === curB ? ' active' : ''}" data-b="${i}">
          <span class="bkb-title">${escapeHtml(b.title)}</span>
          <span class="bkb-count">${b.chapters.length}章</span>
        </button>`).join('');
     const act = listEl.querySelector('.bk-nav-book.active');
     if (act) act.scrollIntoView({ block: 'nearest' });
+    renderChapters(curV - 1, curB);
   };
   renderBooks();
   if (tabs) {
@@ -2991,18 +3008,33 @@ async function openBookPicker() {
       const b = e.target.closest('.chp-book');
       if (!b || +b.dataset.v === curV) return;
       curV = +b.dataset.v;
+      curB = curV === state.bookVolume ? state.bookBook : 0;
       tabs.querySelectorAll('.chp-book').forEach(x => x.classList.toggle('active', +x.dataset.v === curV));
       b.scrollIntoView({ block: 'nearest', inline: 'center' });
       renderBooks();
     });
   }
+  // 点书：桌面=直接打开该书（保持原交互，章级切换走右栏章列表/此处网格）；
+  // 移动端（反馈 #14，右栏抽屉延后）=选中并展示其章网格，点章才打开
   listEl.addEventListener('click', async (e) => {
     const btn = e.target.closest('.bk-nav-book');
     if (!btn) return;
     const book = +btn.dataset.b;
+    if (!isMobile()) {
+      closePopupAll();
+      if (curV !== state.bookVolume) await selectBookVolume(curV);
+      if (book !== state.bookBook) await selectBookItem(book);
+      return;
+    }
+    curB = book;
+    listEl.querySelectorAll('.bk-nav-book').forEach(x => x.classList.toggle('active', +x.dataset.b === curB));
+    renderChapters(curV - 1, curB);
+  });
+  gridEl.addEventListener('click', (e) => {
+    const c = e.target.closest('.chp-cell');
+    if (!c) return;
     closePopupAll();
-    if (curV !== state.bookVolume) await selectBookVolume(curV);
-    if (book !== state.bookBook) await selectBookItem(book);
+    openBookChapter(+c.dataset.v, +c.dataset.b, +c.dataset.c);
   });
 }
 
