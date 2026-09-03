@@ -4067,8 +4067,14 @@ function rerenderAnn(ann) {
 /* ============ 笔记编辑器（textarea 模态框，移植晨读 §5.3） ============ */
 let noteEditorState = null; // {mode:'create', range} | {mode:'edit', annId}
 
-function openNoteEditor(initial) {
+function openNoteEditor(initial, quote) {
   $('noteTextarea').value = initial || '';
+  // 原文引用预览（反馈 #13）：写/改笔记时先展示所标注的原文，再在其下写笔记
+  const q = $('noteQuote');
+  if (q) {
+    if (quote) { q.textContent = quote; q.hidden = false; }
+    else q.hidden = true;
+  }
   $('noteModal').hidden = false;
   lockScroll(true);
   setTimeout(() => $('noteTextarea').focus(), 100);
@@ -4083,14 +4089,14 @@ function addNote() {
   if (!r) return;
   noteEditorState = { mode: 'create', range: r };
   hideFloatTool();
-  openNoteEditor('');
+  openNoteEditor('', r.text || '');   // 原文引用预览 = 选区文本快照
 }
 // 编辑已有标注的笔记
 function editNote(annId) {
   const ann = state.annotations.find(a => a.id === annId);
   noteEditorState = { mode: 'edit', annId };
   hideMarkTool();
-  openNoteEditor(ann ? ann.note || '' : '');
+  openNoteEditor(ann ? ann.note || '' : '', ann ? (annotationText(ann) || ann.text || '') : '');
 }
 function saveNoteEditor() {
   const text = $('noteTextarea').value.trim();

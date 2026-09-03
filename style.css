@@ -656,6 +656,13 @@ sup.xref-ref:hover { color: var(--brand-dark); }
   box-shadow: 0 12px 32px rgba(0,0,0,.2);
 }
 .notemodal-title { font-weight: 700; color: var(--heading); margin-bottom: 10px; font-size: 15px; }
+/* 原文引用预览（写/改笔记时展示所标注的原文，反馈 #13）：置于输入框上方 */
+.note-quote {
+  background: var(--surface-alt); border-left: 3px solid var(--brand);
+  border-radius: var(--radius-sm); padding: 8px 10px; margin-bottom: 10px;
+  font-size: 14px; line-height: 1.8; color: var(--text);
+  max-height: 132px; overflow-y: auto; word-break: break-all;
+}
 .notemodal textarea {
   width: 100%; border: 1px solid var(--border); border-radius: var(--radius-sm);
   padding: 8px; font-size: 14px; resize: vertical; min-height: 100px;
