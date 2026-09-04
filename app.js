@@ -3532,8 +3532,9 @@ function bindEvents() {  // 首页：合集块点击 + 顶部搜索 + ⌂ 回首
     applyLayout();
     renderStudy(); // 重新渲染，让纲目索引出现/消失
   });
-  // 反馈弹窗
+  // 反馈弹窗（工作区顶栏 + 首页底部入口共用）
   $('feedbackBtn').addEventListener('click', openFeedbackModal);
+  $('homeFeedback').addEventListener('click', openFeedbackModal);
   // 移动端模式切换 pill（读经/研读，替代原底部导航按钮）
   document.querySelectorAll('#modePill .mode-pill-btn').forEach(b => {
     b.addEventListener('click', () => setMobileView(b.dataset.view));
