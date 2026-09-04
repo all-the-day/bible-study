@@ -2011,9 +2011,7 @@ function renderNotesListBody(listWrap) {
       (bigByGroup[g.label] || []).forEach(n => listWrap.appendChild(renderNotesBigItem(n)));
       const locs = g.items.map(a => hlLocText(a));
       const locSame = locs.length > 1 && locs.every(l => l === locs[0]);
-      // 笔记条目强制显示定位（反馈 #13 同 renderHighlights：出处是笔记的留存依据）
-      g.items.forEach((a, i) => listWrap.appendChild(renderNotesItem(a,
-        a.note && a.note.trim() ? false : (locSame && i > 0))));
+      g.items.forEach((a, i) => listWrap.appendChild(renderNotesItem(a, locSame && i > 0)));
     });
     Object.keys(bigByGroup).forEach(label => {
       if (groups.some(g => g.label === label)) return;
@@ -2281,10 +2279,7 @@ function renderHighlights(anns, groupFn, opts) {
       // 带笔记的条目置顶（笔记=自己做的内容，划线=阅读标记）
       const noted = g.items.filter(a => a.note && a.note.trim());
       const plain = g.items.filter(a => !(a.note && a.note.trim()));
-      // 笔记条目强制显示定位（反馈 #13：右栏单章上下文里纯划线隐藏出处可以，
-      // 笔记是留存内容，需知道写在哪节/哪篇）
-      [...noted, ...plain].forEach((a, i) => box.appendChild(renderHlItem(a,
-        a.note && a.note.trim() ? false : (hideItemLoc || (locSame && i > 0)))));
+      [...noted, ...plain].forEach((a, i) => box.appendChild(renderHlItem(a, hideItemLoc || (locSame && i > 0))));
     });
   };
   // 单一来源（书报/生命读经/听抄右栏天然如此）跳过来源 tab：避免"全部(N)=经文/书报(N)"的冗余
@@ -2339,7 +2334,9 @@ function buildHlItemBody(a, cls, hideLoc) {
   }
   const text = document.createElement('span');
   text.className = 'hl-text';
-  text.textContent = annotationText(a) || '（内容已失效）';
+  // 原文兜底：annotationText 取不到且无快照时给占位文案，避免「只有笔记没有原文」的空条目
+  // （反馈 #13：旧标注可能没有 text 快照，正文数据又未加载 → 原文一直显示空白被误以为没有出处）
+  text.textContent = annotationText(a) || a.text || '（原文缺失）';
   // 同一组内定位标签全相同时（如书报右栏固定一章）只首条显示，避免视觉上像内容重复
   if (!hideLoc) {
     const loc = document.createElement('span');
