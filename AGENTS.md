@@ -77,7 +77,7 @@
 
 ## 首页 + 合集块（2026-08 阶段 1）
 
-**启动先进首页**（PC/移动端通用，浏览器启动页风格）：顶部通用检索 + 正方形合集块网格 + 底部「反馈」文字入口（`#homeFeedback`，工作区顶栏反馈按钮在首页隐藏，首页独立入口共用 `openFeedbackModal`）。首页是全屏层 `#homeView`，与工作区 `.layout` **正交**（CSS 切换：`body.home .layout{display:none}` + `body:not(.home) #homeView{display:none}`，无 JS 频繁切 hidden）；顶栏新增常驻 `#homeBtn`（⌂）回首页。**搜索分层：全局搜索只在首页**（中央搜索框）；阅读器内各模块左栏为**模块级搜索**（空查询=当前列表，非空=全模块范围检索：生命读经全 66 卷 / 书报全辑 / 听抄全期，结果带卷名/期名前缀，点击跨范围跳转；读经模块只有书卷过滤 `bookSearch`）。**首屏 splash**（`#splash`，纯静态 HTML 先行显示，含 app 名 + 随机经节 `data/verses.json`（拉取失败用 HTML 兜底节）+ spinner）：init 并行拉 books.json 与 verses.json，首页就绪后 `splashHide()`（同步 display:none 不挡交互）。**数据加载指示**（`showLoadingHint`/`showLoadingError`）：读经经文首载（`ensureBibleData`→#verseContainer）、生命读经卷（`ensureLrVolume`→#lrMain）、书报辑（`ensureBookVolume`→#bookMain）、听抄期（`ensureMorningData`→#morningMain）未缓存时显示 spinner+提示，失败显示「加载失败+重试」；`fetchJSON` 带 25s AbortController 超时。
+**启动先进首页**（PC/移动端通用，浏览器启动页风格）：顶部通用检索 + 正方形合集块网格（首页顶栏只留右上角 反馈+⚙️，⌂ 隐藏）。首页是全屏层 `#homeView`，与工作区 `.layout` **正交**（CSS 切换：`body.home .layout{display:none}` + `body:not(.home) #homeView{display:none}`，无 JS 频繁切 hidden）；顶栏新增常驻 `#homeBtn`（⌂）回首页。**搜索分层：全局搜索只在首页**（中央搜索框）；阅读器内各模块左栏为**模块级搜索**（空查询=当前列表，非空=全模块范围检索：生命读经全 66 卷 / 书报全辑 / 听抄全期，结果带卷名/期名前缀，点击跨范围跳转；读经模块只有书卷过滤 `bookSearch`）。**首屏 splash**（`#splash`，纯静态 HTML 先行显示，含 app 名 + 随机经节 `data/verses.json`（拉取失败用 HTML 兜底节）+ spinner）：init 并行拉 books.json 与 verses.json，首页就绪后 `splashHide()`（同步 display:none 不挡交互）。**数据加载指示**（`showLoadingHint`/`showLoadingError`）：读经经文首载（`ensureBibleData`→#verseContainer）、生命读经卷（`ensureLrVolume`→#lrMain）、书报辑（`ensureBookVolume`→#bookMain）、听抄期（`ensureMorningData`→#morningMain）未缓存时显示 spinner+提示，失败显示「加载失败+重试」；`fetchJSON` 带 25s AbortController 超时。
 
 - **状态**：`state.screen`（'home'|'work'，唯一视图正交开关）、`state.activeModule`（当前阅读器模块：'bible'|'lifereading'|'books'|'morning'|'notes'）、`state.lrVolumes`（生命读经卷懒加载缓存，`selectChapter` 懒加载与阅读器共用）、`state.lrBookIndex/lrArticleId/lrSideTab`（生命读经阅读器位置与右栏 tab）
 - **切换函数**（顶层声明，e2e 测试 `page.evaluate(() => enterWork())` 直接调用）：`showHome()`（加 body.home + 移除 mobile-study + closePopupAll + 刷新块计数）、`enterWork()`（移除 body.home，幂等）
@@ -150,7 +150,7 @@ npm run feedback:close <id>      # 标记已处理
 
 - 服务端：duoban.xyz bible-kv（`/var/www/bible-reader/server.py`）的 `POST/GET/PATCH /api/feedback`；匿名提交有每 IP 20 次/小时限流
 - 管理员令牌：`BIBLE_ADMIN_TOKEN`（项目根 `.env.local`，不入库）== 服务器 `FEEDBACK_ADMIN_TOKEN`（pm2 env）
-- 客户端：**反馈入口全界面可见**——工作区顶栏「反馈」按钮（所有阅读器模块都不隐藏，`body-mod-*` 只藏其他工具按钮）+ 首页底部「反馈」文字入口（`#homeFeedback`），共用 `openFeedbackModal()`（app.js），提交到 `https://duoban.xyz/bible-api/api/feedback`
+- 客户端：**反馈入口全界面可见**——顶栏「反馈」按钮（所有阅读器模块都不隐藏，`body-mod-*` 只藏其他工具按钮；首页顶栏同样保留）→ `openFeedbackModal()`（app.js），提交到 `https://duoban.xyz/bible-api/api/feedback`
 - 任何「检查反馈」动作必须先 `npm run feedback:pull` 刷新，禁止直接读 inbox.md 作为反馈依据（它是本地快照）
 
 ## 数据导出

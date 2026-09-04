@@ -863,13 +863,6 @@ body.home .mobile-nav { display: none; }
 .home-sr-item:hover { background: var(--surface-alt); }
 .home-sr-item .sr-loc { color: var(--text-muted); margin-right: 8px; font-size: 13px; }
 .home-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; margin-top: 24px; }
-/* 首页反馈入口：低调文字链，不抢合集块视觉 */
-.home-foot { margin-top: 32px; text-align: center; }
-.home-foot-link {
-  border: none; background: none; cursor: pointer;
-  color: var(--text-muted); font-size: 13px; padding: 8px 12px;
-}
-.home-foot-link:hover { color: var(--brand); }
 .home-block {
   aspect-ratio: 1/1; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 10px;
