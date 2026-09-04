@@ -102,8 +102,14 @@ const COLLECTIONS = [
 ];
 
 function load(key, fallback) {
-  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
-  catch (e) { return fallback; }
+  try {
+    const v = localStorage.getItem(key);
+    const parsed = v ? JSON.parse(v) : fallback;
+    // 剔除删除墓碑桩（{_del:1}）：已删条目不入内存态。
+    // 注意不能引用下面的 Sync 常量——state 初始化早于它（TDZ），直接取 window
+    const mod = window.BibleStudySync;
+    return mod ? mod.stripDeleted(parsed) : parsed;
+  } catch (e) { return fallback; }
 }
 // 云同步客户端（sync.js 加载失败时静默降级为纯本地）
 const Sync = window.BibleStudySync || null;
@@ -120,6 +126,15 @@ function save(key, val) {
   }
 }
 
+/* 删除落盘：live 为内存态（条目已移除），deletedIds 为本次删除的标识（数组传 id / 笔记传 key）。
+   并集合并语义下「本地少了一条」与「本地从来没有这条」无法区分，推送后服务器旧记录仍在，
+   下次 pullAll 会把它复活 → 必须在存储与云端留下墓碑桩（sync.js saveWithTombstones）。
+   墓碑始终落盘（日后启用同步时删除也能生效），但只在启用同步时才推送 */
+function saveDeleted(key, live, deletedIds) {
+  if (Sync && Sync.saveWithTombstones) return Sync.saveWithTombstones(key, live, deletedIds, syncActive());
+  save(key, live); // sync.js 不可用时退化为纯本地删除
+}
+
 // 启动时后台同步：服务器为主，成功后覆盖本地；再重试离线未推送的改动（先合并服务器当前值再推）
 async function syncFromRemote() {
   if (!syncActive()) return;
@@ -127,12 +142,10 @@ async function syncFromRemote() {
   // flushPending 推送前会拉取服务器当前值合并（防旧快照覆盖新数据），成功后把合并结果写回 localStorage，
   // 因此状态重载必须放在 flush 之后，UI 与后续 save 才基于合并结果
   await Sync.flushPending((key) => {
-    if (key === LS_ANNOTATIONS) return state.annotations;
-    if (key === LS_CHAPTER_NOTES) return state.chapterNotes;
-    if (key === LS_LR_NOTES) return state.lrNotes;
-    if (key === LS_BOOK_NOTES) return state.bookNotes;
-    if (key === LS_MORNING_NOTES) return state.morningNotes;
-    return undefined;
+    // 必须给 localStorage 原文（含墓碑桩），不能给 state 内存态（墓碑已被过滤）：
+    // flushPending 会把合并结果写回本地，传干净的内存态会让服务器上的已删记录存活并被写回，等于撤销删除
+    try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : undefined; }
+    catch (e) { return undefined; }
   });
   state.annotations = load(LS_ANNOTATIONS, []);
   state.chapterNotes = load(LS_CHAPTER_NOTES, {});
@@ -1605,7 +1618,7 @@ function deleteBigNote(dict, key) {
   const store = state[dict];
   if (store) delete store[key];
   const entry = NOTES_DICTS.find(x => x.dict === dict);
-  if (entry) save(entry.lsKey, store);
+  if (entry) saveDeleted(entry.lsKey, store, [key]);
   if (state.notesSelectedItem && state.notesSelectedItem.kind === 'note' &&
       state.notesSelectedItem.dict === dict && state.notesSelectedItem.key === key) {
     state.notesSelectedItem = null;
@@ -2036,8 +2049,9 @@ function renderNotesBatchBar() {
     const n = state.notesSelected.size;
     if (!n) return;
     confirmDialog('批量删除', `删除选中的 ${n} 条标注？此操作不可撤销。`, () => {
+      const ids = [...state.notesSelected];
       state.annotations = state.annotations.filter(a => !state.notesSelected.has(a.id));
-      save(LS_ANNOTATIONS, state.annotations);
+      saveDeleted(LS_ANNOTATIONS, state.annotations, ids);
       state.notesSelected = new Set();
       state.notesSelectMode = false;
       state.notesSelectedItem = null;
@@ -4251,10 +4265,12 @@ function changeAnnColor(annId, colorId) {
 }
 
 function deleteAnn(annId) {
-  const ann = state.annotations.find(a => a.id === annId);
-  if (!ann) return;
-  state.annotations = state.annotations.filter(a => a.id !== annId);
-  save(LS_ANNOTATIONS, state.annotations);
+  const i = state.annotations.findIndex(a => a.id === annId);
+  if (i === -1) return;
+  const ann = state.annotations[i];
+  state.annotations.splice(i, 1);
+  // 内存态移除 + 存储留墓碑桩（并集合并下不留墓碑会被服务器旧记录复活）
+  saveDeleted(LS_ANNOTATIONS, state.annotations, [annId]);
   rerenderAnn(ann);
   hideMarkTool();
 }

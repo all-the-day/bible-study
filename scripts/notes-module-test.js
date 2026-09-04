@@ -152,9 +152,14 @@ async function main() {
   await wait(500);
   const r8b = await page.evaluate(() => {
     const anns = JSON.parse(localStorage.getItem('bible-study.annotations') || '[]');
-    return !anns.some(a => a.id === 't2');
+    // 删除后：内存态（非墓碑）里没有这条，但存储里留墓碑桩（并集合并下防服务器旧记录复活）
+    return {
+      gone: !anns.some(a => a.id === 't2' && !a._del),
+      tomb: anns.some(a => a.id === 't2' && a._del === 1),
+    };
   });
-  console.log('8. 删除单条:', r8a.popup && r8a.ok && r8b ? '✓' : '✗', '| 确认框:', r8a.popup, '| 已删:', r8b);
+  console.log('8. 删除单条:', r8a.popup && r8a.ok && r8b.gone && r8b.tomb ? '✓' : '✗',
+    '| 确认框:', r8a.popup, '| 已删:', r8b.gone, '| 留墓碑:', r8b.tomb);
 
   // 9. 大段笔记：选中 → 编辑写回 → 删除
   await page.evaluate(() => { [...document.querySelectorAll('.notes-item')].find(el => el.textContent.includes('创世记24章大段笔记')).click(); });
@@ -168,8 +173,13 @@ async function main() {
   await wait(300);
   await page.evaluate(() => { document.querySelector('#cfOk').click(); });
   await wait(500);
-  const r9c = await page.evaluate(() => !('1:24' in JSON.parse(localStorage.getItem('bible-study.chapterNotes') || '{}')));
-  console.log('   大段笔记删除:', r9c ? '✓' : '✗');
+  const r9c = await page.evaluate(() => {
+    const notes = JSON.parse(localStorage.getItem('bible-study.chapterNotes') || '{}');
+    const live = {};
+    for (const k of Object.keys(notes)) if (!(notes[k] && notes[k]._del)) live[k] = notes[k];
+    return { gone: !('1:24' in live), tomb: !!(notes['1:24'] && notes['1:24']._del === 1) };
+  });
+  console.log('   大段笔记删除:', r9c.gone && r9c.tomb ? '✓' : '✗', '| 已删:', r9c.gone, '| 留墓碑:', r9c.tomb);
 
   // 10. 批量删除：多选 → 勾 2 条（标注才有勾选框，大段笔记无）→ 删除所选
   //     此时列表 = t1、t3（带笔记标注）+ 听抄大段笔记；纯划线 t4 已被模块排除
@@ -189,7 +199,9 @@ async function main() {
   await wait(300);
   await page.evaluate(() => { document.querySelector('#cfOk').click(); });
   await wait(500);
-  const r10c = await page.evaluate(() => JSON.parse(localStorage.getItem('bible-study.annotations') || '[]').length);
+  // 剩余 = 纯划线 t4（t1/t3 已删 + t2 已删，三者都只留墓碑桩，不计入）
+  const r10c = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('bible-study.annotations') || '[]').filter(a => !a._del).length);
   console.log('10. 批量删除:', r10a.checks === 2 && r10a.bar && r10b === '已选 2 条' && r10c === 1 ? '✓' : '✗',
     '| 复选:', r10a.checks, '| 计数:', r10b, '| 剩余标注:', r10c);
 

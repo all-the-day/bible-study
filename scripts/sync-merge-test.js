@@ -15,6 +15,11 @@
  * 13. 同 key 推送串行化 → 不并发在途，两次改动都上服务器
  * 14. flush 进行中的新写 → 不被 merged 写回覆盖 + pending 恢复（修订号守卫）
  * 15. 直推在途时新写 → 推送成功不误清新写的 pending（修订号守卫）
+ * 16. 删除标注 → 存储留墓碑 + 推送后服务器该条变墓碑（原文不复活）
+ * 17. 删除 → 刷新（pullAll 覆盖本地 + stripDeleted）→ 已删条目不复活
+ * 18. 连续删两条 → 两次的墓碑都在（后一次落盘不覆盖前一次）
+ * 19. 笔记 dict 删除 → key 变墓碑；同 key 重新写入 → 本端新值赢，墓碑被覆盖
+ * 20. 墓碑优先：远端已删（墓碑）+ 本端还有旧副本 → 推送后不复活
  */
 "use strict";
 const fs = require("fs");
@@ -244,6 +249,98 @@ function byId(arr) { return [...arr].sort((a, b) => a.id.localeCompare(b.id)); }
     await p2;
     assert("场景15 push2 推送最新值", remote["u1:bible-study:annotations"].some((x) => x.id === "b"));
     assert("场景15 全部推送完成 pending 清空", !Sync.hasPending());
+  }
+
+  // 场景 16：删除标注 → 落盘留墓碑 + 推送后服务器该条变墓碑（原文不复活）
+  {
+    const remote = {
+      "u1:bible-study:annotations": [
+        { id: "a", text: "本机要删的" },
+        { id: "b", text: "保留" },
+      ],
+    };
+    const { Sync, store } = makeSync(remote);
+    store["bible-study.pending"] = "[]";
+    store["bible-study.annotations"] = JSON.stringify([
+      { id: "a", text: "本机要删的" }, { id: "b", text: "保留" },
+    ]);
+    await Sync.saveWithTombstones("bible-study.annotations", [{ id: "b", text: "保留" }], ["a"], true);
+    const disk = JSON.parse(store["bible-study.annotations"]);
+    const server = remote["u1:bible-study:annotations"];
+    assert("场景16 落盘留墓碑", disk.some((x) => x.id === "a" && x._del === 1));
+    assert("场景16 落盘不含已删正文", !disk.some((x) => x.id === "a" && !x._del));
+    assert("场景16 服务器该条变墓碑（原文不在）", !server.some((x) => x.id === "a" && x.text));
+    assert("场景16 服务器保留未删条目", server.some((x) => x.id === "b" && x.text === "保留"));
+    assert("场景16 stripDeleted 后内存态无已删条目", !Sync.stripDeleted(disk).some((x) => x.id === "a"));
+  }
+
+  // 场景 17：删除 → 刷新（pullAll 服务器为主覆盖本地 + stripDeleted）→ 已删条目不复活
+  {
+    const remote = {
+      "u1:bible-study:annotations": [{ id: "a", text: "待删" }, { id: "b", text: "留" }],
+    };
+    // 设备 A：删除并推送
+    const A = makeSync(remote);
+    A.store["bible-study.pending"] = "[]";
+    A.store["bible-study.annotations"] = JSON.stringify([{ id: "a", text: "待删" }, { id: "b", text: "留" }]);
+    await A.Sync.saveWithTombstones("bible-study.annotations", [{ id: "b", text: "留" }], ["a"], true);
+    // 刷新：新实例启动 → pullAll 覆盖本地 → 内存态（这是原来「删了又回来」的复现路径）
+    const B = makeSync(remote);
+    B.store["bible-study.pending"] = "[]";
+    B.store["bible-study.annotations"] = JSON.stringify([{ id: "a", text: "待删" }, { id: "b", text: "留" }]);
+    await B.Sync.pullAll(["bible-study.annotations"]);
+    const reloaded = B.Sync.stripDeleted(JSON.parse(B.store["bible-study.annotations"]));
+    assert("场景17 刷新后已删条目不复活", !reloaded.some((x) => x.id === "a"));
+    assert("场景17 刷新后未删条目仍在", reloaded.some((x) => x.id === "b"));
+  }
+
+  // 场景 18：连续删两条 → 两次的墓碑都在（后一次落盘不得覆盖前一次）
+  {
+    const remote = {};
+    const { Sync, store } = makeSync(remote);
+    store["bible-study.pending"] = "[]";
+    const all = [{ id: "a", text: "a" }, { id: "b", text: "b" }, { id: "c", text: "c" }];
+    store["bible-study.annotations"] = JSON.stringify(all);
+    await Sync.saveWithTombstones("bible-study.annotations", all.filter((x) => x.id !== "a"), ["a"], true);
+    const disk1 = JSON.parse(store["bible-study.annotations"]);
+    await Sync.saveWithTombstones("bible-study.annotations", disk1.filter((x) => !x._del && x.id !== "b"), ["b"], true);
+    const disk2 = JSON.parse(store["bible-study.annotations"]);
+    const stubs = disk2.filter((x) => x._del).map((x) => x.id).sort().join(",");
+    assert("场景18 两次删除的墓碑都在", stubs === "a,b");
+    assert("场景18 服务器墓碑都在", remote["u1:bible-study:annotations"].filter((x) => x._del).length === 2);
+    assert("场景18 未删条目仍在服务器", remote["u1:bible-study:annotations"].some((x) => x.id === "c" && x.text === "c"));
+  }
+
+  // 场景 19：笔记 dict 删除 → key 变墓碑；同 key 重新写入 → 本端新值赢，墓碑被覆盖
+  {
+    const remote = { "u1:bible-study:chapterNotes": { "1:24": "旧笔记" } };
+    const { Sync, store } = makeSync(remote);
+    store["bible-study.pending"] = JSON.stringify(["bible-study.chapterNotes"]);
+    store["bible-study.chapterNotes"] = JSON.stringify({ "1:24": "旧笔记" });
+    await Sync.saveWithTombstones("bible-study.chapterNotes", {}, ["1:24"], true);
+    const disk = JSON.parse(store["bible-study.chapterNotes"]);
+    assert("场景19 笔记 key 变墓碑", !!(disk["1:24"] && disk["1:24"]._del === 1));
+    assert("场景19 stripDeleted 后 key 消失", !("1:24" in Sync.stripDeleted(disk)));
+    assert("场景19 服务器 key 变墓碑", remote["u1:bible-study:chapterNotes"]["1:24"]._del === 1);
+    await Sync.saveWithTombstones("bible-study.chapterNotes", { "1:24": "重新写的笔记" }, [], true);
+    assert("场景19 重新写入覆盖墓碑", remote["u1:bible-study:chapterNotes"]["1:24"] === "重新写的笔记");
+  }
+
+  // 场景 20：墓碑优先——远端已删（墓碑）+ 本端离线期间还留着旧副本 → 推送后不复活
+  {
+    const remote = {
+      "u1:bible-study:annotations": [
+        { id: "a", _del: 1, _t: 111 },
+        { id: "b", text: "正常" },
+      ],
+    };
+    const { Sync, store } = makeSync(remote);
+    store["bible-study.pending"] = JSON.stringify(["bible-study.annotations"]);
+    store["bible-study.annotations"] = JSON.stringify([{ id: "a", text: "本端旧副本" }, { id: "b", text: "正常" }]);
+    await Sync.flushPending(() => JSON.parse(store["bible-study.annotations"]));
+    const server = remote["u1:bible-study:annotations"];
+    assert("场景20 墓碑优先：本端旧副本不复活", !server.some((x) => x.id === "a" && x.text));
+    assert("场景20 墓碑仍在服务器", server.some((x) => x.id === "a" && x._del === 1));
   }
 
   console.log(failed === 0 ? "\n全部通过" : "\n有 " + failed + " 项失败");

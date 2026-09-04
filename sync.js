@@ -136,8 +136,67 @@
     });
   }
 
+  /* ── 删除墓碑（tombstone）────────────────────────────────────────────────
+     并集合并语义下，「本地删掉一条」在合并时无法与「本地从来没有这条」区分，
+     推送后服务器旧记录仍在，下次 pullAll（服务器为主）会把已删条目复活。
+     因此删除时不真抹掉，而是在存储里留下墓碑桩 {_del:1,_t}，随同步推到云端：
+       - 数组（annotations）：{id, _del:1, _t} 留在数组里，占着原 id
+       - 对象（笔记 dict）：store[key] = {_del:1,_t}，占着原 key
+     内存态经 stripDeleted 过滤，UI 无需感知墓碑。
+     墓碑与它标记的数据在同一个 KV 值里 → 一次 PUT 原子生效，不存在跨键竞态。 */
+  const DEL = "_del";
+
+  function isDeleted(v) {
+    return !!(v && typeof v === "object" && v[DEL]);
+  }
+
+  /** 剔除墓碑桩，得到干净的内存态（数组滤元素 / 对象删 key），其他类型原样返回 */
+  function stripDeleted(value) {
+    if (Array.isArray(value)) return value.filter((x) => !isDeleted(x));
+    if (value && typeof value === "object") {
+      const out = {};
+      for (const k of Object.keys(value)) if (!isDeleted(value[k])) out[k] = value[k];
+      return out;
+    }
+    return value;
+  }
+
+  /** 删除落盘 + 推云：live 为内存态（已剔除墓碑），deletedIds 为本次删除的标识
+      （数组传 id、对象传 key）。必须把 localStorage 里「既有的墓碑」合进来，
+      否则连续删两条时后一次落盘会丢掉前一次的墓碑。
+      push 显式传入：未启用同步（无账号）时只落盘不推——否则会以默认 u1 命名空间写到别人的数据里 */
+  function saveWithTombstones(localKey, live, deletedIds, push) {
+    let raw = null;
+    try { raw = JSON.parse(localStorage.getItem(localKey)); } catch (e) { raw = null; }
+    let out;
+    if (Array.isArray(live)) {
+      out = live.slice();
+      const ids = new Set(out.map((x) => x && x.id));
+      for (const item of Array.isArray(raw) ? raw : []) {
+        if (isDeleted(item) && !ids.has(item.id)) out.push(item);
+      }
+      for (const id of deletedIds) out.push({ id: id, [DEL]: 1, _t: Date.now() });
+    } else {
+      out = {};
+      if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+        for (const k of Object.keys(raw)) if (isDeleted(raw[k])) out[k] = raw[k];
+      }
+      Object.assign(out, live);
+      for (const k of deletedIds) out[k] = { [DEL]: 1, _t: Date.now() };
+    }
+    try { localStorage.setItem(localKey, JSON.stringify(out)); } catch (e) {}
+    if (push === false) return Promise.resolve(false);
+    return schedulePush(localKey);
+  }
+
   /* 合并「服务器当前值」与「本地待推值」：数组按 id 并集（同 id 本机赢），对象按键浅合并（本机赢）。
-     防止旧快照整体 PUT 覆盖其他设备推上去的新数据（last-write-wins 数据丢失） */
+     防止旧快照整体 PUT 覆盖其他设备推上去的新数据（last-write-wins 数据丢失）。
+     墓碑优先规则（两条不同，理由见注释）：
+       - 数组：同 id 一端是墓碑 → 墓碑赢。标注 id 是 uuid 永不复用，
+         删除必须压过其他设备上的旧副本（否则 A 删了、B 的旧副本一推就复活）。
+       - 对象：远端是墓碑而本端有真值 → 本端真值赢，支持「删了又在同 key 重新写」；
+         启动时 pullAll 先于 flushPending，上线设备总是先学到删除再推送，
+         所以这不会让离线期间的旧笔记复活。 */
   function mergeRemoteLocal(remote, local) {
     if (Array.isArray(local)) {
       if (!Array.isArray(remote)) return local;
@@ -150,6 +209,7 @@
         }
         const idx = merged.findIndex((x) => x && x.id === id);
         if (idx === -1) merged.push(item);
+        else if (isDeleted(merged[idx]) && !isDeleted(item)) continue; // 墓碑优先：远端已删则不复活
         else merged[idx] = item;
       }
       return merged;
@@ -263,6 +323,8 @@
     flushPending,
     onStatus,
     hasPending,
+    stripDeleted,
+    saveWithTombstones,
     isSynced: () => synced,
     isRemoteOk: () => remoteOk,
   };
