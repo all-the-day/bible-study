@@ -69,27 +69,28 @@ async function main() {
     modLr: document.body.classList.contains('body-mod-lifereading'),
     lrVisible: getComputedStyle(document.querySelector('#lrMain')).display === 'block',
     crumb: document.querySelector('#chapterLabel').textContent.slice(0, 12),
-    artCount: document.querySelectorAll('.lr-nav-art').length,
-    filter: (() => { const el = document.querySelector('#lrNav input'); return !!el && getComputedStyle(el).display !== 'none'; })(),
+    artCount: document.querySelectorAll('#navDrawer .dw-cols .dw-col:nth-child(2) .dw-item').length,
+    filter: (() => { const el = document.querySelector('#dwSearchInput'); return !!el && getComputedStyle(el).display !== 'none'; })(),
+    docked: document.body.classList.contains('drawer-docked'),
     sideTabs: [...document.querySelectorAll('.lr-side-tab')].map(t => t.textContent).join('|'),
     actionsHidden: getComputedStyle(document.querySelector('#viewModeBtn')).display === 'none',
   }));
-  console.log('4. 生命读经块直进阅读器:', !r4.home && r4.modLr && r4.lrVisible ? '✓' : '✗',
-    '| crumb:', r4.crumb, '| 篇目:', r4.artCount, '| 筛选框:', r4.filter, '| 侧栏tab:', r4.sideTabs, '| 读经按钮隐藏:', r4.actionsHidden);
+  console.log('4. 生命读经块直进阅读器:', !r4.home && r4.modLr && r4.lrVisible && r4.docked ? '✓' : '✗',
+    '| crumb:', r4.crumb, '| 篇目:', r4.artCount, '| 搜索框:', r4.filter, '| 停靠:', r4.docked, '| 侧栏tab:', r4.sideTabs, '| 读经按钮隐藏:', r4.actionsHidden);
 
-  // 5. 切卷(罗马书 45，经 crumb 弹窗) + 切篇(第2篇)
-  await page.evaluate(() => openLrArticleList(state.lrBookIndex));
-  await new Promise((r) => setTimeout(r, 800));
-  await page.evaluate(() => document.querySelector('#lrpVols .chp-book[data-b="45"]').click());
-  await new Promise((r) => setTimeout(r, 800));
-  await page.evaluate(() => { document.querySelectorAll('#lrpArts .lr-art-cell')[1].click(); });
+  // 5. 切卷(罗马书 45，经停靠抽屉) + 切篇(第2篇)
+  await page.evaluate(() => openNavDrawer());
+  await new Promise((r) => setTimeout(r, 600));
+  await page.evaluate(() => document.querySelector('#dwBody .dw-item[data-l="45"]').click());
+  await new Promise((r) => setTimeout(r, 1000));
+  await page.evaluate(() => { document.querySelectorAll('#dwBody .dw-cols .dw-col:nth-child(2) .dw-item')[1].click(); });
   await new Promise((r) => setTimeout(r, 2000));
-  await page.evaluate(() => { document.querySelectorAll('.lr-nav-art')[1].click(); });
+  await page.evaluate(() => { document.querySelectorAll('#navDrawer .dw-cols .dw-col:nth-child(2) .dw-item')[1].click(); });
   await new Promise((r) => setTimeout(r, 800));
   const r5 = await page.evaluate(() => ({
     book: document.querySelector('#bookName').textContent,
     crumb: document.querySelector('#chapterLabel').textContent.slice(0, 14),
-    activeArt: document.querySelector('.lr-nav-art.active')?.textContent.slice(0, 10),
+    activeArt: document.querySelector('#navDrawer .dw-cols .dw-col:nth-child(2) .dw-item.cur')?.textContent.slice(0, 10),
   }));
   console.log('5. 切卷切篇:', r5.book === '罗马书' ? '✓' : '✗', '|', r5.crumb, '| active:', r5.activeArt);
 

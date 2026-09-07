@@ -14,7 +14,6 @@ const LS_ANNOTATIONS = 'bible-study.annotations';
 const LS_CHAPTER_NOTES = 'bible-study.chapterNotes';
 const LS_LAST = 'bible-study.last';
 const LS_HIDE_MARKS = 'bible-study.hideMarks';
-const LS_NAV_COLLAPSED = 'bible-study.navCollapsed';
 const LS_VIEW_MODE = 'bible-study.viewMode';
 const LS_STUDY_WIDTH = 'bible-study.studyWidth';
 const LS_LR_MAP = 'bible-study.lrMap';
@@ -26,6 +25,7 @@ const LS_BOOK_NOTES = 'bible-study.bookNotes'; // {"volume:book:chapter": text} 
 const LS_MORNING_LAST = 'bible-study.morningLast';   // {period, chapterId} 晨兴阅读器上次位置
 const LS_MORNING_NOTES = 'bible-study.morningNotes'; // {"period:chapterId": text}
 const LS_NOTES_PREFS = 'bible-study.notesPrefs';     // {source, color, sort} 笔记管理模块偏好
+const LS_DRAWER_DOCKED = 'bible-study.drawerDocked'; // 桌面导航抽屉是否停靠展开（收起后 ☰/crumb 再展开）
 
 // 反馈提交地址（bible-kv 服务器，Caddy /bible-api/ 反代）
 const FEEDBACK_API = 'https://duoban.xyz/bible-api';
@@ -44,7 +44,6 @@ const state = {
   annotations: load(LS_ANNOTATIONS, []),
   chapterNotes: load(LS_CHAPTER_NOTES, {}),
   hideMarks: load(LS_HIDE_MARKS, false),
-  navCollapsed: load(LS_NAV_COLLAPSED, false),
   viewMode: load(LS_VIEW_MODE, 'default'),
   studyWidth: load(LS_STUDY_WIDTH, 480),
   studyFull: false,
@@ -83,9 +82,7 @@ const state = {
   notesSelectMode: false,
   notesSelected: new Set(),   // 多选模式选中的标注 id
   notesCollapsed: new Set(),  // 分类树折叠节点
-  lrArtFilter: '',       // 生命读经左栏篇目搜索（空=当前卷列表，非空=全卷检索）
-  bkBookFilter: '',      // 书报左栏书/章搜索（空=当前辑列表，非空=全辑检索）
-  mrFilter: '',          // 听抄左栏篇搜索（空=当前期列表，非空=全期检索）
+  drawerDocked: load(LS_DRAWER_DOCKED, true),  // 桌面导航抽屉停靠展开（可收起）
   lrTitleIndex: null,    // 生命读经全卷篇目标题索引缓存（data/lr-titles.json）
   notesGroup: null,           // 左栏树选中的叶子分组（过滤主区）
   notesSelectedItem: null,    // 右栏编辑目标：{kind:'ann',id} | {kind:'note',dict,key}
@@ -348,7 +345,6 @@ const VIEW_MODE_LABELS = { default: '双页', stacked: '上下', full: '全屏' 
 
 function applyLayout() {
   const layout = document.querySelector('.layout');
-  layout.classList.toggle('nav-collapsed', state.navCollapsed);
   layout.classList.toggle('view-stacked', state.viewMode === 'stacked');
   layout.classList.toggle('view-full', state.viewMode === 'full');
   layout.classList.toggle('study-full', state.studyFull);
@@ -487,7 +483,6 @@ async function init() {
   state.books.forEach(b => state.bookIndexByIdx[b.acronym + b.index] = b);
   state.books.forEach(b => { REF_ALIASES[b.acronym] = b.acronym; });
   _refAliasesSorted = Object.keys(REF_ALIASES).sort((a, b) => b.length - a.length);
-  renderBookList();
   applyHideMarks();
   applyLayout();
   bindViewport();
@@ -535,6 +530,8 @@ function showHome() {
   // 清除模块残留类：body-mod-* 会隐藏顶栏按钮（如 #feedbackBtn），不清会导致回首页后顶栏与首次进入不一致
   [...document.body.classList].filter(c => c.startsWith('body-mod-')).forEach(c => document.body.classList.remove(c));
   closePopupAll();
+  closeNavDrawer();
+  applyDrawerDock();   // 首页隐藏停靠列（isDocked 含 screen==='work' 条件）
   const hb = $('homeBtn');
   if (hb) hb.classList.add('active');
   renderHome();
@@ -548,6 +545,7 @@ function enterWork() {
   document.body.classList.remove('home');
   // 恢复模块类（showHome 会清除，防止 body-mod-* 残留影响首页顶栏样式）
   applyModuleBodyClass(state.activeModule);
+  applyDrawerDock();   // 恢复停靠列（isDocked 依赖 screen==='work'）
   const hb = $('homeBtn');
   if (hb) hb.classList.remove('active');
 }
@@ -559,7 +557,7 @@ const READER_MODULES = {
     id: 'bible',
     title: '读经',
     enter() { setMobileView('read'); },
-    renderNav() { renderBookList(); renderChapterList(); highlightNav(); },
+    renderNav() { renderDrawer(); },   // 层级导航统一走停靠抽屉（左栏已删）
     renderMain() { renderChapter(); },
     renderSide() { renderStudy(); },
     renderCrumb() {
@@ -569,8 +567,8 @@ const READER_MODULES = {
       $('chapterLabel').textContent = `${state.currentChapter}章`;
       renderChapterNav();
     },
-    onMenu() { toggleNavCollapsed(); },
-    onCrumbClick() { openChapterPicker(); },
+    onMenu() { toggleDrawerDock(); },   // ☰：桌面=停靠列收起/展开，移动端=浮层抽屉
+    onCrumbClick() { openNavDrawer(); },
   },
   lifereading: {
     id: 'lifereading',
@@ -587,10 +585,7 @@ const READER_MODULES = {
       state.viewMode = 'default';
       applyLayout();
     },
-    async renderNav() {
-      const vol = await ensureLrVolume(state.lrBookIndex);
-      await renderLrArticleList(state.lrBookIndex, vol);
-    },
+    async renderNav() { renderDrawer(); },   // 停靠抽屉即左栏（含懒加载与搜索）
     async renderMain() {
       const vol = await ensureLrVolume(state.lrBookIndex);
       const art = vol && vol.articles.find(a => a.id === state.lrArticleId);
@@ -609,8 +604,8 @@ const READER_MODULES = {
       $('bookName').textContent = (vol && vol.name) || '';
       $('chapterLabel').textContent = art ? `第${art.id}篇 ${art.title}` : '';
     },
-    onMenu() { toggleNavCollapsed(); },
-    onCrumbClick() { openLrArticleList(state.lrBookIndex); },
+    onMenu() { toggleDrawerDock(); },
+    onCrumbClick() { openNavDrawer(); },
     // 切走前解绑 #textCol 滚动高亮监听（防读经模块残留无效 listener）
     onLeave() {
       if (_lrSpy) { $('textCol').removeEventListener('scroll', _lrSpy); _lrSpy = null; }
@@ -639,10 +634,7 @@ const READER_MODULES = {
       state.viewMode = 'default';
       applyLayout();
     },
-    async renderNav() {
-      await ensureBookMeta();
-      renderBookNavBooks();
-    },
+    async renderNav() { await ensureBookMeta(); renderDrawer(); },
     async renderMain() { await renderBookMain(); },
     renderSide() { renderBookSide(); },
     renderCrumb() {
@@ -651,8 +643,8 @@ const READER_MODULES = {
       $('bookName').textContent = (state.bookMeta && state.bookMeta.name) || '书报';
       $('chapterLabel').textContent = book ? `${book.title} · 第${state.bookChapter + 1}章` : '';
     },
-    onMenu() { toggleNavCollapsed(); },
-    onCrumbClick() { openBookPicker(); },
+    onMenu() { toggleDrawerDock(); },
+    onCrumbClick() { openNavDrawer(); },
   },
   morning: {
     id: 'morning',
@@ -669,10 +661,7 @@ const READER_MODULES = {
       state.viewMode = 'default';
       applyLayout();
     },
-    async renderNav() {
-      await ensureMorningData(state.morningPeriod);
-      await renderMorningChapterList();
-    },
+    async renderNav() { await ensureMorningData(state.morningPeriod); renderDrawer(); },
     renderMain() { renderMorningMain(); },
     renderSide() { renderMorningSide(); },
     renderCrumb() {
@@ -682,8 +671,8 @@ const READER_MODULES = {
       $('bookName').textContent = (t && (t.title || t.season)) || '听抄';
       $('chapterLabel').textContent = ch ? `第${ch.number}篇 ${ch.title}` : '';
     },
-    onMenu() { toggleNavCollapsed(); },
-    onCrumbClick() { openMorningArticleList(); },
+    onMenu() { toggleDrawerDock(); },
+    onCrumbClick() { openNavDrawer(); },
   },
   notes: {
     id: 'notes',
@@ -714,7 +703,7 @@ const READER_MODULES = {
       $('bookName').textContent = '笔记管理';
       $('chapterLabel').textContent = '';
     },
-    onMenu() { toggleNavCollapsed(); },
+    onMenu() { toggleDrawerDock(); },
     onCrumbClick() {},
   },
 };
@@ -739,14 +728,8 @@ async function enterModule(id, opts) {
   if (firstEnter) {
     await mod.enter(opts);
     await Promise.all([mod.renderNav(), mod.renderMain(), mod.renderSide(), mod.renderCrumb()]);
+    applyDrawerDock();   // 模块切换后重估停靠态（notes 隐藏停靠列，其他模块恢复）
   }
-}
-
-// 桌面 ☰ 折叠左栏（读经/生命读经共用）
-function toggleNavCollapsed() {
-  state.navCollapsed = !state.navCollapsed;
-  applyLayout();
-  save(LS_NAV_COLLAPSED, state.navCollapsed);
 }
 
 // 首页合集块点击委托 + 顶部搜索
@@ -882,52 +865,6 @@ function bookName(index) {
   return b ? b.name : `第${index}卷`;
 }
 
-/* ============ 导航 ============ */
-function renderBookList() {
-  const list = $('bookList');
-  list.innerHTML = '';
-  let currentGroup = '';
-  for (const b of state.books) {
-    const group = b.index <= 39 ? '旧约' : '新约';
-    if (group !== currentGroup) {
-      const g = document.createElement('div');
-      g.className = 'group-label';
-      g.textContent = group;
-      list.appendChild(g);
-      currentGroup = group;
-    }
-    const item = document.createElement('div');
-    item.className = 'book-item';
-    item.textContent = b.name;
-    item.dataset.index = b.index;
-    item.addEventListener('click', () => selectBook(b.index, 1));
-    list.appendChild(item);
-  }
-}
-
-function renderChapterList() {
-  const list = $('chapterList');
-  list.innerHTML = '';
-  if (!state.currentBook) return;
-  for (let i = 1; i <= state.currentBook.chapters; i++) {
-    const item = document.createElement('div');
-    item.className = 'ch-item';
-    item.textContent = i;
-    item.dataset.chapter = i;
-    item.addEventListener('click', () => selectChapter(i));
-    list.appendChild(item);
-  }
-}
-
-function highlightNav() {
-  document.querySelectorAll('#bookList .book-item').forEach(el => {
-    el.classList.toggle('active', +el.dataset.index === state.currentBook.index);
-  });
-  document.querySelectorAll('#chapterList .ch-item').forEach(el => {
-    el.classList.toggle('active', +el.dataset.chapter === state.currentChapter);
-  });
-}
-
 // 上一章/下一章（顶栏 crumb 两侧，同卷内翻页，到卷首/卷尾禁用，不跨卷）
 function renderChapterNav() {
   const ch = state.currentChapter;
@@ -944,8 +881,6 @@ async function selectBook(index, chapter) {
   state.currentBook = state.books.find(b => b.index === index);
   state.currentChapter = chapter;
   state.lifereading = null; // 重新加载新书卷生命读经
-  renderChapterList();
-  highlightNav();
   $('bookName').textContent = state.currentBook.name;
   $('chapterLabel').textContent = `${chapter}章`;
   save(LS_LAST, { book: index, chapter });
@@ -956,12 +891,12 @@ async function selectBook(index, chapter) {
 async function selectChapter(chapter) {
   state.currentChapter = chapter;
   $('chapterLabel').textContent = `${chapter}章`;
-  highlightNav();
   renderChapter();
   renderChapterNav();
   renderStudy();
   updateMobileNav();
   save(LS_LAST, { book: state.currentBook.index, chapter });
+  pushHistory('bible', { book: state.currentBook.index, chapter }, `${state.currentBook.name} ${chapter}章`);
   // 生命读经懒加载（结果同时缓存到 lrVolumes，供首页篇目列表/全局笔记复用）
   if (!state.lifereading) {
     const acr = state.currentBook.acronym;
@@ -2476,46 +2411,6 @@ function showToast(text, cls) {
 
 // 移动端 crumb 点击 → 章节选择弹窗（章网格 + 顶部书卷横向切换）
 // 章节选择弹窗（首页读经块 / 移动端 crumb 共用）：initBook 指定初始书卷，默认当前书卷
-function openChapterPicker(initBook) {
-  let cur = (initBook && state.books.some(b => b.index === initBook)) ? initBook : state.currentBook.index;
-  const books = state.books;
-  const renderGrid = () => {
-    const book = books.find(b => b.index === cur);
-    let html = `<div class="chp-title">${escapeHtml(book.name)}</div><div class="chp-grid">`;
-    for (let i = 1; i <= book.chapters; i++) {
-      const act = (cur === state.currentBook.index && i === state.currentChapter) ? ' active' : '';
-      html += `<button class="chp-cell${act}" data-b="${cur}" data-c="${i}">${i}</button>`;
-    }
-    html += '</div>';
-    $('chpGrid').innerHTML = html;
-  };
-  openPopup('选择章节', `
-    <div class="chp-books" id="chpBooks">
-      ${books.map(b => `<button class="chp-book${b.index === cur ? ' active' : ''}" data-b="${b.index}">${escapeHtml(b.name)}</button>`).join('')}
-    </div>
-    <div id="chpGrid"></div>
-  `);
-  renderGrid();
-  const activeBook = document.querySelector('#chpBooks .chp-book.active');
-  if (activeBook) activeBook.scrollIntoView({ block: 'nearest', inline: 'center' });
-  $('chpBooks').addEventListener('click', (e) => {
-    const b = e.target.closest('.chp-book');
-    if (!b) return;
-    cur = +b.dataset.b;
-    document.querySelectorAll('#chpBooks .chp-book').forEach(x => x.classList.toggle('active', +x.dataset.b === cur));
-    renderGrid();
-  });
-  $('chpGrid').addEventListener('click', (e) => {
-    const c = e.target.closest('.chp-cell');
-    if (!c) return;
-    const b = +c.dataset.b, ch = +c.dataset.c;
-    closePopupAll();
-    enterWork();   // 从首页进入即切工作区（工作区内调用为幂等）
-    if (b !== state.currentBook.index || ch !== state.currentChapter) selectBook(b, ch);
-    setMobileView('read');
-  });
-}
-
 // 移动端研读+生命读经 tab 时 ☰ → 篇目 + 纲目导航（点击滚动定位）
 function openLrNavSheet() {
   const matched = matchedLrArticles();
@@ -2637,44 +2532,6 @@ async function navigateToAnnotation(a) {
 /* ============ 生命读经（篇目弹窗 / 卷缓存） ============ */
 // 篇目列表弹窗（crumb 点击 / 全局笔记入口），点击 → 统一入口 openLrArticle
 // 篇目选择弹窗（crumb 点击 / 移动端 ☰ 共用）：顶部 66 卷 Tab + 下方当前卷篇目列表，两级快速跨卷切换
-async function openLrArticleList(bookIndex) {
-  let cur = bookIndex;
-  openPopup('生命读经 · 选择篇目', `
-    <div class="chp-books" id="lrpVols">
-      ${state.books.map(b => `<button class="chp-book${b.index === cur ? ' active' : ''}" data-b="${b.index}">${escapeHtml(b.acronym)}</button>`).join('')}
-    </div>
-    <div class="lr-art-list" id="lrpArts"></div>`);
-  const tabs = $('lrpVols');
-  const listEl = $('lrpArts');
-  const renderArts = async () => {
-    const vol = await ensureLrVolume(cur);
-    if (!vol) { listEl.innerHTML = '<div class="empty-hint">该卷生命读经数据缺失</div>'; return; }
-    listEl.innerHTML = (vol.articles || []).map(a =>
-      `<button class="lr-art-cell${cur === state.lrBookIndex && a.id === state.lrArticleId ? ' active' : ''}" data-id="${a.id}">${escapeHtml(a.title)}</button>`).join('');
-    const act = listEl.querySelector('.lr-art-cell.active');
-    if (act) act.scrollIntoView({ block: 'nearest' });
-  };
-  await renderArts();
-  polishVolStrip(tabs);
-  tabs.addEventListener('click', async (e) => {
-    const b = e.target.closest('.chp-book');
-    if (!b || +b.dataset.b === cur) return;
-    cur = +b.dataset.b;
-    tabs.querySelectorAll('.chp-book').forEach(x => x.classList.toggle('active', +x.dataset.b === cur));
-    b.scrollIntoView({ block: 'nearest', inline: 'center' });
-    await renderArts();
-  });
-  listEl.addEventListener('click', (e) => {
-    const cell = e.target.closest('.lr-art-cell');
-    if (!cell) return;
-    const vol = state.lrVolumes[cur];
-    const art = vol && (vol.articles || []).find(a => a.id === +cell.dataset.id);
-    if (!art) return;
-    closePopupAll();
-    openLrArticle(cur, art);
-  });
-}
-
 // 加载并缓存某卷生命读经（selectBook 懒加载后也写入同一缓存，见 selectBook）
 async function ensureLrVolume(bookIndex) {
   if (state.lrVolumes[bookIndex]) return state.lrVolumes[bookIndex];
@@ -2701,21 +2558,6 @@ async function ensureLrVolume(bookIndex) {
 /* ============ 生命读经阅读器模块 ============ */
 let _lrSpy = null;   // 模块右栏纲目滚动高亮句柄（切篇/切 tab 前解绑防堆积）
 
-// 卷条/辑条/期条通用体验：滚轮纵向转横向滚动（原生横向滚动条已隐藏，见 style.css）+ 当前项滚入可视区居中。
-// 横向 Tab 行通用体验（弹窗书卷/辑/期 Tab 复用）：滚轮纵向转横向滚动 + 当前项滚入可视区居中。
-// 原生横向滚动条已隐藏（style.css .chp-books）。
-function polishVolStrip(strip) {
-  if (!strip) return;
-  strip.addEventListener('wheel', (e) => {
-    if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;   // 已是横向滚动的交给默认行为
-    if (strip.scrollWidth <= strip.clientWidth) return;
-    e.preventDefault();
-    strip.scrollLeft += e.deltaY;
-  }, { passive: false });
-  const act = strip.querySelector('.active');
-  if (act) act.scrollIntoView({ inline: 'center', block: 'nearest' });
-}
-
 // 生命读经全卷篇目标题索引（data/lr-titles.json，export.py 导出，~200KB）
 // 避免模块级搜索拉全量 28MB 正文；按 acronym 关联 books.json 取卷名/bookIndex
 async function ensureLrTitleIndex() {
@@ -2735,53 +2577,6 @@ async function ensureLrTitleIndex() {
     state.lrTitleIndex = null;
     return null;
   }
-}
-
-// 左栏篇目列表 + 模块级搜索：空查询=当前卷列表；非空=全 66 卷篇目标题检索，
-// 结果带卷名前缀，点击 openLrArticle 跨卷跳转（selectLrVolume 会重渲染左栏保持搜索视图）
-async function renderLrArticleList(bookIndex, vol) {
-  const nav = $('lrNav');
-  let list = nav.querySelector('.lr-nav-articles');
-  if (!list) { list = document.createElement('div'); list.className = 'lr-nav-articles'; nav.appendChild(list); }
-  const arts = (vol && vol.articles) || [];
-  const listHtml = () => arts.map(a =>
-    `<button class="lr-nav-art${a.id === state.lrArticleId ? ' active' : ''}" data-id="${a.id}">${escapeHtml(a.title)}</button>`).join('')
-    || '<div class="empty-hint">无匹配篇目</div>';
-  list.innerHTML = `
-    <div class="nav-search"><input type="text" placeholder="搜索全部篇目…" autocomplete="off" value="${escapeHtml(state.lrArtFilter || '')}"></div>
-    <div class="lr-art-items"></div>`;
-  const inp = list.querySelector('input');
-  const items = list.querySelector('.lr-art-items');
-  const bindList = () => {
-    items.querySelectorAll('.lr-nav-art').forEach(btn => {
-      btn.addEventListener('click', () => selectLrArticle(+btn.dataset.id));
-    });
-    const act = items.querySelector('.lr-nav-art.active');
-    if (act) act.scrollIntoView({ block: 'center' });
-  };
-  const bindResults = () => {
-    items.querySelectorAll('.lr-nav-art').forEach(btn => {
-      btn.addEventListener('click', () => openLrArticle(+btn.dataset.bk, { id: +btn.dataset.id }));
-    });
-  };
-  let seq = 0;
-  const renderBody = async () => {
-    const my = ++seq;
-    const q = (state.lrArtFilter || '').trim();
-    if (!q) { items.innerHTML = listHtml(); bindList(); return; }
-    items.innerHTML = '<div class="empty-hint">搜索中…</div>';
-    const idx = await ensureLrTitleIndex();
-    if (my !== seq) return;   // 输入已变化，丢弃过期结果
-    if (!idx) { items.innerHTML = '<div class="empty-hint">搜索索引加载失败</div>'; return; }
-    const res = idx.flat.filter(t => t.title.includes(q) || String(t.id).includes(q)).slice(0, 50);
-    items.innerHTML = res.length ? res.map(t =>
-      `<button class="lr-nav-art${t.book === state.lrBookIndex && t.id === state.lrArticleId ? ' active' : ''}" data-bk="${t.book}" data-id="${t.id}">
-        <span class="nav-result-loc">${escapeHtml(t.volName)}</span>${escapeHtml(t.title)}</button>`).join('')
-      : '<div class="empty-hint">无匹配篇目</div>';
-    bindResults();
-  };
-  inp.addEventListener('input', () => { state.lrArtFilter = inp.value; renderBody(); });
-  await renderBody();
 }
 
 // 右栏：纲目 | 笔记（state.lrSideTab）
@@ -2856,9 +2651,10 @@ function renderLrNotes(body) {
 async function selectLrArticle(articleId) {
   state.lrArticleId = articleId;
   save(LS_LR_LAST, { book: state.lrBookIndex, articleId });
-  document.querySelectorAll('.lr-nav-art').forEach(x => x.classList.toggle('active', +x.dataset.id === articleId));
-  const actArt = document.querySelector('.lr-nav-art.active');
-  if (actArt) actArt.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  const vol = state.lrVolumes[state.lrBookIndex];
+  const art = vol && (vol.articles || []).find(a => a.id === articleId);
+  if (art) pushHistory('lifereading', { book: state.lrBookIndex, articleId }, `第${articleId}篇 ${art.title}`);
+  renderDrawer();   // 停靠抽屉同步 cur 高亮（左栏已删）
   const mod = READER_MODULES.lifereading;
   await mod.renderMain();
   mod.renderSide();
@@ -2873,6 +2669,8 @@ async function selectLrVolume(bookIndex) {
   if (!vol) { showToast('该卷生命读经数据缺失'); return; }
   state.lrArticleId = (vol.articles[0] || {}).id;
   save(LS_LR_LAST, { book: bookIndex, articleId: state.lrArticleId });
+  const firstArt = (vol.articles || []).find(a => a.id === state.lrArticleId);
+  if (firstArt) pushHistory('lifereading', { book: bookIndex, articleId: state.lrArticleId }, `第${state.lrArticleId}篇 ${firstArt.title}`);
   const mod = READER_MODULES.lifereading;
   await mod.renderNav();
   await mod.renderMain();
@@ -2923,138 +2721,6 @@ async function ensureBookVolume(volume) {
     });
     return null;
   }
-}
-
-// 左栏书列表 + 模块级搜索：空查询=当前辑列表；非空=全辑书名+章标题检索
-// （bookMeta 已含全部章标题，零额外请求）；结果点击 openBookResult 跨辑跳转
-function renderBookNavBooks() {
-  const nav = $('bookNav');
-  let list = nav.querySelector('.bk-nav-books');
-  if (!list) { list = document.createElement('div'); list.className = 'bk-nav-books'; nav.appendChild(list); }
-  const metaVol = state.bookMeta && state.bookMeta.volumes[state.bookVolume - 1];
-  const books = (metaVol && metaVol.books) || [];
-  const listHtml = () => books.map((b, i) =>
-    `<button class="bk-nav-book${i === state.bookBook ? ' active' : ''}" data-b="${i}">
-       <span class="bkb-title">${escapeHtml(b.title)}</span>
-       <span class="bkb-count">${b.chapters.length}章</span>
-     </button>`).join('') || '<div class="empty-hint">无匹配书卷</div>';
-  const searchAll = (q) => {
-    const res = [];
-    ((state.bookMeta && state.bookMeta.volumes) || []).forEach((v, vi) => {
-      (v.books || []).forEach((b, bi) => {
-        if (b.title.includes(q)) res.push({ v: vi + 1, b: bi, c: 0, label: b.title });
-        (b.chapters || []).forEach((ct, ci) => {
-          if (String(ct).includes(q)) res.push({ v: vi + 1, b: bi, c: ci, label: `${b.title} · 第${ci + 1}章 ${ct}` });
-        });
-      });
-    });
-    return res.slice(0, 50);
-  };
-  list.innerHTML = `
-    <div class="nav-search"><input type="text" placeholder="搜索全部书卷/章节…" autocomplete="off" value="${escapeHtml(state.bkBookFilter || '')}"></div>
-    <div class="bk-book-items"></div>`;
-  const inp = list.querySelector('input');
-  const items = list.querySelector('.bk-book-items');
-  const bindBookButtons = () => {
-    items.querySelectorAll('.bk-nav-book').forEach(btn => {
-      btn.addEventListener('click', () => selectBookItem(+btn.dataset.b));
-    });
-    const act = items.querySelector('.bk-nav-book.active');
-    if (act) act.scrollIntoView({ block: 'center' });
-  };
-  const bindResults = () => {
-    items.querySelectorAll('.bk-nav-book').forEach(btn => {
-      btn.addEventListener('click', () => openBookResult(+btn.dataset.v, +btn.dataset.b, +btn.dataset.c));
-    });
-  };
-  const renderBody = () => {
-    const q = (state.bkBookFilter || '').trim();
-    if (!q) { items.innerHTML = listHtml(); bindBookButtons(); return; }
-    const res = searchAll(q);
-    items.innerHTML = res.length ? res.map(r =>
-      `<button class="bk-nav-book${r.v === state.bookVolume && r.b === state.bookBook ? ' active' : ''}" data-v="${r.v}" data-b="${r.b}" data-c="${r.c}">
-        <span class="bkb-title">${escapeHtml(r.label)}</span></button>`).join('')
-      : '<div class="empty-hint">无匹配书卷</div>';
-    bindResults();
-  };
-  inp.addEventListener('input', () => { state.bkBookFilter = inp.value; renderBody(); });
-  renderBody();
-}
-
-// 选书弹窗（crumb 点击 / 移动端 ☰ 共用）：辑 Tab + 书列表 + 章网格三级
-// （反馈 #14：书报原只有辑/书两级，移动端右栏抽屉延后导致无法选章）
-async function openBookPicker() {
-  await ensureBookMeta();
-  const vols = (state.bookMeta && state.bookMeta.volumes) || [];
-  let curV = state.bookVolume;
-  let curB = curV === state.bookVolume ? state.bookBook : 0;   // 当前选中书（弹窗内）
-  openPopup('书报 · 选书选章', `
-    ${vols.length > 1 ? `<div class="chp-books" id="bkpVols">
-      ${vols.map((v, i) => `<button class="chp-book${i + 1 === curV ? ' active' : ''}" data-v="${i + 1}">${escapeHtml(v.title)}</button>`).join('')}
-    </div>` : ''}
-    <div class="bk-picker-list" id="bkpBooks"></div>
-    <div class="bk-picker-chapters" id="bkpChapters"></div>`);
-  const tabs = $('bkpVols');
-  const listEl = $('bkpBooks');
-  const gridEl = $('bkpChapters');
-  const renderChapters = (v, b) => {
-    const metaVol = vols[v];
-    const book = metaVol && metaVol.books[b];
-    if (!book) { gridEl.innerHTML = ''; return; }
-    let html = `<div class="chp-title">${escapeHtml(book.title)} · 选择章</div><div class="chp-grid">`;
-    (book.chapters || []).forEach((t, ci) => {
-      const act = (v + 1 === state.bookVolume && b === state.bookBook && ci === state.bookChapter) ? ' active' : '';
-      html += `<button class="chp-cell${act}" data-v="${v + 1}" data-b="${b}" data-c="${ci}">${ci + 1}</button>`;
-    });
-    html += '</div>';
-    gridEl.innerHTML = html;
-  };
-  const renderBooks = () => {
-    const metaVol = vols[curV - 1];
-    listEl.innerHTML = ((metaVol && metaVol.books) || []).map((b, i) =>
-      `<button class="bk-nav-book${i === curB ? ' active' : ''}" data-b="${i}">
-         <span class="bkb-title">${escapeHtml(b.title)}</span>
-         <span class="bkb-count">${b.chapters.length}章</span>
-       </button>`).join('');
-    const act = listEl.querySelector('.bk-nav-book.active');
-    if (act) act.scrollIntoView({ block: 'nearest' });
-    renderChapters(curV - 1, curB);
-  };
-  renderBooks();
-  if (tabs) {
-    polishVolStrip(tabs);
-    tabs.addEventListener('click', async (e) => {
-      const b = e.target.closest('.chp-book');
-      if (!b || +b.dataset.v === curV) return;
-      curV = +b.dataset.v;
-      curB = curV === state.bookVolume ? state.bookBook : 0;
-      tabs.querySelectorAll('.chp-book').forEach(x => x.classList.toggle('active', +x.dataset.v === curV));
-      b.scrollIntoView({ block: 'nearest', inline: 'center' });
-      renderBooks();
-    });
-  }
-  // 点书：桌面=直接打开该书（保持原交互，章级切换走右栏章列表/此处网格）；
-  // 移动端（反馈 #14，右栏抽屉延后）=选中并展示其章网格，点章才打开
-  listEl.addEventListener('click', async (e) => {
-    const btn = e.target.closest('.bk-nav-book');
-    if (!btn) return;
-    const book = +btn.dataset.b;
-    if (!isMobile()) {
-      closePopupAll();
-      if (curV !== state.bookVolume) await selectBookVolume(curV);
-      if (book !== state.bookBook) await selectBookItem(book);
-      return;
-    }
-    curB = book;
-    listEl.querySelectorAll('.bk-nav-book').forEach(x => x.classList.toggle('active', +x.dataset.b === curB));
-    renderChapters(curV - 1, curB);
-  });
-  gridEl.addEventListener('click', (e) => {
-    const c = e.target.closest('.chp-cell');
-    if (!c) return;
-    closePopupAll();
-    openBookChapter(+c.dataset.v, +c.dataset.b, +c.dataset.c);
-  });
 }
 
 // 主区：当前章正文（按行 data-base 渲染，标注坐标系 = chapter.content）
@@ -3187,6 +2853,11 @@ async function selectBookVolume(volume) {
   const vol = await ensureBookVolume(volume);
   if (!vol) { showToast('该辑数据缺失'); return; }
   save(LS_BOOK_LAST, { series: state.bookSeries, volume, book: 0, chapter: 0 });
+  await ensureBookMeta();
+  const metaVol = state.bookMeta && state.bookMeta.volumes[volume - 1];
+  const metaBook = metaVol && metaVol.books[0];
+  if (metaBook) pushHistory('books', { series: state.bookSeries, volume, book: 0, chapter: 0 },
+    `${metaBook.title} · 第1章 ${metaBook.chapters[0] || ''}`);
   const mod = READER_MODULES.books;
   await mod.renderNav();
   await mod.renderMain();
@@ -3200,10 +2871,12 @@ async function selectBookItem(book) {
   state.bookBook = book;
   state.bookChapter = 0;
   save(LS_BOOK_LAST, { series: state.bookSeries, volume: state.bookVolume, book, chapter: 0 });
+  const metaVol = state.bookMeta && state.bookMeta.volumes[state.bookVolume - 1];
+  const metaBook = metaVol && metaVol.books[book];
+  if (metaBook) pushHistory('books', { series: state.bookSeries, volume: state.bookVolume, book, chapter: 0 },
+    `${metaBook.title} · 第1章 ${metaBook.chapters[0] || ''}`);
   const mod = READER_MODULES.books;
-  document.querySelectorAll('.bk-nav-book').forEach(x => x.classList.toggle('active', +x.dataset.b === book));
-  const actBook = document.querySelector('.bk-nav-book.active');
-  if (actBook) actBook.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  renderDrawer();   // 停靠抽屉同步 cur 高亮（左栏已删）
   await mod.renderMain();
   mod.renderSide();
   mod.renderCrumb();
@@ -3214,9 +2887,11 @@ async function selectBookItem(book) {
 async function selectBookChapter(volume, book, chapter) {
   state.bookVolume = volume; state.bookBook = book; state.bookChapter = chapter;
   save(LS_BOOK_LAST, { series: state.bookSeries, volume, book, chapter });
-  document.querySelectorAll('.bk-nav-book').forEach(x => x.classList.toggle('active', +x.dataset.b === book));
-  const actBk = document.querySelector('.bk-nav-book.active');
-  if (actBk) actBk.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  const metaVol = state.bookMeta && state.bookMeta.volumes[volume - 1];
+  const metaBook = metaVol && metaVol.books[book];
+  if (metaBook) pushHistory('books', { series: state.bookSeries, volume, book, chapter },
+    `${metaBook.title} · 第${chapter + 1}章 ${metaBook.chapters[chapter] || ''}`);
+  renderDrawer();   // 停靠抽屉同步 cur 高亮（左栏已删）
   const mod = READER_MODULES.books;
   await mod.renderMain();
   mod.renderSide();
@@ -3268,66 +2943,6 @@ async function ensureMorningData(periodId) {
     });
     return null;
   }
-}
-
-// 左栏篇列表 + 模块级搜索：空查询=当前期列表；非空=全期篇标题检索
-// （各期数据 ensureMorningData 懒加载后缓存，期数少体量小）；结果点击 openMorningArticle 跨期跳转
-async function renderMorningChapterList() {
-  const nav = $('morningNav');
-  let list = nav.querySelector('.morning-nav-chapters');
-  if (!list) { list = document.createElement('div'); list.className = 'morning-nav-chapters'; nav.appendChild(list); }
-  const data = state.morningData[state.morningPeriod];
-  const chapters = (data && data.chapters) || [];
-  const listHtml = () => chapters.map(c =>
-    `<button class="morning-nav-art${c.number === state.morningChapterId ? ' active' : ''}" data-n="${c.number}">${escapeHtml(c.title)}</button>`).join('')
-    || '<div class="empty-hint">无匹配篇目</div>';
-  const searchAll = async (q) => {
-    const res = [];
-    const trainings = (state.morningIndex && state.morningIndex.trainings) || [];
-    for (const t of trainings) {
-      const d = await ensureMorningData(t.id);
-      if (!d) continue;
-      (d.chapters || []).forEach(c => {
-        if (c.title.includes(q) || String(c.number).includes(q)) {
-          res.push({ period: t.id, periodTitle: d.title || t.title || t.id, n: c.number, title: c.title });
-        }
-      });
-    }
-    return res.slice(0, 50);
-  };
-  list.innerHTML = `
-    <div class="nav-search"><input type="text" placeholder="搜索全部篇目…" autocomplete="off" value="${escapeHtml(state.mrFilter || '')}"></div>
-    <div class="mr-art-items"></div>`;
-  const inp = list.querySelector('input');
-  const items = list.querySelector('.mr-art-items');
-  const bindArtButtons = () => {
-    items.querySelectorAll('.morning-nav-art').forEach(btn => {
-      btn.addEventListener('click', () => selectMorningChapter(+btn.dataset.n));
-    });
-    const act = items.querySelector('.morning-nav-art.active');
-    if (act) act.scrollIntoView({ block: 'center' });
-  };
-  const bindResults = () => {
-    items.querySelectorAll('.morning-nav-art').forEach(btn => {
-      btn.addEventListener('click', () => openMorningArticle(btn.dataset.p, +btn.dataset.n));
-    });
-  };
-  let seq = 0;
-  const renderBody = async () => {
-    const my = ++seq;
-    const q = (state.mrFilter || '').trim();
-    if (!q) { items.innerHTML = listHtml(); bindArtButtons(); return; }
-    items.innerHTML = '<div class="empty-hint">搜索中…</div>';
-    const res = await searchAll(q);
-    if (my !== seq) return;   // 输入已变化，丢弃过期结果
-    items.innerHTML = res.length ? res.map(r =>
-      `<button class="morning-nav-art${r.period === state.morningPeriod && r.n === state.morningChapterId ? ' active' : ''}" data-p="${r.period}" data-n="${r.n}">
-        <span class="nav-result-loc">${escapeHtml(r.periodTitle)}</span>${escapeHtml(r.title)}</button>`).join('')
-      : '<div class="empty-hint">无匹配篇目</div>';
-    bindResults();
-  };
-  inp.addEventListener('input', () => { state.mrFilter = inp.value; renderBody(); });
-  await renderBody();
 }
 
 // 主区：当前篇听抄（信息正文层级标题 + 段落），content 逐行 data-base 渲染供标注
@@ -3400,9 +3015,12 @@ function renderMorningSide() {
 async function selectMorningChapter(chapterId) {
   state.morningChapterId = chapterId;
   save(LS_MORNING_LAST, { period: state.morningPeriod, chapterId });
-  document.querySelectorAll('.morning-nav-art').forEach(x => x.classList.toggle('active', +x.dataset.n === chapterId));
-  const actArt = document.querySelector('.morning-nav-art.active');
-  if (actArt) actArt.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  const t = state.morningIndex && state.morningIndex.trainings.find(x => x.id === state.morningPeriod);
+  const data = state.morningData[state.morningPeriod];
+  const ch = data && data.chapters.find(c => c.number === chapterId);
+  if (ch) pushHistory('morning', { period: state.morningPeriod, chapterId },
+    `${(t && (t.title || t.season)) || state.morningPeriod} · 第${ch.number}篇 ${ch.title}`);
+  renderDrawer();   // 停靠抽屉同步 cur 高亮（左栏已删）
   READER_MODULES.morning.renderMain();
   renderMorningSide();
   READER_MODULES.morning.renderCrumb();
@@ -3416,6 +3034,10 @@ async function selectMorningPeriod(periodId) {
   const data = await ensureMorningData(periodId);
   if (!data) { showToast('该期数据缺失'); return; }
   save(LS_MORNING_LAST, { period: periodId, chapterId: 1 });
+  const t = state.morningIndex && state.morningIndex.trainings.find(x => x.id === periodId);
+  const ch = data.chapters.find(c => c.number === 1);
+  if (ch) pushHistory('morning', { period: periodId, chapterId: 1 },
+    `${(t && (t.title || t.season)) || periodId} · 第${ch.number}篇 ${ch.title}`);
   const mod = READER_MODULES.morning;
   await mod.renderNav();
   mod.renderMain();
@@ -3440,40 +3062,434 @@ async function openMorningArticle(periodId, chapterId) {
   }
 }
 
-// 篇目选择弹窗（crumb 点击 / 移动端 ☰ 共用）：顶部期 Tab + 下方当前期篇列表，两级快速跨期切换
-async function openMorningArticleList() {
-  const trainings = (state.morningIndex && state.morningIndex.trainings) || [];
-  let cur = state.morningPeriod;
-  openPopup('听抄 · 选择篇目', `
-    <div class="chp-books" id="mrpPeriods">
-      ${trainings.map(t => `<button class="chp-book${t.id === cur ? ' active' : ''}" data-p="${t.id}">${escapeHtml(t.title || t.season || t.id)}</button>`).join('')}
-    </div>
-    <div class="lr-art-list" id="mrpArts"></div>`);
-  const tabs = $('mrpPeriods');
-  const listEl = $('mrpArts');
-  const renderArts = async () => {
+/* ============ 统一导航抽屉（WeBible 模式：双栏主从 + Segment 浏览/历史 + 阅读历史 + 模块级搜索） ============ */
+const LS_HISTORY = 'bible-study.history';   // [{module, loc, title, t}] 阅读历史（纯本地，上限 50）
+
+// 抽屉内浏览态：left=左栏选中（bible/lr=书卷 index、books=辑内书 0 基、morning 未用）、
+// vol=books 辑号（1 基）/morning 期 id；seg='browse'|'history'；testament=bible 左栏旧约/新约过滤；
+// query=模块级搜索词（内存态，跨开关保留）。left/vol 由 renderDrawer 按当前模块位置同步
+const dwState = { seg: 'browse', testament: 'ot', left: null, vol: null, query: '' };
+
+// 阅读历史：同 module+同位置去重置顶，上限 50 条
+function pushHistory(module, loc, title) {
+  const list = load(LS_HISTORY, []);
+  const key = JSON.stringify(loc);
+  const idx = list.findIndex(x => x.module === module && JSON.stringify(x.loc) === key);
+  if (idx >= 0) list.splice(idx, 1);
+  list.unshift({ module, loc, title, t: Date.now() });
+  if (list.length > 50) list.length = 50;
+  save(LS_HISTORY, list);
+}
+
+function relTime(t) {
+  const diff = Date.now() - (t || 0);
+  if (diff < 60e3) return '刚刚';
+  if (diff < 3600e3) return `${Math.floor(diff / 60e3)}分钟前`;
+  if (diff < 86400e3) return `${Math.floor(diff / 3600e3)}小时前`;
+  if (diff < 30 * 86400e3) return `${Math.floor(diff / 86400e3)}天前`;
+  const d = new Date(t);
+  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+// 中文数字（章列表：第一章…第一百五十）
+function cnNum(n) {
+  const d = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+  if (n < 10) return d[n];
+  if (n === 10) return '十';
+  if (n < 20) return '十' + d[n % 10];
+  if (n < 100) return d[Math.floor(n / 10)] + '十' + (n % 10 ? d[n % 10] : '');
+  const h = Math.floor(n / 100), r = n % 100;
+  if (r === 0) return d[h] + '百';
+  if (r < 10) return d[h] + '百零' + d[r];
+  return d[h] + '百' + cnNum(r);
+}
+
+// 桌面停靠判定：>900px + 用户未收起 + 非笔记管理模块 + 工作区
+function isDocked() {
+  return window.innerWidth > 900 && state.drawerDocked &&
+    state.activeModule !== 'notes' && state.screen === 'work';
+}
+
+// 应用停靠态：展开 → body.drawer-docked（CSS 接管定位/margin）+ 常显渲染；
+// 收起/移动端/首页/notes → 移除类，抽屉显隐交给浮层逻辑
+function applyDrawerDock() {
+  const dw = $('navDrawer'), ov = $('drawerOverlay');
+  const docked = isDocked();
+  document.body.classList.toggle('drawer-docked', docked);
+  clearTimeout(openNavDrawer._t);
+  if (docked) {
+    ov.hidden = true; ov.classList.remove('on');
+    lockScroll(false);
+    dw.hidden = false;
+    renderDrawer();
+  } else if (window.innerWidth > 900) {
+    // 桌面收起（或 notes/首页）：彻底隐藏，唤出走 setDocked(true)
+    dw.hidden = true; dw.classList.remove('open');
+    ov.hidden = true; ov.classList.remove('on');
+    lockScroll(false);
+  }
+}
+
+// 桌面停靠展开/收起（☰ toggle；crumb=收起时展开）
+function setDocked(v) {
+  state.drawerDocked = v;
+  save(LS_DRAWER_DOCKED, v);
+  applyDrawerDock();
+}
+
+function toggleDrawerDock() {
+  if (state.screen === 'home' || state.activeModule === 'notes') return;
+  setDocked(!state.drawerDocked);
+}
+
+function openNavDrawer() {
+  if (state.screen === 'home' || state.activeModule === 'notes') return;
+  if (window.innerWidth > 900) {
+    // 桌面：停靠展开（已展开 no-op，内容随 select* 自动刷新）
+    if (!state.drawerDocked) setDocked(true);
+    return;
+  }
+  // 移动端：浮层（遮罩 + 平移）
+  const ov = $('drawerOverlay'), dw = $('navDrawer');
+  clearTimeout(openNavDrawer._t);
+  ov.hidden = false; dw.hidden = false;
+  requestAnimationFrame(() => { ov.classList.add('on'); dw.classList.add('open'); });
+  lockScroll(true);
+  renderDrawer();
+}
+
+function closeNavDrawer() {
+  if (isDocked()) return;   // 停靠常驻：跳转后不收起
+  const ov = $('drawerOverlay'), dw = $('navDrawer');
+  if (dw.hidden || !dw.classList.contains('open')) return;
+  ov.classList.remove('on'); dw.classList.remove('open');
+  lockScroll(false);
+  openNavDrawer._t = setTimeout(() => { ov.hidden = true; dw.hidden = true; }, 260);
+}
+
+function renderDrawer(sync = true) {
+  const mod = state.activeModule;
+  // 模块切换：浏览态重置回浏览段（历史段不跨模块延续）
+  if (dwState._lastMod !== mod) { dwState.seg = 'browse'; dwState._lastMod = mod; }
+  // 浏览态同步到当前模块位置（sync=false = 抽屉内辑/期切换，保留浏览态；
+  // 抽屉内左栏书卷/篇目浏览直接调 renderDrawerBrowse 不经过此处）
+  if (sync) {
+    if (mod === 'bible') dwState.left = state.currentBook && state.currentBook.index;
+    else if (mod === 'lifereading') dwState.left = state.lrBookIndex;
+    else if (mod === 'books') { dwState.vol = state.bookVolume; dwState.left = state.bookBook; }
+    else if (mod === 'morning') dwState.vol = state.morningPeriod;
+  }
+  // 搜索条：placeholder 按模块、回填搜索词、非空渲染结果层
+  const inp = $('dwSearchInput');
+  inp.placeholder = { bible: '搜索书卷…', lifereading: '搜索全部篇目…', books: '搜索全部书卷/章节…', morning: '搜索全部篇目…' }[mod] || '';
+  if (document.activeElement !== inp) inp.value = dwState.query || '';
+  renderDrawerSearch(mod);
+  const seg = $('dwSeg');
+  const browseLabel = mod === 'bible' ? '书卷' : '浏览';
+  seg.innerHTML = `
+    <div data-seg="browse"${dwState.seg === 'browse' ? ' class="sel"' : ''}>${browseLabel}</div>
+    <div data-seg="history"${dwState.seg === 'history' ? ' class="sel"' : ''}>历史</div>`;
+  const foot = $('dwFoot');
+  if (dwState.seg === 'history') {
+    foot.innerHTML = '';
+    renderDrawerHistory();
+    return;
+  }
+  // 浏览段底部固定切换：bible=旧约/新约、books=辑切换，其余无
+  if (mod === 'bible') {
+    foot.innerHTML = `<div class="dw-foot-seg">
+      <div data-t="ot"${dwState.testament === 'ot' ? ' class="sel"' : ''}>旧约</div>
+      <div data-t="nt"${dwState.testament === 'nt' ? ' class="sel"' : ''}>新约</div>
+    </div>`;
+  } else if (mod === 'books') {
+    const vols = (state.bookMeta && state.bookMeta.volumes) || [];
+    foot.innerHTML = vols.length > 1 ? `<div class="dw-foot-seg">
+      ${vols.map((v, i) => `<div data-vol="${i + 1}"${dwState.vol === i + 1 ? ' class="sel"' : ''}>${escapeHtml(v.title)}</div>`).join('')}
+    </div>` : '';
+  } else {
+    foot.innerHTML = '';
+  }
+  renderDrawerBrowse(mod);
+}
+
+// 浏览段：按模块渲染双栏主从（左栏=层级一列表，右栏=层级二列表）
+async function renderDrawerBrowse(mod) {
+  const body = $('dwBody');
+  if (mod === 'bible') {
+    let cur = dwState.left;
+    const [a, z] = dwState.testament === 'ot' ? [1, 39] : [40, 66];
+    if (!cur || cur < a || cur > z) cur = dwState.left = a;
+    const book = state.books.find(b => b.index === cur);
+    body.innerHTML = `<div class="dw-cols">
+      <div class="dw-col">${state.books.filter(b => b.index >= a && b.index <= z).map(b =>
+        `<div class="dw-item${b.index === cur ? ' cur' : ''}" data-l="${b.index}"><span class="num">${b.index}</span><span class="t" title="${escapeHtml(b.name)}">${escapeHtml(b.name)}</span></div>`).join('')}
+      </div>
+      <div class="dw-col">${Array.from({ length: (book && book.chapters) || 0 }, (_, k) => {
+        const c = k + 1;
+        return `<div class="dw-item${cur === state.currentBook.index && c === state.currentChapter ? ' cur' : ''}" data-r="${c}"><span class="t" title="第${cnNum(c)}章">第${cnNum(c)}章</span></div>`;
+      }).join('')}
+      </div>
+    </div>`;
+    scrollDrawerCur();
+    return;
+  }
+  if (mod === 'lifereading') {
+    const cur = dwState.left;
+    body.innerHTML = `<div class="dw-cols">
+      <div class="dw-col">${state.books.map(b =>
+        `<div class="dw-item${b.index === cur ? ' cur' : ''}" data-l="${b.index}"><span class="num">${b.index}</span><span class="t" title="${escapeHtml(b.name)}">${escapeHtml(b.name)}</span></div>`).join('')}
+      </div>
+      <div class="dw-col"><div class="dw-hint">篇目加载中…</div></div>
+    </div>`;
+    scrollDrawerCur();
+    const vol = await ensureLrVolume(cur);
+    if (dwState.left !== cur || dwState.seg !== 'browse') return;   // 用户已切换，丢弃过期渲染
+    const col = $('dwBody').querySelectorAll('.dw-col')[1];   // await 期间 dwBody 可能被重绘，重新查询
+    if (!col) return;
+    if (!vol) { col.innerHTML = '<div class="dw-hint">该卷生命读经数据缺失</div>'; return; }
+    col.innerHTML = (vol.articles || []).map(a =>
+      `<div class="dw-item${cur === state.lrBookIndex && a.id === state.lrArticleId ? ' cur' : ''}" data-r="${a.id}"><span class="t" title="${escapeHtml(a.title)}">${escapeHtml(dwArtLabel(a.title))}</span></div>`).join('')
+      || '<div class="dw-hint">无篇目</div>';
+    scrollDrawerCur();
+    return;
+  }
+  if (mod === 'books') {
+    await ensureBookMeta();
+    if (dwState.seg !== 'browse') return;
+    const vols = (state.bookMeta && state.bookMeta.volumes) || [];
+    if (!dwState.vol || dwState.vol > vols.length) dwState.vol = 1;
+    const metaVol = vols[dwState.vol - 1];
+    const books = (metaVol && metaVol.books) || [];
+    let cur = dwState.left;
+    if (cur == null || cur >= books.length) cur = dwState.left = 0;
+    const book = books[cur];
+    body.innerHTML = `<div class="dw-cols">
+      <div class="dw-col">${books.map((b, i) =>
+        `<div class="dw-item${i === cur ? ' cur' : ''}" data-l="${i}"><span class="num">${i + 1}</span><span class="t" title="${escapeHtml(b.title)}">${escapeHtml(b.title)}</span><span class="sub">${b.chapters.length}章</span></div>`).join('')}
+      </div>
+      <div class="dw-col">${book ? book.chapters.map((t, ci) =>
+        `<div class="dw-item${dwState.vol === state.bookVolume && cur === state.bookBook && ci === state.bookChapter ? ' cur' : ''}" data-r="${ci}"><span class="t" title="${escapeHtml(t)}">${escapeHtml(t)}</span></div>`).join('') : ''}
+      </div>
+    </div>`;
+    scrollDrawerCur();
+    return;
+  }
+  if (mod === 'morning') {
+    const trainings = (state.morningIndex && state.morningIndex.trainings) || [];
+    let cur = dwState.vol;
+    if (!cur || !trainings.some(t => t.id === cur)) cur = dwState.vol = (trainings[0] || {}).id;
+    body.innerHTML = `<div class="dw-cols">
+      <div class="dw-col">${trainings.map(t =>
+        `<div class="dw-item${t.id === cur ? ' cur' : ''}" data-l="${t.id}"><span class="t" title="${escapeHtml(t.title || t.season || t.id)}">${escapeHtml(t.title || t.season || t.id)}</span></div>`).join('')}
+      </div>
+      <div class="dw-col"><div class="dw-hint">篇目加载中…</div></div>
+    </div>`;
+    scrollDrawerCur();
     const data = await ensureMorningData(cur);
-    if (!data) { listEl.innerHTML = '<div class="empty-hint">该期数据缺失</div>'; return; }
-    listEl.innerHTML = data.chapters.map(c =>
-      `<button class="lr-art-cell${cur === state.morningPeriod && c.number === state.morningChapterId ? ' active' : ''}" data-n="${c.number}">${escapeHtml(c.title)}</button>`).join('');
-    const act = listEl.querySelector('.lr-art-cell.active');
-    if (act) act.scrollIntoView({ block: 'nearest' });
-  };
-  await renderArts();
-  polishVolStrip(tabs);
-  tabs.addEventListener('click', async (e) => {
-    const b = e.target.closest('.chp-book');
-    if (!b || b.dataset.p === cur) return;
-    cur = b.dataset.p;
-    tabs.querySelectorAll('.chp-book').forEach(x => x.classList.toggle('active', x.dataset.p === cur));
-    b.scrollIntoView({ block: 'nearest', inline: 'center' });
-    await renderArts();
+    if (dwState.vol !== cur || dwState.seg !== 'browse') return;
+    const col = $('dwBody').querySelectorAll('.dw-col')[1];   // await 期间 dwBody 可能被重绘，重新查询
+    if (!col) return;
+    if (!data) { col.innerHTML = '<div class="dw-hint">该期数据缺失</div>'; return; }
+    col.innerHTML = data.chapters.map(c =>
+      `<div class="dw-item${cur === state.morningPeriod && c.number === state.morningChapterId ? ' cur' : ''}" data-r="${c.number}"><span class="t" title="${escapeHtml(c.title)}">${escapeHtml(c.title)}</span></div>`).join('')
+      || '<div class="dw-hint">无篇目</div>';
+    scrollDrawerCur();
+  }
+}
+
+// 篇目标题展示：剥掉数据源的「002」编号前缀（保留「第二篇 …」语义部分，列表更干净）
+function dwArtLabel(title) {
+  return (title || '').replace(/^0+\d+\s*/, '');
+}
+
+// 当前项滚入可视区居中（左栏+右栏各自就近滚动容器）
+function scrollDrawerCur() {
+  $('dwBody').querySelectorAll('.dw-item.cur').forEach(el => el.scrollIntoView({ block: 'center' }));
+}
+
+// 历史段：列表（title + 模块/时间 sub），空态居中文案
+function renderDrawerHistory() {
+  const body = $('dwBody');
+  const list = load(LS_HISTORY, []);
+  if (!list.length) { body.innerHTML = '<div class="dw-empty">暂无阅读历史</div>'; return; }
+  const labels = { bible: '读经', lifereading: '生命读经', books: '书报', morning: '听抄' };
+  body.innerHTML = '<div class="dw-hist-wrap"><div class="dw-hist-head"><div class="dw-clear-btn" data-clear="1">清空历史</div></div><div class="dw-hist-list">' +
+    list.map((h, i) =>
+      `<div class="dw-hist-item" data-h="${i}"><span class="t">${escapeHtml(h.title || '')}</span><span class="sub">${labels[h.module] || ''} · ${relTime(h.t)}</span></div>`).join('') +
+    '</div></div>';
+}
+
+// 模块级搜索（自三模块左栏迁入）：结果层覆盖抽屉；seq 竞态守卫防慢请求回写
+let _dwSearchSeq = 0;
+async function renderDrawerSearch(mod) {
+  const res = $('dwSearchResults');
+  const q = (dwState.query || '').trim();
+  $('dwSearchCancel').hidden = !q;
+  if (!q) { res.hidden = true; res.innerHTML = ''; return; }
+  const my = ++_dwSearchSeq;
+  res.hidden = false;
+  res.innerHTML = '<div class="dw-sr-head">搜索中…</div>';
+  let items = [];   // {label, loc, cur?, attrs}
+  if (mod === 'lifereading') {
+    const idx = await ensureLrTitleIndex();
+    if (my !== _dwSearchSeq) return;
+    items = idx ? idx.flat
+      .filter(t => t.title.includes(q) || String(t.id).includes(q))
+      .slice(0, 50)
+      .map(t => ({ label: t.title, loc: t.volName, cur: t.book === state.lrBookIndex && t.id === state.lrArticleId, attrs: `data-sr="lr" data-bk="${t.book}" data-id="${t.id}"` }))
+      : [];
+  } else if (mod === 'books') {
+    await ensureBookMeta();
+    if (my !== _dwSearchSeq) return;
+    const out = [];
+    ((state.bookMeta && state.bookMeta.volumes) || []).forEach((v, vi) => {
+      (v.books || []).forEach((b, bi) => {
+        if (b.title.includes(q)) out.push({ v: vi + 1, b: bi, c: 0, label: b.title, loc: v.title });
+        (b.chapters || []).forEach((ct, ci) => {
+          if (String(ct).includes(q)) out.push({ v: vi + 1, b: bi, c: ci, label: `${b.title} · 第${ci + 1}章 ${ct}`, loc: v.title });
+        });
+      });
+    });
+    items = out.slice(0, 50).map(x => ({ label: x.label, loc: x.loc, attrs: `data-sr="books" data-v="${x.v}" data-b="${x.b}" data-c="${x.c}"` }));
+  } else if (mod === 'morning') {
+    const trainings = (state.morningIndex && state.morningIndex.trainings) || [];
+    for (const t of trainings) {
+      const d = await ensureMorningData(t.id);
+      if (my !== _dwSearchSeq) return;
+      if (d) d.chapters.forEach(c => {
+        if (c.title.includes(q) || String(c.number).includes(q)) {
+          items.push({ label: c.title, loc: d.title || t.title || t.id, attrs: `data-sr="morning" data-p="${t.id}" data-n="${c.number}"` });
+        }
+      });
+    }
+    items = items.slice(0, 50);
+  } else if (mod === 'bible') {
+    if (state.books.length) {
+      items = state.books.filter(b => b.name.includes(q) || (b.acronym && b.acronym.includes(q)))
+        .slice(0, 30)
+        .map(b => ({ label: b.name, loc: '', attrs: `data-sr="bible" data-b="${b.index}"` }));
+    }
+  }
+  const head = `<div class="dw-sr-head">${items.length ? `「${escapeHtml(q)}」共 ${items.length} 条结果` : `「${escapeHtml(q)}」无结果`}</div>`;
+  res.innerHTML = head + items.map(x =>
+    `<div class="dw-item${x.cur ? ' cur' : ''}" ${x.attrs}>${x.loc ? `<span class="nav-result-loc">${escapeHtml(x.loc)}</span>` : ''}<span class="t">${escapeHtml(x.label)}</span></div>`).join('');
+}
+
+// 搜索结果点击跳转：清空搜索词，走各模块统一入口（停靠态不关抽屉）
+async function jumpDrawerSearchResult(it) {
+  const kind = it.dataset.sr;
+  dwState.query = '';
+  $('dwSearchInput').value = '';
+  closeNavDrawer();
+  enterWork();
+  if (kind === 'lr') await openLrArticle(+it.dataset.bk, { id: +it.dataset.id });
+  else if (kind === 'books') await openBookResult(+it.dataset.v, +it.dataset.b, +it.dataset.c);
+  else if (kind === 'morning') await openMorningArticle(it.dataset.p, +it.dataset.n);
+  else if (kind === 'bible') { await selectBook(+it.dataset.b, 1); setMobileView('read'); }
+  renderDrawer();
+}
+
+// 历史项跳转：按 module 分发到对应稳定入口
+async function jumpHistory(h) {
+  closeNavDrawer();
+  enterWork();
+  if (!h) return;
+  if (h.module === 'bible') {
+    if (state.activeModule !== 'bible') await enterModule('bible');
+    if (!state.currentBook || h.loc.book !== state.currentBook.index || h.loc.chapter !== state.currentChapter) {
+      await selectBook(h.loc.book, h.loc.chapter);
+    }
+    setMobileView('read');
+  } else if (h.module === 'lifereading') {
+    await openLrArticle(h.loc.book, { id: h.loc.articleId });
+  } else if (h.module === 'books') {
+    await openBookChapter(h.loc.volume, h.loc.book, h.loc.chapter, h.loc.series);
+  } else if (h.module === 'morning') {
+    await openMorningArticle(h.loc.period, h.loc.chapterId);
+  }
+}
+
+// 右栏项点击（浏览段）：关抽屉 → 走各模块统一入口
+async function jumpDrawerBrowse(mod, r) {
+  // 先快照浏览态：closeNavDrawer/enterWork → applyDrawerDock → renderDrawer 会把 dwState 同步回当前位置
+  const left = dwState.left, vol = dwState.vol;
+  closeNavDrawer();
+  if (mod === 'bible') {
+    enterWork();
+    if (!state.currentBook || left !== state.currentBook.index || +r !== state.currentChapter) {
+      await selectBook(left, +r);
+    }
+    setMobileView('read');
+  } else if (mod === 'lifereading') {
+    const v = state.lrVolumes[left];
+    const art = v && (v.articles || []).find(a => a.id === +r);
+    if (art) await openLrArticle(left, art);
+  } else if (mod === 'books') {
+    // 跨辑时先切辑（selectBookVolume 重渲染停靠列，同 openBookResult 模式），再切章
+    if (vol !== state.bookVolume) await selectBookVolume(vol);
+    if (left !== state.bookBook || +r !== state.bookChapter) {
+      await selectBookChapter(vol, left, +r);
+    }
+  } else if (mod === 'morning') {
+    await openMorningArticle(vol, +r);
+  }
+}
+
+function bindDrawerEvents() {
+  $('drawerOverlay').addEventListener('click', closeNavDrawer);
+  // 视口跨界（≤900 ↔ >900）：桌面侧重估停靠态（移动端浮层由 CSS media 兜底）
+  window.addEventListener('resize', () => {
+    if (window.innerWidth > 900 && state.screen === 'work') applyDrawerDock();
   });
-  listEl.addEventListener('click', (e) => {
-    const cell = e.target.closest('.lr-art-cell');
-    if (!cell) return;
-    closePopupAll();
-    openMorningArticle(cur, +cell.dataset.n);
+  // 模块级搜索：输入即搜（seq 竞态守卫在 renderDrawerSearch），取消清空
+  $('dwSearchInput').addEventListener('input', () => {
+    dwState.query = $('dwSearchInput').value;
+    renderDrawerSearch(state.activeModule);
+  });
+  $('dwSearchCancel').addEventListener('click', () => {
+    dwState.query = '';
+    $('dwSearchInput').value = '';
+    renderDrawerSearch(state.activeModule);
+    $('dwSearchInput').focus();
+  });
+  $('dwSearchResults').addEventListener('click', (e) => {
+    const it = e.target.closest('[data-sr]');
+    if (it) jumpDrawerSearchResult(it);
+  });
+  // Segment：浏览 | 历史
+  $('dwSeg').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-seg]');
+    if (!b || b.dataset.seg === dwState.seg) return;
+    dwState.seg = b.dataset.seg;
+    renderDrawer();
+  });
+  // 底部固定切换：bible 旧约/新约、books 辑切换
+  $('dwFoot').addEventListener('click', (e) => {
+    const t = e.target.closest('[data-t]');
+    if (t) { dwState.testament = t.dataset.t; renderDrawer(); return; }
+    const v = e.target.closest('[data-vol]');
+    if (v) { dwState.vol = +v.dataset.vol; dwState.left = 0; renderDrawer(false); return; }   // sync=false：保留抽屉内浏览态
+  });
+  // 双栏主从：左栏项=刷新右栏；右栏项=跳转；历史段清空
+  $('dwBody').addEventListener('click', (e) => {
+    if (e.target.closest('[data-clear]')) {
+      confirmDialog('清空历史', '确定清空全部阅读历史？', () => {
+        save(LS_HISTORY, []);
+        renderDrawer();
+      });
+      return;
+    }
+    const h = e.target.closest('.dw-hist-item');
+    if (h) { jumpHistory(load(LS_HISTORY, [])[+h.dataset.h]); return; }
+    const l = e.target.closest('.dw-item[data-l]');
+    if (l) {
+      if (state.activeModule === 'morning') dwState.vol = l.dataset.l;
+      else dwState.left = +l.dataset.l;
+      renderDrawerBrowse(state.activeModule);
+      return;
+    }
+    const r = e.target.closest('.dw-item[data-r]');
+    if (r) jumpDrawerBrowse(state.activeModule, r.dataset.r);
   });
 }
 
@@ -3484,13 +3500,14 @@ let editingAnnId = null;
 function bindEvents() {  // 首页：合集块点击 + 顶部搜索 + ⌂ 回首页
   bindHomeEvents();
   bindReadingProgress();
+  bindDrawerEvents();
   // 隐藏/显示注号
   $('hideMarksBtn').addEventListener('click', () => {
     state.hideMarks = !state.hideMarks;
     applyHideMarks();
     save(LS_HIDE_MARKS, state.hideMarks);
   });
-  // 菜单：桌面=折叠当前模块左栏；移动端上下文导航（读经=书卷抽屉 / 研读+生命读经=篇目纲目）
+  // 菜单 ☰：桌面=停靠列收起/展开（全模块统一）；移动端=浮层导航抽屉（notes 不动作）
   $('menuBtn').addEventListener('click', () => {
     if (state.screen === 'home') return;   // 首页隐藏 ☰（CSS 双保险）
     if (window.innerWidth > 900) {
@@ -3498,19 +3515,15 @@ function bindEvents() {  // 首页：合集块点击 + 顶部搜索 + ⌂ 回首
       if (mod && mod.onMenu) mod.onMenu();
       return;
     }
-    // 移动端按模块分发：阅读器模块 ☰ → 层级选择弹窗（卷/辑/期 Tab + 篇目）
-    if (state.activeModule === 'lifereading') { openLrArticleList(state.lrBookIndex); return; }
-    if (state.activeModule === 'books') { openBookPicker(); return; }
-    if (state.activeModule === 'morning') { openMorningArticleList(); return; }
+    // 移动端：notes 模块不动作；读经研读视图仅生命读经 tab 提供篇目/纲目导航
     if (state.activeModule === 'notes') return;
-    if (document.body.classList.contains('mobile-study')) {
-      // 研读视图：只有生命读经 tab 提供导航，注解/我的笔记 tab 不动作
+    if (state.activeModule === 'bible' && document.body.classList.contains('mobile-study')) {
       if (state.activeTab === 'lifereading') openLrNavSheet();
       return;
     }
-    $('navCol').classList.toggle('open');
+    openNavDrawer();
   });
-  // crumb 标题点击：按模块分发导航（读经=章节选择 / 生命读经=篇目列表）
+  // crumb 标题点击：桌面=收起时展开停靠列（已展开 no-op），移动端=浮层抽屉
   document.querySelector('.crumb').addEventListener('click', (e) => {
     if (state.screen === 'home') return;
     if (e.target.closest('button')) return;   // 不拦截 crumb 内按钮（翻页按钮）
@@ -3549,16 +3562,6 @@ function bindEvents() {  // 首页：合集块点击 + 顶部搜索 + ⌂ 回首
   $('updateAction').addEventListener('click', startUpdateDownload);
   // 研读面板拖拽调宽
   bindResize();
-  // 书卷搜索
-  $('bookSearch').addEventListener('input', (e) => {
-    const q = e.target.value.trim();
-    document.querySelectorAll('#bookList .book-item').forEach(el => {
-      el.style.display = el.textContent.includes(q) ? '' : 'none';
-    });
-    document.querySelectorAll('#bookList .group-label').forEach(el => {
-      el.style.display = q ? 'none' : '';
-    });
-  });
   // 研读 tab（常规点击我的笔记 → 当前章聚合模式）
   document.querySelectorAll('.study-tab').forEach(tab => {
     tab.addEventListener('click', () => {

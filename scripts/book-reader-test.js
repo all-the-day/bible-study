@@ -28,8 +28,8 @@ async function main() {
   const r1 = await page.evaluate(() => ({
     modBooks: document.body.classList.contains('body-mod-books'),
     crumb: document.querySelector('#chapterLabel').textContent.slice(0, 18),
-    filter: (() => { const el = document.querySelector('#bookNav input'); return !!el && getComputedStyle(el).display !== 'none'; })(),
-    bookCount: document.querySelectorAll('.bk-nav-book').length,
+    filter: (() => { const el = document.querySelector('#dwSearchInput'); return !!el && getComputedStyle(el).display !== 'none'; })(),
+    bookCount: document.querySelectorAll('#navDrawer .dw-col .dw-item[data-l]').length,
     title: document.querySelector('.bk-title')?.textContent,
     paraCount: document.querySelectorAll('.bk-para').length,
     sideTabs: [...document.querySelectorAll('#bookSide .lr-side-tab')].map(t => t.textContent).join('|'),
@@ -47,32 +47,36 @@ async function main() {
   }));
   console.log('2. 切章:', r2.crumb.includes('第2章') && r2.tocActive ? '✓' : '✗', '|', r2.crumb, '| active:', r2.tocActive);
 
-  // 3. 书列表切书(第2本) → 第1章
-  await page.evaluate(() => { document.querySelectorAll('.bk-nav-book')[1].click(); });
+  // 3. 停靠列切书(第2本)：点左栏书=刷新右栏，点右栏第1章才跳转
+  await page.evaluate(() => { document.querySelectorAll('#navDrawer .dw-col .dw-item[data-l]')[1].click(); });
+  await new Promise((r) => setTimeout(r, 600));
+  await page.evaluate(() => { document.querySelector('#navDrawer .dw-cols .dw-col:nth-child(2) .dw-item').click(); });
   await new Promise((r) => setTimeout(r, 1500));
   const r3 = await page.evaluate(() => ({
     crumb: document.querySelector('#chapterLabel').textContent.slice(0, 22),
-    bookActive: document.querySelector('.bk-nav-book.active .bkb-title')?.textContent.slice(0, 10),
+    bookCur: document.querySelector('#navDrawer .dw-col .dw-item.cur')?.textContent.slice(0, 12),
   }));
-  console.log('3. 切书:', r3.crumb.includes('十字架的道') && r3.crumb.includes('第1章') ? '✓' : '✗', '|', r3.crumb);
+  console.log('3. 切书:', r3.crumb.includes('十字架的道') && r3.crumb.includes('第1章') ? '✓' : '✗', '|', r3.crumb, '| cur:', r3.bookCur);
 
-  // 4. crumb 弹窗（辑 Tab + 书列表）切第2辑 → 第1本第1章
-  await page.evaluate(() => openBookPicker());
+  // 4. 统一导航抽屉（辑切换 + 书列表）切第2辑 → 第1本第1章
+  await page.evaluate(() => openNavDrawer());
   await new Promise((r) => setTimeout(r, 800));
-  await page.evaluate(() => document.querySelectorAll('#bkpVols .chp-book')[1].click());
+  await page.evaluate(() => document.querySelectorAll('#dwFoot button[data-vol]')[1].click());
   await new Promise((r) => setTimeout(r, 600));
   const r4a = await page.evaluate(() => ({
-    tabActive: document.querySelector('#bkpVols .chp-book.active')?.textContent,
-    pickerBooks: document.querySelectorAll('#bkpBooks .bk-nav-book').length,
+    volSel: document.querySelector('#dwFoot button.sel')?.textContent,
+    drawerBooks: document.querySelectorAll('#dwBody .dw-col .dw-item[data-l]').length,
   }));
-  await page.evaluate(() => document.querySelector('#bkpBooks .bk-nav-book').click());
+  await page.evaluate(() => document.querySelector('#dwBody .dw-col .dw-item[data-l]').click());
+  await new Promise((r) => setTimeout(r, 600));
+  await page.evaluate(() => document.querySelector('#dwBody .dw-cols .dw-col:nth-child(2) .dw-item').click());
   await new Promise((r) => setTimeout(r, 2000));
   const r4 = await page.evaluate(() => ({
     crumb: document.querySelector('#chapterLabel').textContent.slice(0, 22),
-    bookCount: document.querySelectorAll('#bookNav .bk-nav-book').length,
+    bookCount: document.querySelectorAll('#navDrawer .dw-col .dw-item[data-l]').length,
   }));
-  console.log('4. 弹窗切辑:', r4a.tabActive === '第二辑' && r4a.pickerBooks === 26 && r4.bookCount === 26 ? '✓' : '✗',
-    '| Tab:', r4a.tabActive, '|', r4.crumb, '| 书数:', r4.bookCount);
+  console.log('4. 抽屉切辑:', r4a.volSel === '第二辑' && r4a.drawerBooks === 26 && r4.bookCount === 26 ? '✓' : '✗',
+    '| 辑:', r4a.volSel, '|', r4.crumb, '| 书数:', r4.bookCount);
 
   // 5. 划线标注 → 保存 + 高亮
   await page.evaluate(() => {

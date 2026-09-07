@@ -35,10 +35,15 @@ const puppeteer = require('D:/coder/aiWorkSpace/bible-reader/node_modules/puppet
   const toolVisible = await page.$eval('#floatTool', el => !el.hidden);
   console.log('浮动工具栏出现:', toolVisible);
 
-  // 2. 点黄色 c1
-  await page.click('#floatTool .sw.c1');
-  await new Promise((r) => setTimeout(r, 200));
-  const markCount = await page.$$eval('mark.c1', els => els.length);
+  // 2. 点黄色 c1（bindPress 绑定的是 mousedown 事件，必须用 page.click 真实鼠标序列；
+  //    全量测试负载下偶发 detached/not clickable，重试兜底）
+  let markCount = 0;
+  for (let i = 0; i < 5 && !markCount; i++) {
+    await new Promise((r) => setTimeout(r, 300));
+    try { await page.click('#floatTool .sw.c1'); } catch (e) { /* 元素瞬态不可点，重试 */ }
+    await new Promise((r) => setTimeout(r, 300));
+    markCount = await page.$$eval('mark.c1', els => els.length).catch(() => 0);
+  }
   const markText = await page.$eval('mark.c1', el => el.textContent);
   console.log('c1 标注数量:', markCount, '内容:', markText);
 

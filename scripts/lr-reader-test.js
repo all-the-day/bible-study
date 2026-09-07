@@ -47,24 +47,24 @@ async function main() {
   const noteKey = Object.keys(r3)[0];
   console.log('3. 篇级笔记持久化:', r3[noteKey] === '阅读器测试笔记' ? '✓' : '✗', '| key:', noteKey);
 
-  // 4. 切卷(罗马书) → crumb 篇目弹窗（卷 Tab + 篇目列表）两级跳转
-  await page.evaluate(() => openLrArticleList(state.lrBookIndex));
-  await new Promise((r) => setTimeout(r, 800));
-  await page.evaluate(() => document.querySelector('#lrpVols .chp-book[data-b="45"]').click());
-  await new Promise((r) => setTimeout(r, 800));
+  // 4. 切卷(罗马书) → 统一导航抽屉（书卷列表 + 篇目列表）两级跳转
+  await page.evaluate(() => openNavDrawer());
+  await new Promise((r) => setTimeout(r, 600));
+  await page.evaluate(() => document.querySelector('#dwBody .dw-item[data-l="45"]').click());
+  await new Promise((r) => setTimeout(r, 1000));
   const r4a = await page.evaluate(() => ({
-    tabActive: document.querySelector('#lrpVols .chp-book.active')?.textContent,
-    artCount: document.querySelectorAll('#lrpArts .lr-art-cell').length,
+    curLeft: document.querySelector('#dwBody .dw-col .dw-item.cur')?.dataset.l,
+    artCount: document.querySelectorAll('#dwBody .dw-cols .dw-col:nth-child(2) .dw-item').length,
   }));
-  await page.evaluate(() => document.querySelector('#lrpArts .lr-art-cell').click());
+  await page.evaluate(() => document.querySelector('#dwBody .dw-cols .dw-col:nth-child(2) .dw-item').click());
   await new Promise((r) => setTimeout(r, 2000));
   const r4 = await page.evaluate(() => ({
     book: document.querySelector('#bookName').textContent,
     art: document.querySelector('#lrMain .lr-content')?.dataset.article,
-    artCount: document.querySelectorAll('.lr-nav-art').length,
+    artCount: document.querySelectorAll('#navDrawer .dw-cols .dw-col:nth-child(2) .dw-item').length,
   }));
-  console.log('4. 弹窗切卷罗马书:', r4a.tabActive === '罗' && r4.book === '罗马书' && r4.art === '1' ? '✓' : '✗',
-    '| Tab:', r4a.tabActive, '| 弹窗篇目:', r4a.artCount, '| 左栏篇目:', r4.artCount);
+  console.log('4. 抽屉切卷罗马书:', r4a.curLeft === '45' && r4.book === '罗马书' && r4.art === '1' ? '✓' : '✗',
+    '| 左栏选中:', r4a.curLeft, '| 停靠篇目:', r4a.artCount, '| 停靠篇目2:', r4.artCount);
 
   // 5. 模块主区划线 → 工具条出现（验证 handleSelection 卷定位）
   await page.evaluate(() => {
@@ -84,16 +84,16 @@ async function main() {
   const r5 = await page.$eval('#floatTool', el => !el.hidden);
   console.log('5. 模块主区划线工具条:', r5 ? '✓' : '✗');
 
-  // 6. ☰ 折叠左栏
+  // 6. ☰ 收起停靠列 / 再点展开
   await page.click('#menuBtn');
-  await new Promise((r) => setTimeout(r, 300));
+  await new Promise((r) => setTimeout(r, 400));
   const r6 = await page.evaluate(() => ({
-    collapsed: document.querySelector('.layout').classList.contains('nav-collapsed'),
-    navHidden: getComputedStyle(document.querySelector('#navCol')).display === 'none',
+    dockedOff: !document.body.classList.contains('drawer-docked'),
+    drawerGone: document.querySelector('#navDrawer').getBoundingClientRect().width === 0,
   }));
-  console.log('6. ☰ 折叠:', r6.collapsed && r6.navHidden ? '✓' : '✗');
+  console.log('6. ☰ 收起停靠列:', r6.dockedOff && r6.drawerGone ? '✓' : '✗');
   await page.click('#menuBtn');   // 展开还原
-  await new Promise((r) => setTimeout(r, 200));
+  await new Promise((r) => setTimeout(r, 400));
 
   // 7. ⌂ 回首页 → 再进生命读经 → 恢复上次位置（罗马书第1篇）
   await page.click('#homeBtn');
@@ -103,9 +103,9 @@ async function main() {
   const r7 = await page.evaluate(() => ({
     book: document.querySelector('#bookName').textContent,
     crumb: document.querySelector('#chapterLabel').textContent.slice(0, 12),
-    artActive: document.querySelector('.lr-nav-art.active')?.textContent.slice(0, 6),
+    artActive: document.querySelector('#navDrawer .dw-cols .dw-col:nth-child(2) .dw-item.cur')?.textContent.slice(0, 6),
   }));
-  console.log('7. 回首页再进恢复:', r7.book === '罗马书' ? '✓' : '✗', '|', r7.crumb, '| 左栏active:', r7.artActive);
+  console.log('7. 回首页再进恢复:', r7.book === '罗马书' ? '✓' : '✗', '|', r7.crumb, '| 停靠active:', r7.artActive);
 
   console.log('\nJS 错误:', errors.length ? errors : '无');
   await browser.close();

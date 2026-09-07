@@ -43,19 +43,8 @@
   <div id="readingProgress" class="reading-progress" aria-hidden="true"></div>
 
   <div class="layout">
+    <!-- 左栏仅剩笔记管理分类树（层级导航已统一走停靠抽屉 #navDrawer） -->
     <aside class="nav-col" id="navCol">
-      <div class="nav-search">
-        <input id="bookSearch" type="text" placeholder="搜索书卷…" autocomplete="off">
-      </div>
-      <div class="nav-list" id="bookList"></div>
-      <div class="nav-chapters" id="chapterList"></div>
-      <!-- 生命读经模块左栏：卷条 + 篇目列表（body-mod-lifereading 时显示） -->
-      <div class="lr-nav" id="lrNav"></div>
-      <!-- 书报模块左栏：辑条 + 书列表（body-mod-books 时显示） -->
-      <div class="bk-nav" id="bookNav"></div>
-      <!-- 晨兴模块左栏：期条 + 篇列表（body-mod-morning 时显示） -->
-      <div class="morning-nav" id="morningNav"></div>
-      <!-- 笔记管理模块左栏：分类树（body-mod-notes 时显示） -->
       <div class="notes-nav" id="notesNav"></div>
     </aside>
 
@@ -126,6 +115,20 @@
     </div>
     <div class="popup-body" id="popupBody"></div>
   </div>
+
+  <!-- 统一左抽屉导航（WeBible 模式：双栏主从 + Segment 浏览/历史 + 阅读历史） -->
+  <div id="drawerOverlay" hidden></div>
+  <aside id="navDrawer" hidden>
+    <!-- 模块级搜索（自三模块左栏迁入）：常驻搜索条，输入时结果层覆盖抽屉 -->
+    <div class="dw-search">
+      <input id="dwSearchInput" type="text" placeholder="" autocomplete="off">
+      <button id="dwSearchCancel" hidden>取消</button>
+    </div>
+    <div class="dw-seg" id="dwSeg"></div>
+    <div class="dw-body" id="dwBody"></div>
+    <div class="dw-foot" id="dwFoot"></div>
+    <div class="dw-search-results" id="dwSearchResults" hidden></div>
+  </aside>
 
   <!-- 检查更新弹窗（独立 modal，下载过程不随弹窗栈关闭） -->
   <div id="updateModal" class="notemodal" hidden>

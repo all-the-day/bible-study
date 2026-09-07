@@ -28,8 +28,8 @@ async function main() {
   const r1 = await page.evaluate(() => ({
     modMorning: document.body.classList.contains('body-mod-morning'),
     crumb: document.querySelector('#chapterLabel').textContent.slice(0, 20),
-    filter: (() => { const el = document.querySelector('#morningNav input'); return !!el && getComputedStyle(el).display !== 'none'; })(),
-    artCount: document.querySelectorAll('.morning-nav-art').length,
+    filter: (() => { const el = document.querySelector('#dwSearchInput'); return !!el && getComputedStyle(el).display !== 'none'; })(),
+    artCount: document.querySelectorAll('#navDrawer .dw-cols .dw-col:nth-child(2) .dw-item').length,
     heads: document.querySelectorAll('.morning-head').length,
     paras: document.querySelectorAll('.morning-para').length,
     sideTa: !!document.querySelector('#morningSide .lr-note-ta'),
@@ -38,30 +38,30 @@ async function main() {
   console.log('1. 晨兴直进:', r1.modMorning && r1.filter && r1.paras >= 10 ? '✓' : '✗',
     '| 篇数:', r1.artCount, '| 层级标题:', r1.heads, '| 段落:', r1.paras, '| crumb:', r1.crumb);
 
-  // 2. crumb 弹窗（期 Tab + 篇列表）切期（国殇节特会，6 篇）
-  await page.evaluate(() => openMorningArticleList());
+  // 2. 统一导航抽屉（期列表 + 篇列表）切期（国殇节特会，6 篇）
+  await page.evaluate(() => openNavDrawer());
   await new Promise((r) => setTimeout(r, 800));
-  await page.evaluate(() => { document.querySelectorAll('#mrpPeriods .chp-book')[1].click(); });
+  await page.evaluate(() => { document.querySelectorAll('#dwBody .dw-col .dw-item[data-l]')[1].click(); });
   await new Promise((r) => setTimeout(r, 1200));
   const r2a = await page.evaluate(() => ({
-    tabActive: document.querySelector('#mrpPeriods .chp-book.active')?.textContent,
-    arts: document.querySelectorAll('#mrpArts .lr-art-cell').length,
+    periodCur: document.querySelector('#dwBody .dw-col .dw-item.cur')?.textContent,
+    arts: document.querySelectorAll('#dwBody .dw-cols .dw-col:nth-child(2) .dw-item').length,
   }));
-  await page.evaluate(() => { document.querySelector('#mrpArts .lr-art-cell').click(); });
+  await page.evaluate(() => { document.querySelector('#dwBody .dw-cols .dw-col:nth-child(2) .dw-item').click(); });
   await new Promise((r) => setTimeout(r, 2000));
   const r2 = await page.evaluate(() => ({
-    artCount: document.querySelectorAll('.morning-nav-art').length,
+    artCount: document.querySelectorAll('#navDrawer .dw-cols .dw-col:nth-child(2) .dw-item').length,
     title: document.querySelector('.morning-title')?.textContent.slice(0, 14),
   }));
-  console.log('2. 弹窗切期:', r2a.tabActive === '国殇节国际相调特会' && r2a.arts === 6 && r2.artCount === 6 ? '✓' : '✗',
-    '| Tab:', r2a.tabActive, '|', r2.title);
+  console.log('2. 抽屉切期:', r2a.periodCur === '国殇节国际相调特会' && r2a.arts === 6 && r2.artCount === 6 ? '✓' : '✗',
+    '| 期:', r2a.periodCur, '|', r2.title);
 
-  // 3. 切篇（第2篇）
-  await page.evaluate(() => { document.querySelectorAll('.morning-nav-art')[1].click(); });
+  // 3. 切篇（第2篇，停靠列右栏）
+  await page.evaluate(() => { document.querySelectorAll('#navDrawer .dw-cols .dw-col:nth-child(2) .dw-item')[1].click(); });
   await new Promise((r) => setTimeout(r, 1200));
   const r3 = await page.evaluate(() => ({
     crumb: document.querySelector('#chapterLabel').textContent.slice(0, 22),
-    artActive: document.querySelector('.morning-nav-art.active')?.textContent.slice(0, 10),
+    artActive: document.querySelector('#navDrawer .dw-cols .dw-col:nth-child(2) .dw-item.cur')?.textContent.slice(0, 10),
   }));
   console.log('3. 切篇:', r3.crumb.includes('第2篇') ? '✓' : '✗', '|', r3.crumb, '| active:', r3.artActive);
 

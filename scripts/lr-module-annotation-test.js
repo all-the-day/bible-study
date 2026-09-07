@@ -63,10 +63,10 @@ async function main() {
   console.log('3. 点色后 #lrMain 高亮:', r3.markInLrMain > 0 ? '✓' : '✗',
     '| 存储:', r3.stored, JSON.stringify(r3.last), '| lrMain:', r3.markInLrMain, '| 研读列:', r3.markStudy);
 
-  // 4. 切篇再切回 → 高亮回放（自愈锚点定位）
-  await page.evaluate(() => { document.querySelectorAll('.lr-nav-art')[1].click(); });
+  // 4. 切篇再切回 → 高亮回放（自愈锚点定位；停靠列右栏切篇）
+  await page.evaluate(() => { document.querySelectorAll('#navDrawer .dw-cols .dw-col:nth-child(2) .dw-item')[1].click(); });
   await new Promise((r) => setTimeout(r, 800));
-  await page.evaluate(() => { document.querySelectorAll('.lr-nav-art')[0].click(); });
+  await page.evaluate(() => { document.querySelectorAll('#navDrawer .dw-cols .dw-col:nth-child(2) .dw-item')[0].click(); });
   await new Promise((r) => setTimeout(r, 800));
   const r4 = await page.evaluate(() => document.querySelectorAll('#lrMain mark.c1').length);
   console.log('4. 切篇切回高亮回放:', r4 > 0 ? '✓' : '✗', '| mark.c1:', r4);

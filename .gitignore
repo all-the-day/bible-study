@@ -45,3 +45,4 @@ case/
 .shots/
 .playwright-cli/
 generated-images/
+.tmp-shots/
