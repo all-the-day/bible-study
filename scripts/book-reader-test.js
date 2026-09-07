@@ -61,10 +61,10 @@ async function main() {
   // 4. 统一导航抽屉（辑切换 + 书列表）切第2辑 → 第1本第1章
   await page.evaluate(() => openNavDrawer());
   await new Promise((r) => setTimeout(r, 800));
-  await page.evaluate(() => document.querySelectorAll('#dwFoot button[data-vol]')[1].click());
+  await page.evaluate(() => document.querySelectorAll('#dwFoot [data-vol]')[1].click());
   await new Promise((r) => setTimeout(r, 600));
   const r4a = await page.evaluate(() => ({
-    volSel: document.querySelector('#dwFoot button.sel')?.textContent,
+    volSel: document.querySelector('#dwFoot [data-vol].sel')?.textContent,
     drawerBooks: document.querySelectorAll('#dwBody .dw-col .dw-item[data-l]').length,
   }));
   await page.evaluate(() => document.querySelector('#dwBody .dw-col .dw-item[data-l]').click());
