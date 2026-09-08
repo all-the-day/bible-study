@@ -1158,7 +1158,7 @@ body.home .mobile-nav { display: none; }
 }
 .notes-group .notes-group-check { margin-left: auto; font-size: 12px; color: var(--brand); cursor: pointer; font-weight: 400; }
 .notes-item {
-  display: flex; align-items: baseline; gap: 8px;
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius-sm); padding: 8px 10px; margin-bottom: 6px;
   cursor: pointer; box-shadow: var(--shadow-sm);

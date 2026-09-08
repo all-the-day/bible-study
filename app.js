@@ -2126,7 +2126,8 @@ function renderNotesBatchBar() {
 }
 
 function renderNotesItem(a, hideLoc) {
-  const div = buildHlItemBody(a, 'notes-item', hideLoc);
+  // 笔记模块条目不显示出处：分组模式组头已有定位（重复），时间排序靠笔记内容自明
+  const div = buildHlItemBody(a, 'notes-item', true);
   div.classList.toggle('selected',
     state.notesSelectedItem && state.notesSelectedItem.kind === 'ann' && state.notesSelectedItem.id === a.id);
   if (state.notesSelectMode) {
@@ -2147,7 +2148,10 @@ function renderNotesItem(a, hideLoc) {
     const time = document.createElement('span');
     time.className = 'notes-item-time';
     time.textContent = fmtTime(a.createdAt);
-    div.appendChild(time);
+    // 时间放首行行尾（在笔记块之前），笔记独占一行不被时间挤到第三行
+    const noteEl = div.querySelector('.hl-note');
+    if (noteEl) div.insertBefore(time, noteEl);
+    else div.appendChild(time);
   }
   div.addEventListener('click', () => selectNotesItem({ kind: 'ann', id: a.id }));
   return div;
