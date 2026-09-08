@@ -118,6 +118,7 @@
 - 同步失败静默降级为纯本地，不阻塞应用；`window.BIBLE_OFFLINE=true` 可跳过远程（测试用）
 - 服务器 CORS 白名单在 `/var/www/bible-reader/server.py` 的 `ALLOWED_ORIGINS`，新增域名用 `../server-ops/server-ops.py -s aliyun-rike exec ...` 操作并重启 `bible-kv`（`pm2 restart bible-kv`，**不要带 `--update-env`** 以免丢 FEEDBACK_ADMIN_TOKEN）。Capacitor 6 WebView origin 是 `https://localhost`（白名单已含）
 - 同步状态指示：设置弹窗「同步状态」行（`syncStatusInfo`：绿=已同步 / 橙=待同步 / 红=离线 / 灰=未启用）+ 冷启动 toast（新会话首次，仅启用同步时提示）
+- **手动同步操作（2026-09 加，起因：平板 80+ 条笔记从未上云且自动同步静默无感）**：① 设置弹窗同步组「立即同步」行 = 手动 `syncFromRemote()`（拉取+补推+结果 toast，`Sync.getPending().length` 未清零会提示）；② 「数据对比」行 = `openSyncCompareModal()` 本机↔云端逐模块条目数（读经/生命读经/书报/听抄标注各行含带笔记数 + 大段笔记合计；两边 `stripDeleted` 后计数，数字不一致标红）；服务器侧用 `peekRemote`（裸 GET **穿透 pending**、只读不写本地——`getRemote` 对 pending key 返回 null 的保护不变）。③ 云同步子弹窗「强制覆盖」区两按钮：`forcePushAll`（以本机为准：跳过合并直接 PUT 本地原文含墓碑，**本机缺的 key 跳过不推**，成功清 pending）/ `forcePullAll`（以云端为准：强制 GET 不跳 pending、无条件写本地+清 pending，key 缺失(null)/拉取失败(undefined) 跳过不动本地），均 `confirmDialog` 红字确认后执行。**自动同步语义不变**；服务器每日备份在 `/var/www/bible-reader/backups/`（30 天，可作最后恢复手段）
 
 ## App 内更新
 

@@ -343,6 +343,59 @@ function byId(arr) { return [...arr].sort((a, b) => a.id.localeCompare(b.id)); }
     assert("场景20 墓碑仍在服务器", server.some((x) => x.id === "a" && x._del === 1));
   }
 
+  // 场景 21：forcePushAll——以本机为准覆盖服务器（跳过合并），本机缺的 key 跳过不推
+  {
+    const remote = {
+      "u1:bible-study:annotations": [
+        { id: "a", text: "本机没有的服务器新标注" },
+        { id: "b", text: "共用" },
+      ],
+      "u1:bible-study:chapterNotes": { "1:1": "服务器独有笔记" },
+    };
+    const { Sync, store } = makeSync(remote);
+    store["bible-study.pending"] = JSON.stringify(["bible-study.annotations"]);
+    store["bible-study.annotations"] = JSON.stringify([{ id: "b", text: "本机版" }, { id: "c", text: "本机独有" }]);
+    // 注意：本机没有 chapterNotes 键（getter 返回 undefined）→ 跳过，不得清空服务器
+    const r = await Sync.forcePushAll({
+      "bible-study.annotations": () => JSON.parse(store["bible-study.annotations"]),
+      "bible-study.chapterNotes": () => undefined,
+    });
+    const server = remote["u1:bible-study:annotations"];
+    assert("场景21 服务器被本机快照覆盖（无合并并集）", server.length === 2 && !server.some((x) => x.id === "a"));
+    assert("场景21 本机缺的 key 跳过：服务器笔记保留", remote["u1:bible-study:chapterNotes"]["1:1"] === "服务器独有笔记");
+    assert("场景21 返回 pushed=1", r.pushed === 1 && r.failed === 0);
+    assert("场景21 推送成功清 pending", !JSON.parse(store["bible-study.pending"]).includes("bible-study.annotations"));
+  }
+
+  // 场景 22：forcePullAll——pending key 也强制覆盖本机；key 不存在/失败跳过；成功清 pending
+  {
+    const remote = {
+      "u1:bible-study:annotations": [{ id: "a", text: "云端权威" }],
+      "u1:bible-study:chapterNotes": { "2:2": "云端笔记" },
+    };
+    const { Sync, store } = makeSync({ ...remote, "u1:bible-study:lrNotes": null }, { failGetKeys: ["u1:bible-study:bookNotes"] });
+    store["bible-study.pending"] = JSON.stringify(["bible-study.annotations", "bible-study.chapterNotes"]);
+    store["bible-study.annotations"] = JSON.stringify([{ id: "b", text: "本机未推送的旧改动" }]);
+    store["bible-study.morningNotes"] = JSON.stringify({ "m1": "本机独有" });
+    const r = await Sync.forcePullAll(["bible-study.annotations", "bible-study.chapterNotes", "bible-study.lrNotes", "bible-study.bookNotes", "bible-study.morningNotes"]);
+    assert("场景22 pending key 被云端覆盖", JSON.parse(store["bible-study.annotations"])[0].text === "云端权威");
+    assert("场景22 拉取成功清 pending", JSON.parse(store["bible-study.pending"]).length === 0);
+    assert("场景22 服务器无 key 不动本地（morningNotes 保留）", JSON.parse(store["bible-study.morningNotes"]).m1 === "本机独有");
+    assert("场景22 拉取失败不动本地（bookNotes 缺席）", store["bible-study.bookNotes"] === undefined);
+    assert("场景22 返回 pulled=2 failed=1", r.pulled === 2 && r.failed === 1);
+  }
+
+  // 场景 23：peekRemote——pending key 也能读到服务器真实值（诊断对比用，只读）
+  {
+    const remote = { "u1:bible-study:annotations": [{ id: "a", text: "服务器真相" }] };
+    const { Sync, store } = makeSync(remote);
+    store["bible-study.pending"] = JSON.stringify(["bible-study.annotations"]);
+    const peeked = await Sync.peekRemote("bible-study.annotations");
+    const blocked = await Sync.getRemote("bible-study.annotations");
+    assert("场景23 peekRemote 透过 pending 读到服务器值", Array.isArray(peeked) && peeked[0].text === "服务器真相");
+    assert("场景23 getRemote 对 pending 仍返回 null（写路径保护不变）", blocked === null);
+  }
+
   console.log(failed === 0 ? "\n全部通过" : "\n有 " + failed + " 项失败");
   process.exit(failed === 0 ? 0 : 1);
 })();

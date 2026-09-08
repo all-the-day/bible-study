@@ -167,6 +167,25 @@ body.home .reading-progress { display: none; }
   padding: 6px 0 2px;
 }
 
+/* 数据对比（本机 ↔ 云端逐模块条目数，手动同步入口 2026-09） */
+.sync-cmp { margin-bottom: 10px; }
+.sync-cmp-head, .sync-cmp-row {
+  display: grid; grid-template-columns: 1fr auto auto; gap: 16px;
+  padding: 7px 2px; font-size: 14px; align-items: baseline;
+}
+.sync-cmp-head { font-size: 12px; color: var(--text-muted); border-bottom: 1px solid var(--border); }
+.sync-cmp-row { border-bottom: 1px dashed var(--border); }
+.sync-cmp-row:last-child { border-bottom: none; }
+.sync-cmp-row span:nth-child(2), .sync-cmp-row span:nth-child(3) { min-width: 88px; text-align: right; font-variant-numeric: tabular-nums; }
+.sync-cmp-head span:nth-child(2), .sync-cmp-head span:nth-child(3) { min-width: 88px; text-align: right; }
+.sync-cmp-row.diff span { color: #d9534f; font-weight: 600; }
+
+/* 云同步弹窗：强制覆盖危险区 */
+.sync-danger {
+  margin-top: 14px; padding-top: 10px; border-top: 1px dashed var(--border);
+}
+.sync-danger-title { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
+
 /* 同步状态指示 */
 /* 移动端「读经|研读」模式切换 pill（桌面隐藏，见 @media max-width:900px） */
 .mode-pill { display: none; }

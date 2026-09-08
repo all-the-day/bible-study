@@ -132,18 +132,14 @@ function saveDeleted(key, live, deletedIds) {
   save(key, live); // sync.js 不可用时退化为纯本地删除
 }
 
-// 启动时后台同步：服务器为主，成功后覆盖本地；再重试离线未推送的改动（先合并服务器当前值再推）
-async function syncFromRemote() {
-  if (!syncActive()) return;
-  await Sync.pullAll(SYNC_KEYS);
-  // flushPending 推送前会拉取服务器当前值合并（防旧快照覆盖新数据），成功后把合并结果写回 localStorage，
-  // 因此状态重载必须放在 flush 之后，UI 与后续 save 才基于合并结果
-  await Sync.flushPending((key) => {
-    // 必须给 localStorage 原文（含墓碑桩），不能给 state 内存态（墓碑已被过滤）：
-    // flushPending 会把合并结果写回本地，传干净的内存态会让服务器上的已删记录存活并被写回，等于撤销删除
-    try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : undefined; }
-    catch (e) { return undefined; }
-  });
+// 本地原文读取（含墓碑桩）：flushPending/强制覆盖的 getter 都必须给原文，不能给过滤后的内存态
+function getRaw(key) {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : undefined; }
+  catch (e) { return undefined; }
+}
+
+// 同步后重载内存态并重渲染（syncFromRemote / 强制覆盖共用）
+function applySyncedState() {
   state.annotations = load(LS_ANNOTATIONS, []);
   state.chapterNotes = load(LS_CHAPTER_NOTES, {});
   state.lrNotes = load(LS_LR_NOTES, {});
@@ -151,6 +147,85 @@ async function syncFromRemote() {
   state.morningNotes = load(LS_MORNING_NOTES, {});
   renderChapter();
   renderStudy();
+}
+
+// 启动时后台同步：服务器为主，成功后覆盖本地；再重试离线未推送的改动（先合并服务器当前值再推）
+async function syncFromRemote() {
+  if (!syncActive()) return;
+  await Sync.pullAll(SYNC_KEYS);
+  // flushPending 推送前会拉取服务器当前值合并（防旧快照覆盖新数据），成功后把合并结果写回 localStorage，
+  // 因此状态重载必须放在 flush 之后，UI 与后续 save 才基于合并结果
+  await Sync.flushPending((key) => getRaw(key));
+  applySyncedState();
+}
+
+/* 手动立即同步（设置弹窗「立即同步」行）：拉取 + 补推 + 结果可见。
+   自动同步全程静默，这里把结果 toast 出来（尤其 pending 清没清干净） */
+async function manualSyncNow() {
+  if (!syncActive()) { showToast('未启用云同步', 'off'); return; }
+  const el = $('setSyncNowVal');
+  if (el) el.textContent = '同步中…';
+  try {
+    await syncFromRemote();
+    const pend = Sync.getPending().length;
+    if (pend > 0) showToast(`同步完成，${pend} 项待推送（稍后自动重试）`, 'pending');
+    else showToast('同步完成', 'on');
+  } catch (e) {
+    showToast('同步失败，请检查网络', 'offline');
+  } finally {
+    if (el) el.textContent = '拉取并推送';
+    updateSyncStatus();
+  }
+}
+
+/* 数据对比（设置弹窗「数据对比」行）：本机 ↔ 云端逐模块条目数。
+   两边都剔除墓碑后计数，与界面所见一致；数字不一致标红——定位「某设备落后/没推上去」 */
+function countAnns(arr) {
+  // 返回 {verse:[总数,带笔记数], lr:…, book:…, morning:…}
+  const agg = { verse: [0, 0], lr: [0, 0], book: [0, 0], morning: [0, 0] };
+  for (const a of arr || []) {
+    const t = agg[a.type]; if (!t) continue;
+    t[0]++; if (a.note) t[1]++;
+  }
+  return agg;
+}
+function countBigNotes(val) {
+  // 4 个笔记 dict 的 live 条目合计
+  let n = 0;
+  for (const v of Object.values(val || {})) if (v && !v._del) n++;
+  return n;
+}
+async function openSyncCompareModal() {
+  if (!syncActive()) { showToast('未启用云同步', 'off'); return; }
+  openPopup('数据对比（本机 ↔ 云端）', `
+    <div class="sync-cmp" id="syncCmpBody"><div class="fb-hint">读取中…</div></div>
+    <div class="fb-hint">两边均不含已删除条目。数字不一致 = 该类数据有一端没同步上。</div>
+  `);
+  const localAnn = countAnns(Sync.stripDeleted(getRaw(LS_ANNOTATIONS) || []));
+  const BIG_KEYS = [LS_CHAPTER_NOTES, LS_LR_NOTES, LS_BOOK_NOTES, LS_MORNING_NOTES];
+  const localBig = BIG_KEYS.reduce((s, k) => s + countBigNotes(getRaw(k) || {}), 0);
+  const remote = {};
+  for (const k of SYNC_KEYS) remote[k] = Sync.stripDeleted((await Sync.peekRemote(k)) || (k === LS_ANNOTATIONS ? [] : {}));
+  const remoteAnn = countAnns(remote[LS_ANNOTATIONS]);
+  const remoteBig = BIG_KEYS.reduce((s, k) => s + countBigNotes(remote[k] || {}), 0);
+  const MODULES = [['verse', '读经标注'], ['lr', '生命读经标注'], ['book', '书报标注'], ['morning', '听抄标注']];
+  const fmt = (t) => `${t[0]}（笔记 ${t[1]}）`;
+  const body = $('syncCmpBody');
+  if (!body) return;   // 弹窗已被关闭
+  body.innerHTML = `
+    <div class="sync-cmp-head"><span></span><span>本机</span><span>云端</span></div>
+    ${MODULES.map(([type, label]) => {
+      const l = localAnn[type], r = remoteAnn[type];
+      const diff = l[0] !== r[0] || l[1] !== r[1];
+      return `<div class="sync-cmp-row${diff ? ' diff' : ''}">
+        <span class="sync-cmp-label">${label}</span>
+        <span>${fmt(l)}</span><span>${fmt(r)}</span>
+      </div>`;
+    }).join('')}
+    <div class="sync-cmp-row${localBig !== remoteBig ? ' diff' : ''}">
+      <span class="sync-cmp-label">大段笔记</span>
+      <span>${localBig}</span><span>${remoteBig}</span>
+    </div>`;
 }
 
 // 同步状态文案（设置弹窗「同步状态」行 + 冷启动 toast 共用）
@@ -203,6 +278,15 @@ function openSettingsModal() {
           <span class="settings-label">同步状态</span>
           <span class="settings-value sync-val" id="setSyncStatusVal">…</span>
         </div>
+        ${enabled ? `
+        <div class="settings-row" id="setSyncNow">
+          <span class="settings-label">立即同步</span>
+          <span class="settings-value" id="setSyncNowVal">拉取并推送</span>
+        </div>
+        <div class="settings-row" id="setSyncCompare">
+          <span class="settings-label">数据对比</span>
+          <span class="settings-arrow">›</span>
+        </div>` : ''}
       </div>
       <div class="settings-card">
         <div class="settings-group">阅读</div>
@@ -259,6 +343,10 @@ function onSettingsRow(e) {
     save(LS_VIEW_MODE, state.viewMode);
     const v = row.querySelector('.settings-value');
     if (v) v.textContent = VIEW_MODE_LABELS[state.viewMode] || '双页';
+  } else if (id === 'setSyncNow') {
+    manualSyncNow();
+  } else if (id === 'setSyncCompare') {
+    openSyncCompareModal();
   } else if (id === 'setFeedback') {
     openFeedbackModal();
   } else if (id === 'setUpdate') {
@@ -277,6 +365,13 @@ function openSyncModal() {
     <div class="fb-actions">
       <span id="fbMsg" class="fb-msg"></span>
       <button class="popup-btn" id="syncDisable">停用同步</button>
+    </div>
+    <div class="sync-danger">
+      <div class="sync-danger-title">强制覆盖（多设备数据冲突时用）</div>
+      <div class="fb-actions">
+        <button class="popup-btn" id="syncForcePull">以云端为准覆盖本机</button>
+        <button class="popup-btn" id="syncForcePush">以本机为准上传</button>
+      </div>
     </div>`
     : `
     <div class="fb-hint">输入授权码启用本设备同步（向管理员申请）。</div>
@@ -294,6 +389,27 @@ function openSyncModal() {
     localStorage.removeItem(LS_ACCOUNT);
     closePopupAll();
     updateSyncStatus();
+  });
+  const fp = $('syncForcePush');
+  if (fp) fp.addEventListener('click', () => {
+    confirmDialog('以本机为准上传', '将把本机全部标注与笔记直接上传并覆盖云端（跳过合并），其他设备上更新的改动会被覆盖。确定继续？', async () => {
+      fp.disabled = true;
+      const r = await Sync.forcePushAll(Object.fromEntries(SYNC_KEYS.map((k) => [k, () => getRaw(k)])));
+      showToast(`已上传 ${r.pushed} 项${r.failed ? `，${r.failed} 项失败` : ''}`, r.failed ? 'offline' : 'on');
+      updateSyncStatus();
+      openSyncModal();   // 重开刷新按钮态
+    }, '覆盖上传');
+  });
+  const fl = $('syncForcePull');
+  if (fl) fl.addEventListener('click', () => {
+    confirmDialog('以云端为准覆盖本机', '将用云端数据直接覆盖本机全部标注与笔记，本机未同步的改动会丢失。确定继续？', async () => {
+      fl.disabled = true;
+      const r = await Sync.forcePullAll(SYNC_KEYS);
+      applySyncedState();
+      showToast(`已下载 ${r.pulled} 项${r.failed ? `，${r.failed} 项失败` : ''}`, r.failed ? 'offline' : 'on');
+      updateSyncStatus();
+      openSyncModal();
+    }, '覆盖本机');
   });
 }
 
@@ -1567,12 +1683,12 @@ function selectNotesItem(item) {
 }
 
 // 删除确认（复用 openPopup，不新建组件）
-function confirmDialog(title, msg, onConfirm) {
+function confirmDialog(title, msg, onConfirm, okLabel) {
   openPopup(title, `
     <div class="fb-hint">${escapeHtml(msg)}</div>
     <div class="fb-actions">
       <button class="popup-btn" id="cfCancel">取消</button>
-      <button class="popup-btn danger" id="cfOk">删除</button>
+      <button class="popup-btn danger" id="cfOk">${escapeHtml(okLabel || '删除')}</button>
     </div>
   `);
   const cancel = $('cfCancel'), ok = $('cfOk');

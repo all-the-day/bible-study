@@ -109,6 +109,12 @@
     return fetchRemote(localKey, timeoutMs);
   }
 
+  /* 诊断用裸 GET：不做 pending 跳过（数据对比需要看到服务器真实值，只读不写本地） */
+  function peekRemote(localKey, timeoutMs = 5000) {
+    if (OFFLINE) return Promise.resolve(null);
+    return fetchRemote(localKey, timeoutMs);
+  }
+
   function putRemote(localKey, value, timeoutMs = 5000) {
     if (OFFLINE) return Promise.resolve(false);
     return new Promise((resolve) => {
@@ -314,13 +320,56 @@
     return getPending().length > 0;
   }
 
+  /* ── 手动同步操作（设置弹窗入口，2026-09 同步事故后加）──────────────────
+     自动同步全程静默，出问题时用户不可见；这三个函数给用户可见可控的出口 */
+
+  /* 以本机为准覆盖服务器：跳过合并直接 PUT 本地原文（含墓碑），成功即清 pending。
+     本机不存在的 key 跳过不推（不会用「空」抹掉服务器上有的数据）。
+     危险操作：会覆盖其他设备推上去的改动，调用方须先经 confirmDialog 确认 */
+  async function forcePushAll(getterByKey) {
+    let pushed = 0, failed = 0;
+    for (const key of Object.keys(getterByKey)) {
+      let v;
+      try { v = getterByKey[key](); } catch (e) { v = undefined; }
+      if (v === undefined || v === null) continue;
+      const ok = await putRemote(key, v);
+      if (ok) pushed++; else failed++;
+    }
+    return { pushed, failed };
+  }
+
+  /* 以服务器为准覆盖本机：强制 GET（不跳 pending）+ 无条件写本地，成功后清 pending
+     （服务器已是权威，保留 pending 会让后续 pull 一直被跳过）。
+     key 不存在（null）或拉取失败（undefined）跳过不动本地。
+     危险操作：本机未同步的改动会被覆盖，调用方须先经 confirmDialog 确认 */
+  async function forcePullAll(localKeys) {
+    let pulled = 0, failed = 0;
+    for (const key of localKeys) {
+      const v = await fetchRemote(key);
+      if (v === undefined) { failed++; continue; }
+      if (v === null) continue;
+      try {
+        localStorage.setItem(key, JSON.stringify(v));
+        clearPending(key);
+        pulled++;
+      } catch (e) { failed++; }
+    }
+    synced = true;
+    notify();
+    return { pulled, failed };
+  }
+
   window.BibleStudySync = {
     getRemote,
+    peekRemote,
     putRemote,
     putRemoteMerged,
     schedulePush,
     pullAll,
     flushPending,
+    forcePushAll,
+    forcePullAll,
+    getPending,
     onStatus,
     hasPending,
     stripDeleted,
