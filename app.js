@@ -26,6 +26,7 @@ const LS_MORNING_LAST = 'bible-study.morningLast';   // {period, chapterId} 晨�
 const LS_MORNING_NOTES = 'bible-study.morningNotes'; // {"period:chapterId": text}
 const LS_NOTES_PREFS = 'bible-study.notesPrefs';     // {source, color, sort} 笔记管理模块偏好
 const LS_DRAWER_DOCKED = 'bible-study.drawerDocked'; // 桌面导航抽屉是否停靠展开（收起后 ☰/crumb 再展开）
+const LS_VCONSOLE = 'bible-study.vconsole';          // 调试模式（vConsole）：'1'=开启，设置弹窗版本号连点 5 次切换
 
 // 反馈提交地址（bible-kv 服务器，Caddy /bible-api/ 反代）
 const FEEDBACK_API = 'https://duoban.xyz/bible-api';
@@ -251,6 +252,45 @@ function showStartupSyncToast() {
   if (!syncActive()) return;
   const info = syncStatusInfo();
   showToast(info.text, info.cls);
+}
+
+/* ============ 调试模式（vConsole）============ */
+// 设置弹窗底部版本号连点 5 次（3 秒内）切换。默认关闭，按需动态加载 vendor/vconsole.min.js。
+// Network/Storage 面板可见敏感信息（含同步令牌），仅排障时开启，用完记得关
+let _dbgClicks = 0, _dbgClickTimer = null;
+function loadVConsole() {
+  if (window._vConsole) return;                                // 已在运行
+  if (window.VConsole || window.vConsole) {                    // 脚本加载过（关闭后再开）：直接重建
+    try { window._vConsole = new window.VConsole(); } catch (e) {}
+    return;
+  }
+  if (document.querySelector('script[data-vconsole]')) return; // 正在加载，防重复注入
+  const s = document.createElement('script');
+  s.src = 'vendor/vconsole.min.js';
+  s.dataset.vconsole = '1';
+  s.onload = () => { try { window._vConsole = new window.VConsole(); } catch (e) {} };
+  document.head.appendChild(s);
+}
+function unloadVConsole() {
+  if (window._vConsole) {
+    try { window._vConsole.destroy(); } catch (e) {}
+    window._vConsole = null;
+  }
+}
+function toggleDebugMode() {
+  const on = localStorage.getItem(LS_VCONSOLE) === '1';
+  if (on) {
+    localStorage.removeItem(LS_VCONSOLE);
+    unloadVConsole();
+    showToast('调试模式已关闭', 'off');
+  } else {
+    localStorage.setItem(LS_VCONSOLE, '1');
+    loadVConsole();
+    showToast('调试模式已开启——用完再次连点版本号关闭', 'on');
+  }
+}
+function initDebugMode() {
+  if (localStorage.getItem(LS_VCONSOLE) === '1') loadVConsole();
 }
 
 /* ============ 设置菜单 ============ */
@@ -618,6 +658,8 @@ async function init() {
     }
   } catch (e) { /* 后台预渲染失败仅记录，不影响启动 */ }
   bindEvents();
+  // 调试模式：上次会话开着 vConsole 则自动恢复（排障跨重启）
+  initDebugMode();
   // 云同步：状态指示 + 后台拉取服务器数据
   if (Sync) Sync.onStatus(updateSyncStatus);
   updateSyncStatus();
@@ -3677,6 +3719,14 @@ function bindEvents() {  // 首页：合集块点击 + 顶部搜索 + ⌂ 回首
   // 设置菜单（⚙️）——行点击走委托，弹窗栈返回后依然有效
   $('settingsBtn').addEventListener('click', openSettingsModal);
   document.addEventListener('click', onSettingsRow);
+  // 调试模式开关：设置弹窗底部版本号 3 秒内连点 5 次
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#setAbout')) return;
+    _dbgClicks++;
+    clearTimeout(_dbgClickTimer);
+    _dbgClickTimer = setTimeout(() => { _dbgClicks = 0; }, 3000);
+    if (_dbgClicks >= 5) { _dbgClicks = 0; toggleDebugMode(); }
+  });
   // 检查更新弹窗
   $('updateCancel').addEventListener('click', closeUpdateModal);
   $('updateAction').addEventListener('click', startUpdateDownload);
