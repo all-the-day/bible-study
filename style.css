@@ -692,6 +692,7 @@ sup.xref-ref:hover { color: var(--brand-dark); }
 .notemodal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 
 /* 检查更新弹窗 */
+#updateModal { z-index: 90; }   /* 独立 modal 叠在设置弹窗（popup 栈 84/85）之上，下载不被打断 */
 .update-status { font-size: 14px; color: var(--text); margin-bottom: 8px; }
 .update-body { font-size: 13px; color: var(--text-soft); margin-bottom: 8px; line-height: 1.7; white-space: pre-wrap; }
 .update-body a { color: var(--brand); }
