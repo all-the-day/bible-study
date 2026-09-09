@@ -26,7 +26,7 @@ const LS_MORNING_LAST = 'bible-study.morningLast';   // {period, chapterId} 晨�
 const LS_MORNING_NOTES = 'bible-study.morningNotes'; // {"period:chapterId": text}
 const LS_NOTES_PREFS = 'bible-study.notesPrefs';     // {source, color, sort} 笔记管理模块偏好
 const LS_DRAWER_DOCKED = 'bible-study.drawerDocked'; // 桌面导航抽屉是否停靠展开（收起后 ☰/crumb 再展开）
-const LS_VCONSOLE = 'bible-study.vconsole';          // 调试模式（vConsole + PageSpy）：'1'=开启，设置弹窗版本号连点 5 次切换
+const LS_VCONSOLE = 'bible-study.vconsole';          // 调试模式（PageSpy）开关：'1'=开启，设置弹窗版本号连点 5 次切换
 const PAGE_SPY_API = 'pagespy.duoban.xyz';           // PageSpy 服务端（Caddy 反代 127.0.0.1:6752，面板有 basic_auth）
 
 // 反馈提交地址（bible-kv 服务器，Caddy /bible-api/ 反代）
@@ -170,8 +170,11 @@ async function manualSyncNow() {
   try {
     await syncFromRemote();
     const pend = Sync.getPending().length;
-    if (pend > 0) showToast(`同步完成，${pend} 项待推送（稍后自动重试）`, 'pending');
-    else showToast('同步完成', 'on');
+    const conflicts = (Sync.getConflicts ? Sync.getConflicts() : []).length;
+    let msg = '同步完成';
+    if (pend > 0) msg = `同步完成，${pend} 条待推送（稍后自动重试）`;
+    if (conflicts > 0) msg += ` · ${conflicts} 条冲突已备份`;
+    showToast(msg, pend > 0 ? 'pending' : 'on');
   } catch (e) {
     showToast('同步失败，请检查网络', 'offline');
   } finally {
@@ -206,35 +209,48 @@ async function openSyncCompareModal() {
   const localAnn = countAnns(Sync.stripDeleted(getRaw(LS_ANNOTATIONS) || []));
   const BIG_KEYS = [LS_CHAPTER_NOTES, LS_LR_NOTES, LS_BOOK_NOTES, LS_MORNING_NOTES];
   const localBig = BIG_KEYS.reduce((s, k) => s + countBigNotes(getRaw(k) || {}), 0);
-  const remote = {};
-  for (const k of SYNC_KEYS) remote[k] = Sync.stripDeleted((await Sync.peekRemote(k)) || (k === LS_ANNOTATIONS ? [] : {}));
-  const remoteAnn = countAnns(remote[LS_ANNOTATIONS]);
-  const remoteBig = BIG_KEYS.reduce((s, k) => s + countBigNotes(remote[k] || {}), 0);
-  const MODULES = [['verse', '读经标注'], ['lr', '生命读经标注'], ['book', '书报标注'], ['morning', '听抄标注']];
-  const fmt = (t) => `${t[0]}（笔记 ${t[1]}）`;
+  const stats = await Sync.getServerStats();
   const body = $('syncCmpBody');
   if (!body) return;   // 弹窗已被关闭
+  if (!stats || !stats.annotations) {
+    body.innerHTML = '<div class="fb-hint">云端数据读取失败，请检查网络。</div>';
+    return;
+  }
+  const sAnn = stats.annotations.types || { verse: [0, 0], lr: [0, 0], book: [0, 0], morning: [0, 0] };
+  const sBig = BIG_KEYS.reduce((s, k) => {
+    const kind = k.replace('bible-study.', '');
+    return s + (stats[kind] ? stats[kind].live : 0);
+  }, 0);
+  const MODULES = [['verse', '读经标注'], ['lr', '生命读经标注'], ['book', '书报标注'], ['morning', '听抄标注']];
+  const fmt = (t) => `${t[0]}（笔记 ${t[1]}）`;
+  const conflicts = (Sync.getConflicts ? Sync.getConflicts() : []).length;
   body.innerHTML = `
     <div class="sync-cmp-head"><span></span><span>本机</span><span>云端</span></div>
     ${MODULES.map(([type, label]) => {
-      const l = localAnn[type], r = remoteAnn[type];
+      const l = localAnn[type], r = sAnn[type];
       const diff = l[0] !== r[0] || l[1] !== r[1];
       return `<div class="sync-cmp-row${diff ? ' diff' : ''}">
         <span class="sync-cmp-label">${label}</span>
         <span>${fmt(l)}</span><span>${fmt(r)}</span>
       </div>`;
     }).join('')}
-    <div class="sync-cmp-row${localBig !== remoteBig ? ' diff' : ''}">
+    <div class="sync-cmp-row${localBig !== sBig ? ' diff' : ''}">
       <span class="sync-cmp-label">大段笔记</span>
-      <span>${localBig}</span><span>${remoteBig}</span>
-    </div>`;
+      <span>${localBig}</span><span>${sBig}</span>
+    </div>
+    ${conflicts ? `<div class="fb-hint">⚠️ 本地有 ${conflicts} 条冲突备份（两侧同时被编辑过的条目，胜者已生效，败者在此留档）。</div>` : ''}`;
 }
 
 // 同步状态文案（设置弹窗「同步状态」行 + 冷启动 toast 共用）
 function syncStatusInfo() {
   if (!syncActive()) return { text: '未启用云同步', cls: 'off' };
-  if (Sync.hasPending()) return { text: '有改动待同步', cls: 'pending' };
-  if (Sync.isRemoteOk()) return { text: '已同步到云端', cls: 'on' };
+  const st = Sync.getStatus ? Sync.getStatus() : {};
+  const pend = Sync.getPending().length;
+  if (st.lastError) return { text: `最近同步失败 · ${pend} 条待推`, cls: 'offline' };
+  if (pend > 0) return { text: `有 ${pend} 条待同步`, cls: 'pending' };
+  if (Sync.isRemoteOk()) {
+    return { text: st.lastSuccess ? `已同步 · ${fmtTime(st.lastSuccess)}` : '已同步到云端', cls: 'on' };
+  }
   return { text: '离线，改动保存在本地', cls: 'offline' };
 }
 
@@ -255,29 +271,11 @@ function showStartupSyncToast() {
   showToast(info.text, info.cls);
 }
 
-/* ============ 调试模式（vConsole）============ */
-// 设置弹窗底部版本号连点 5 次（3 秒内）切换。默认关闭，按需动态加载 vendor/vconsole.min.js。
-// Network/Storage 面板可见敏感信息（含同步令牌），仅排障时开启，用完记得关
+/* ============ 调试模式（PageSpy）============ */
+// 设置弹窗底部版本号连点 5 次（3 秒内）切换。默认关闭，按需动态加载 PageSpy SDK
+// （由 pagespy.duoban.xyz 服务端自托管），数据远传 PC 面板可复制。
+// vConsole 已移除（PageSpy 的 Network/Console 覆盖其全部功能）
 let _dbgClicks = 0, _dbgClickTimer = null;
-function loadVConsole() {
-  if (window._vConsole) return;                                // 已在运行
-  if (window.VConsole || window.vConsole) {                    // 脚本加载过（关闭后再开）：直接重建
-    try { window._vConsole = new window.VConsole(); } catch (e) {}
-    return;
-  }
-  if (document.querySelector('script[data-vconsole]')) return; // 正在加载，防重复注入
-  const s = document.createElement('script');
-  s.src = 'vendor/vconsole.min.js';
-  s.dataset.vconsole = '1';
-  s.onload = () => { try { window._vConsole = new window.VConsole(); } catch (e) {} };
-  document.head.appendChild(s);
-}
-function unloadVConsole() {
-  if (window._vConsole) {
-    try { window._vConsole.destroy(); } catch (e) {}
-    window._vConsole = null;
-  }
-}
 function loadPageSpy() {
   if (window._pageSpy || window.PageSpy) {
     if (!window._pageSpy && window.PageSpy) {
@@ -315,18 +313,16 @@ function toggleDebugMode() {
   const on = localStorage.getItem(LS_VCONSOLE) === '1';
   if (on) {
     localStorage.removeItem(LS_VCONSOLE);
-    unloadVConsole();
     unloadPageSpy();
     showToast('调试模式已关闭', 'off');
   } else {
     localStorage.setItem(LS_VCONSOLE, '1');
-    loadVConsole();
     loadPageSpy();
     showToast('调试模式已开启——用完再次连点版本号关闭', 'on');
   }
 }
 function initDebugMode() {
-  if (localStorage.getItem(LS_VCONSOLE) === '1') { loadVConsole(); loadPageSpy(); }
+  if (localStorage.getItem(LS_VCONSOLE) === '1') loadPageSpy();
 }
 
 /* ============ 设置菜单 ============ */

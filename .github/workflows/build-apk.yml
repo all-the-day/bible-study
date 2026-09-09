@@ -63,10 +63,9 @@ jobs:
 
       - name: 准备 web 资源
         run: |
-          mkdir -p www/data/lifereading www/data/books www/data/morning www/vendor
+          mkdir -p www/data/lifereading www/data/books www/data/morning
           cp index.html app.js style.css manifest.json sw.js sync.js update.js www/
           cp -r icons www/
-          cp vendor/vconsole.min.js www/vendor/
           # APK 内 manifest 版本用 package.json 值重写（App 内更新检查的本地版本依据；
           # 必须在自动递增版本之后执行，否则 APK 内版本号停留在递增前的旧值）
           VERSION=$(node -p "require('./package.json').version")

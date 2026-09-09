@@ -27,7 +27,7 @@
 | 文件 | 职责 |
 |------|------|
 | `index.html` / `style.css` / `app.js` | 单页应用全部逻辑 |
-| `sync.js` | 标注/笔记云同步客户端（duoban.xyz 通用 KV API；删除墓碑：`stripDeleted`/`saveWithTombstones`，见「云同步」节） |
+| `sync.js` | 标注/笔记云同步客户端（**条目级 v2 协议**：outbox + 增量拉取 + 冲突裁决，见「云同步」节） |
 | `update.js` | App 内检查更新客户端（GitHub Releases 查版本 + 原生下载 APK + 安装；下载走 ApkInstallerPlugin 原生 HTTP，不用 WebView fetch——CORS 根因见「App 内更新」节） |
 | `manifest.json` / `sw.js` | PWA 安装与离线缓存（网络优先；**跨域请求不代理不缓存**——防 duoban.xyz 同步数据残留 Cache Storage） |
 | `capacitor.config.json` / `package.json` | APK 打包配置（`resources/icon.png` 为图标源） |
@@ -38,9 +38,9 @@
 | `scripts/export-spiritual.py` | 从 `../bible/data/raw/spiritual_food/` 导出书报 → `data/books/`（系列索引 + 元数据 + 按辑懒加载） |
 | `scripts/export-verses.py` | 从 export.py 产物 `data/bible-text.json` 派生精选经节 → `data/verses.json`（首屏 splash 随机经节数据源，~190 节几 KB） |
 | `start.bat` / `icons/` | 本地预览服务器（python http.server 8765）/ PWA 图标（icon-192/512，`resources/icon.png` 为 APK 图标源） |
-| `vendor/vconsole.min.js` | vConsole 调试台（本地 vendor 不走 CDN，APK 离线可用）+ **PageSpy 远程调试**（`PAGE_SPY_API = pagespy.duoban.xyz`，SDK 由该服务自托管，不 vendor）。**调试模式默认关闭**：设置弹窗底部版本号 3 秒内连点 5 次切换（`toggleDebugMode`，LS_VCONSOLE 持久化、重启自动恢复），开启时**同时加载两者**：vConsole 设备上看（兜底，离线可用）+ PageSpy 远传 PC 面板（数据可复制）。PageSpy 服务端：aliyun-rike `pm2:pagespy`（127.0.0.1:6752，Caddy 反代 pagespy.duoban.xyz，面板 basic_auth、/api/ 与 /page-spy/ 放行供 SDK 连接），凭据存 server-ops。Storage 面板含同步令牌等敏感信息，用完关闭 |
+| **PageSpy 远程调试**（`PAGE_SPY_API = pagespy.duoban.xyz`，SDK 由该服务自托管，无本地文件）。**调试模式默认关闭**：设置弹窗底部版本号 3 秒内连点 5 次切换（`toggleDebugMode`，LS_VCONSOLE 键持久化、重启自动恢复），开启后数据远传 PC 面板（Network/Console/Storage 可复制）。PageSpy 服务端：aliyun-rike `pm2:pagespy`（127.0.0.1:6752，Caddy 反代 pagespy.duoban.xyz，面板 basic_auth、/api/ 与 /page-spy/ 放行供 SDK 连接），凭据存 server-ops。Storage 面板含同步令牌等敏感信息，用完关闭 |
 | `scripts/patch-android.mjs` | CI 帮手：注入原生插件 + AndroidManifest 权限/FileProvider（幂等） |
-| `scripts/*-test.js` | puppeteer 端到端测试（e2e / 标注 / 生命读经标注 / 生命读经模块内标注）；`download-sim-test.js` 验证 WebView fetch 下载被 CORS 拦截（根因留档），`update-logic-test.js` mock 原生插件验证 download() fallback/进度/监听清理，`lr-heading-test.js` 纲目标题提取，`home-test.js` / `home-test-mobile.js` 首页+合集链路冒烟（含 splash 经节断言），`lr-reader-test.js` 生命读经阅读器专项，`lr-module-annotation-test.js` 生命读经模块内划线回归（rerenderAnn 主区重渲染 + 跨卷 book 字段），`book-reader-test.js` 书报阅读器专项，`morning-reader-test.js` 听抄阅读器专项（直进/切期/切篇/层级标题渲染/笔记/划线/全局笔记跳转/恢复）；`sync-merge-test.js` sync.js 合并/推送语义 node 单测（无浏览器；flushPending/pullAll 拉取失败不清空本地/schedulePush 防抖+串行+落笔即标 pending/直推先合并，防旧快照覆盖与失败盲推回归/删除墓碑：落盘留桩+推送后服务器变墓碑+刷新不复活+连续删除墓碑不互相覆盖+dict 重写覆盖墓碑+墓碑优先不复活）；`notes-module-test.js` 笔记管理模块专项（直进/分类树/来源tab/颜色过滤/搜索/排序/选中进面板/编辑笔记/改色/删除单条/大段笔记编辑删除/批量删除/偏好恢复）；`drawer-test.js` 统一导航抽屉专项（桌面停靠列常驻/☰ 收起展开/四模块双栏渲染/高亮同步/旧约新约与辑切换/右栏跳转/模块级搜索/阅读历史记录去重跳转清空空态/notes 停靠隐藏/移动端浮层视口）；`ref-link-test.js` 经文引用识别专项（相对引用/上下文/误判防护/章越界过滤/别名切分回退/章…节至…节范围/串珠前缀格式/篇63 DOM 渲染）；`run-all-tests.sh` 全量运行器（确保 8765 服务器 → 顺序跑全部测试 → 按输出解析判定，失败=非零退出或含 ✗/FAIL/JS 错误；`SKIP="home-test …"` 可跳过） |
+| `scripts/*-test.js` | puppeteer 端到端测试（e2e / 标注 / 生命读经标注 / 生命读经模块内标注）；`download-sim-test.js` 验证 WebView fetch 下载被 CORS 拦截（根因留档），`update-logic-test.js` mock 原生插件验证 download() fallback/进度/监听清理，`lr-heading-test.js` 纲目标题提取，`home-test.js` / `home-test-mobile.js` 首页+合集链路冒烟（含 splash 经节断言），`lr-reader-test.js` 生命读经阅读器专项，`lr-module-annotation-test.js` 生命读经模块内划线回归（rerenderAnn 主区重渲染 + 跨卷 book 字段），`book-reader-test.js` 书报阅读器专项，`morning-reader-test.js` 听抄阅读器专项（直进/切期/切篇/层级标题渲染/笔记/划线/全局笔记跳转/恢复）；`sync2-test.js` sync.js 条目级同步（v2 协议）node 单测，mock 与 server.py 同契约的服务端（无浏览器；播种 import-if-absent/outbox 编辑推送/幂等重放/conflict 裁决双向（服务端胜覆盖本地+败者备份、本地胜换 base 重推）/push 不推进拉取游标+flush 后补拉/pull 跳过在途条目/删除墓碑/笔记 dict 同构/forcePush+forcePull/lastError-lastSuccess 状态记录）；`notes-module-test.js` 笔记管理模块专项（直进/分类树/来源tab/颜色过滤/搜索/排序/选中进面板/编辑笔记/改色/删除单条/大段笔记编辑删除/批量删除/偏好恢复）；`drawer-test.js` 统一导航抽屉专项（桌面停靠列常驻/☰ 收起展开/四模块双栏渲染/高亮同步/旧约新约与辑切换/右栏跳转/模块级搜索/阅读历史记录去重跳转清空空态/notes 停靠隐藏/移动端浮层视口）；`ref-link-test.js` 经文引用识别专项（相对引用/上下文/误判防护/章越界过滤/别名切分回退/章…节至…节范围/串珠前缀格式/篇63 DOM 渲染）；`run-all-tests.sh` 全量运行器（确保 8765 服务器 → 顺序跑全部测试 → 按输出解析判定，失败=非零退出或含 ✗/FAIL/JS 错误；`SKIP="home-test …"` 可跳过） |
 | `scripts/run-all-tests.sh` | 全量测试运行器（见「测试与 Git 钩子」节） |
 | `scripts/install-hooks.sh` | 安装 git hooks 到 `.git/hooks/`（pre-commit 快速质量门 + pre-push 全量测试） |
 | `data/books.json` | 66 卷目录 + 每卷章数 + 缩写 |
@@ -99,27 +99,30 @@
 
 ## 云同步
 
-标注/笔记通过 **duoban.xyz 通用 KV API** 跨端同步（与 bible-reader 共用同一服务，服务器为主 + 本地缓存）：
+标注/笔记通过 **duoban.xyz 条目级同步 API（v2 协议，2026-09-09 上线）** 跨端同步（与 bible-reader 共用同一服务器，服务器为主 + 本地缓存）：
 
 | 项 | 值 |
 |----|-----|
-| API | `https://duoban.xyz/bible-api/api/kv/{key}`（GET/PUT/DELETE） |
-| 服务器 key | `u{uid}:bible-study:annotations`、`u{uid}:bible-study:chapterNotes`、`u{uid}:bible-study:lrNotes`、`u{uid}:bible-study:bookNotes`、`u{uid}:bible-study:morningNotes`（uid 来自账号） |
-| 客户端 | `sync.js`（`window.BibleStudySync`） |
-| 策略 | 服务器为主：启动 `pullAll` 覆盖本地（pending 的 key 跳过；**拉取失败/超时（undefined）与 key 不存在（null）都跳过写入**，防止把本地键写成 `"undefined"` 清空数据后盲推覆盖云端）；写时 `schedulePush` **防抖 800ms + 按 key 串行**：落笔即标 pending（本地有未确认推送的改动，防抖窗口内关页面下次启动 `flushPending` 重推不丢），到点后 `putRemoteMerged` **先 GET 服务器当前值合并再 PUT**（与 flushPending 同语义：数组按 id 并集、同 id 本机赢；对象浅合并本机赢；**拉取失败不盲推**，标 pending 交给下次启动重试），防止旧快照整体覆盖其他设备的新数据。**删除走墓碑桩（tombstone）**：删除不真抹掉，存储/云端留下 `{id, _del:1, _t}` 桩（数组占原 id / dict 占原 key），内存态经 `stripDeleted` 过滤（app.js `load()` 统一剔除，UI 无感）；`saveWithTombstones(key, live, deletedIds, push)` 落盘+推云（墓碑始终落盘，但**只在 `syncActive()` 时才 push**——否则会以默认 u1 命名空间写到别人数据里）。合并墓碑优先规则：数组同 id 一端是墓碑 → **墓碑赢**（uuid 永不复用，删除压过其他设备旧副本）；dict 远端墓碑/本端真值 → **本端真值赢**（支持删了重写；启动 pullAll 先于 flushPending 保证上线先学到删除）。`flushPending` 的 getter 必须返回 **localStorage 原文（含墓碑）**，传过滤后的内存态会让服务器已删记录复活并写回本地。已知限制：**墓碑不做 GC**（并集合并无法表达主动移除，会长期累积，每条约 50 字节）；删除优先于其他设备对同一条的编辑（编辑会被墓碑覆盖） |
-| 同步范围 | **只同步用户数据**（annotations / chapterNotes / lrNotes / bookNotes / morningNotes）；布局偏好（viewMode / hideMarks / studyWidth 等）保持设备本地 |
+| API | `POST /api/sync/{kind}/ops`（批量推送，逐条裁决）、`GET /api/sync/{kind}/changes?since={rev}`（增量拉取）。kind ∈ annotations / chapterNotes / lrNotes / bookNotes / morningNotes。旧 `/api/kv` 端点保留（bible-reader 项目仍在用） |
+| 服务端存储 | SQLite `items` 表（每条目一行：payload / client_updated_at / server_rev / deleted / last_op_id / device_id，索引 `(uid,kind,server_rev)`）+ `sync_state` 表（每账号每 kind 单调修订号）。**PUT 请求体上限 1MB**（2026-09-09 从 64KB 放宽——原上限导致平板 49 条划线静默滞留的事故根因；超限返回 `body_too_large`） |
+| 客户端 | `sync.js`（`window.BibleStudySync`，v2 重写）：**outbox 模式**——本地改动 diff 成条目级 op（含完整 payload + `base_server_rev` + `op_id`），持久化于 `sync:v2:outbox`；flush 分批 POST，按结果逐条清账 |
+| 裁决语义 | 服务端逐条：`op_id` 与行上 `last_op_id` 相同 → **duplicate**（幂等返回已存 rev）；`base_server_rev` == 当前 server_rev → **accepted**（分配新 rev）；不匹配 → **conflict**（附服务端当前版本，不覆盖）。`import=true` → 条目不存在才写入（设备首运行播种）；`force=true` → 跳过 base 检查（强制覆盖按钮）。**冲突自动裁决**（客户端）：按 `(client_updated_at, device_id)` 定序，本地晚→换 base 重推；服务端晚→覆盖本地；**败者全文存入冲突备份** `sync:v2:conflicts`（上限 100 条），绝不静默消失 |
+| 拉取语义 | 增量 `changes?since=last_pulled_rev` → 返回 `{from_rev, to_rev, items[]}`，**全量应用成功后**才推进 `last_pulled_rev`（outbox 在途条目跳过不覆盖，交由推送 conflict 流程裁决）；**push 永远不推进拉取游标**（否则并发写入的中间 rev 会被永久漏掉）。首运行播种：本地全部条目以 import-if-absent 推上服务端，再从 0 全量拉取对齐 |
+| 删除语义 | 本地删除 → `del` op（同样 LWW 裁决：比服务端晚才生效）+ 本地墓碑桩 `{id,_del:1,_t}`（localStorage 原样保留，`load()` 侧 `stripDeleted` 过滤，UI 无感）；服务端墓碑行**长期保留不做 GC**（清墓碑需要设备水位+reset 机制，此规模不值得；另需防「老客户端增量拉不到删除记录导致复活」） |
+| 同步范围 | **只同步用户数据**（annotations / chapterNotes / lrNotes / bookNotes / morningNotes 5 个 kind）；布局偏好（viewMode / hideMarks / studyWidth 等）保持设备本地 |
+| 可见性 | 同步状态行显示 outbox 待推数/最近成功时间/最近错误；「数据对比」逐模块计数（本机 vs 云端，经 getServerStats 走 v2 changes?since=0）；「立即同步」手动触发+toast 报冲突备份数。服务器每日备份在 `/var/www/bible-reader/backups/`（30 天） |
 
 **账号与授权（RFC 8628 简化版）**：
 - 同步是**运行时可选功能**：localStorage `bible-study.account`（`{uid, token}`，null=未启用纯本地）；`syncActive()`（app.js）门控；⚙️ 设置弹窗「云同步」行打开启用/管理弹窗
 - 启用流程 = 输入授权码 → `POST /api/account/claim` 兑换 `{uid, token}`；管理员用 `npm run account:code`（`--uid u1` 绑定已有账号 / 缺省新账号码）生成，码 10 分钟有效、一次性、每 IP claim 限流
-- **KV 权限**：`u{n}:bible-study:*` 命名空间读写必须带设备令牌（`Authorization: Bearer`），`sync.js` 自动附加；跨账号隔离（u2 token 访问 u1 → 401）；bible-reader 命名空间暂未纳入（`SECURED_PROJECTS` 可扩展）
-- owner 账号 `u1` 预置，既有数据命名空间不变；新账号从 u2 起
-- **管理面板**：`https://duoban.xyz/bible-api/admin` — 账号列表/详情（设备吊销、KV 查看/删除、清空账号数据）、授权码撤销、网页生成授权码（可绑定已有 uid，避免「生成码总是新 uid」）。登录用管理员令牌（`BIBLE_ADMIN_TOKEN` = 服务器 `FEEDBACK_ADMIN_TOKEN`）或服务器 `admin_password.txt` 密码（两者存于 server-ops，见 `../server-ops/docs/servers/aliyun-rike.md`）；服务器代码与页面版本化源头在 `../server-ops/files/bible-reader/`，更新走 server-ops upload + `pm2 restart bible-kv`
+- **权限**：`/api/sync/*` 与 `u{n}:bible-study:*` 命名空间读写必须带设备令牌（`Authorization: Bearer`），服务端按令牌解析 uid（跨账号隔离）；bible-reader 命名空间暂未纳入（`SECURED_PROJECTS` 可扩展）
+- owner 账号 `u1` 预置；新账号从 u2 起
+- **管理面板**：`https://duoban.xyz/bible-api/admin` — 账号列表/详情（设备吊销、KV 查看/删除、清空账号数据）、授权码撤销、网页生成授权码。登录用管理员令牌（`BIBLE_ADMIN_TOKEN` = 服务器 `FEEDBACK_ADMIN_TOKEN`）或服务器 `admin_password.txt` 密码（两者存于 server-ops，见 `../server-ops/docs/servers/aliyun-rike.md`）；服务器代码与页面版本化源头在 `../server-ops/files/bible-reader/`，更新走 server-ops upload + `pm2 restart bible-kv`
 
 - 同步失败静默降级为纯本地，不阻塞应用；`window.BIBLE_OFFLINE=true` 可跳过远程（测试用）
 - 服务器 CORS 白名单在 `/var/www/bible-reader/server.py` 的 `ALLOWED_ORIGINS`，新增域名用 `../server-ops/server-ops.py -s aliyun-rike exec ...` 操作并重启 `bible-kv`（`pm2 restart bible-kv`，**不要带 `--update-env`** 以免丢 FEEDBACK_ADMIN_TOKEN）。Capacitor 6 WebView origin 是 `https://localhost`（白名单已含）
-- 同步状态指示：设置弹窗「同步状态」行（`syncStatusInfo`：绿=已同步 / 橙=待同步 / 红=离线 / 灰=未启用）+ 冷启动 toast（新会话首次，仅启用同步时提示）
-- **手动同步操作（2026-09 加，起因：平板 80+ 条笔记从未上云且自动同步静默无感）**：① 设置弹窗同步组「立即同步」行 = 手动 `syncFromRemote()`（拉取+补推+结果 toast，`Sync.getPending().length` 未清零会提示）；② 「数据对比」行 = `openSyncCompareModal()` 本机↔云端逐模块条目数（读经/生命读经/书报/听抄标注各行含带笔记数 + 大段笔记合计；两边 `stripDeleted` 后计数，数字不一致标红）；服务器侧用 `peekRemote`（裸 GET **穿透 pending**、只读不写本地——`getRemote` 对 pending key 返回 null 的保护不变）。③ 云同步子弹窗「强制覆盖」区两按钮：`forcePushAll`（以本机为准：跳过合并直接 PUT 本地原文含墓碑，**本机缺的 key 跳过不推**，成功清 pending）/ `forcePullAll`（以云端为准：强制 GET 不跳 pending、无条件写本地+清 pending，key 缺失(null)/拉取失败(undefined) 跳过不动本地），均 `confirmDialog` 红字确认后执行。**自动同步语义不变**；服务器每日备份在 `/var/www/bible-reader/backups/`（30 天，可作最后恢复手段）
+- 同步状态指示：设置弹窗「同步状态」行（`syncStatusInfo`：绿=已同步 / 橙=待同步 / 红=离线或最近失败 / 灰=未启用，含最近成功时间与待推数）+ 冷启动 toast（新会话首次，仅启用同步时提示）
+- **v1→v2 切换纪律**（2026-09-09）：升级前所有设备在旧协议下「数据对比」归零（确认无未推数据）→ 部署服务端 v2（旧 /api/kv 不动）→ 逐台升级客户端（v2 首运行播种 import-if-absent + 全量拉取对齐）→ 第一台校验后再下一台。localStorage v2 状态键独立命名空间 `sync:v2:*`，与 v1 遗留数据隔离
 
 ## App 内更新
 
@@ -195,7 +198,7 @@ vercel --prod --yes --archive=tgz
 ## 测试与 Git 钩子
 
 - **理念**：不要求每次小改动手跑测试。`pre-commit` 只做快速质量门（几秒），全量浏览器测试放到 `pre-push`（push 只在部署时发生）
-- **pre-commit**（`scripts/git-hooks/pre-commit`）：`node --check` 全量 JS/JSON（镜像 check-js.yml）+ `sync-merge-test.js` 无浏览器单测；失败则阻止 commit（`--no-verify` 可跳过）
+- **pre-commit**（`scripts/git-hooks/pre-commit`）：`node --check` 全量 JS/JSON（镜像 check-js.yml）+ `sync2-test.js` 无浏览器同步单测；失败则阻止 commit（`--no-verify` 可跳过）
 - **pre-push**（`scripts/git-hooks/pre-push`）：调 `scripts/run-all-tests.sh` 全量跑 15 个测试（约 10 分钟），失败则阻止 push（部署前置保证）
 - **安装**：`bash scripts/install-hooks.sh` 复制到 `.git/hooks/`（本地配置不入库；新 clone 需重装）
 - **run-all-tests.sh**：确保 8765 服务器（无则临时启动，退出时清理）→ 顺序跑全部测试 → 输出解析判定（非零退出 或 含 `✗`/`FAIL ` /`JS 错误: [` 判失败，因为测试断言失败不设退出码）；`SKIP="home-test book-reader-test"` 可跳过部分测试

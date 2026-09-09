@@ -1,6 +1,6 @@
-const CACHE = 'bible-study-v7';
+const CACHE = 'bible-study-v8';
 const DATA_CACHE = 'bible-study-data-v6';
-const ASSETS = ['/', '/index.html', '/style.css', '/app.js', '/sync.js', '/update.js', '/manifest.json', '/vendor/vconsole.min.js'];
+const ASSETS = ['/', '/index.html', '/style.css', '/app.js', '/sync.js', '/update.js', '/manifest.json'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
