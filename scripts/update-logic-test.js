@@ -116,6 +116,35 @@ async function main() {
   console.log('  调用序列:', r3.calls.join(' → '), '(预期 4 次 download + 1 次 removeAllListeners)');
   console.log('  错误文案为超时提示(首个失败源错误):', /下载超时/.test(JSON.stringify(r3.res)));
 
+  /* 场景 4：版本化资产名——镜像候选用同一 URL 换 host，文件名保持一致（防镜像按 URL 缓存串版） */
+  let r4 = await page.evaluate(async ({ source }) => {
+    const urls = [];
+    window.Capacitor = {
+      isNativePlatform: () => true,
+      Plugins: {
+        ApkInstaller: {
+          download: ({ url }) => {
+            urls.push(url);
+            // 前两源失败，逼出全部候选（最后一个成功）
+            if (!url.startsWith('https://ghproxy.net')) return Promise.reject({ message: 'timeout' });
+            return Promise.resolve({ uri: '/cache/t.apk' });
+          },
+          install: () => Promise.resolve({ message: 'ok' }),
+          addListener: () => Promise.resolve({ remove() {} }),
+          removeAllListeners: () => {},
+        },
+      },
+    };
+    eval(source);
+    await window.BibleStudyUpdate.download({
+      downloadUrl: 'https://github.com/all-the-day/bible-study/releases/download/bible-study-main/bible-study-v1.0.26.apk',
+    });
+    return urls;
+  }, { source });
+  console.log('\n场景4 版本化资产名:', JSON.stringify(r4, null, 1));
+  const verName = /bible-study-v1\.0\.26\.apk/;
+  console.log('  所有候选都带版本化文件名:', r4.every((u) => verName.test(u)), '| 候选数:', r4.length, '(预期 3：直连+两镜像)');
+
   await browser.close();
   server.kill();
 }

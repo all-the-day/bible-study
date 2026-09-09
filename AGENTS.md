@@ -131,7 +131,7 @@ APK 端检查 GitHub Releases 新版本 → 下载 APK → 触发系统安装（
 | 本地版本 | `manifest.json` 的 `version`（`update.js` 读取；CI 构建 APK 时用 package.json 值重写 `www/manifest.json`） |
 | 远端版本 | Release `name`（CI 固定格式 `读经 v${VERSION} · 云同步版`），正则 `/v(\d+\.\d+\.\d+)/` 解析 |
 | 比较 | `compareVersion`：去 v 前缀 → split('.') → parseInt 逐位比较 |
-| 下载源 | 直连 GitHub + 公共镜像依次尝试（`github.com` → `gh-proxy.com` → `ghproxy.net`），失败切换下一个；候选源按域名去重（API 的 downloadUrl 即 github.com 直连） |
+| 下载源 | 直连 GitHub + 公共镜像依次尝试（`github.com` → `gh-proxy.com` → `ghproxy.net`），失败切换下一个；候选源按域名去重（API 的 downloadUrl 即 github.com 直连）。**APK 资产名带版本号** `bible-study-v${VERSION}.apk`（2026-09-09 起：每版 URL 唯一，防镜像按 URL 缓存串版——曾导致设备下载到旧版缓存包）；update.js 按 `.apk` 后缀匹配资产，镜像候选用同一 URL 换 host 生成，静态 `bible-study.apk` 路径仅作 API 无资产时的兜底 |
 | 下载方式 | **原生 `HttpURLConnection`**（`ApkInstallerPlugin.download`，不受 WebView CORS 限制）→ cacheDir `downloads/`；进度经插件 `progress` 事件（fraction 0..1，原生节流 500ms）转发 JS 进度条 |
 | 安装 | `Capacitor.Plugins.ApkInstaller.install({filePath})`（原生插件）→ FileProvider → 系统 `ACTION_VIEW` 安装器 |
 | 清理 | 成功后清理 CACHE/DATA `downloads/` 目录历史 `*.apk` |

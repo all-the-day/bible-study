@@ -134,21 +134,32 @@
     return next();
   }
 
-  /* 候选源：API 给的 downloadUrl 优先 + 镜像拼接；downloadUrl 通常就是
-     github.com 直连地址，与 SOURCES 首个域名重复，按域名去重避免直连失败时白等两次 */
+  /* 候选源：API 给的 downloadUrl 优先（资产名带版本号，防镜像按 URL 缓存串版），
+     其余源用同一 URL 换 host（保持版本化文件名，静态 APK_PATH 仅作 API 无资产时的兜底）；
+     downloadUrl 通常就是 github.com 直连地址，与 SOURCES 首个域名重复，按域名去重避免
+     直连失败时白等两次 */
   function buildCandidates(latest) {
-    const byHost = new Map();
-    if (latest && latest.downloadUrl) {
-      try { byHost.set(new URL(latest.downloadUrl).host, latest.downloadUrl); } catch (e) {}
-    }
-    SOURCES.forEach((s) => {
-      const u = s + APK_PATH;
+    const out = [];
+    const push = (u) => {
       try {
         const host = new URL(u).host;
-        if (!byHost.has(host)) byHost.set(host, u);
+        if (!out.some((x) => new URL(x).host === host)) out.push(u);
       } catch (e) {}
+    };
+    const base = latest && latest.downloadUrl ? latest.downloadUrl : null;
+    if (base) push(base);
+    SOURCES.forEach((s) => {
+      if (base) {
+        try {
+          const u = new URL(base);
+          u.host = new URL(s).host;
+          push(u.toString());
+          return;
+        } catch (e) {}
+      }
+      push(s + APK_PATH);   // 兜底：API 未给资产时退回固定名（旧版资产兼容）
     });
-    return Array.from(byHost.values());
+    return out;
   }
 
   /* 原生下载 + 安装。onProgress(fraction 0..1)。返回 {ok, msg} */
