@@ -26,7 +26,8 @@ const LS_MORNING_LAST = 'bible-study.morningLast';   // {period, chapterId} 晨�
 const LS_MORNING_NOTES = 'bible-study.morningNotes'; // {"period:chapterId": text}
 const LS_NOTES_PREFS = 'bible-study.notesPrefs';     // {source, color, sort} 笔记管理模块偏好
 const LS_DRAWER_DOCKED = 'bible-study.drawerDocked'; // 桌面导航抽屉是否停靠展开（收起后 ☰/crumb 再展开）
-const LS_VCONSOLE = 'bible-study.vconsole';          // 调试模式（vConsole）：'1'=开启，设置弹窗版本号连点 5 次切换
+const LS_VCONSOLE = 'bible-study.vconsole';          // 调试模式（vConsole + PageSpy）：'1'=开启，设置弹窗版本号连点 5 次切换
+const PAGE_SPY_API = 'pagespy.duoban.xyz';           // PageSpy 服务端（Caddy 反代 127.0.0.1:6752，面板有 basic_auth）
 
 // 反馈提交地址（bible-kv 服务器，Caddy /bible-api/ 反代）
 const FEEDBACK_API = 'https://duoban.xyz/bible-api';
@@ -277,20 +278,55 @@ function unloadVConsole() {
     window._vConsole = null;
   }
 }
+function loadPageSpy() {
+  if (window._pageSpy || window.PageSpy) {
+    if (!window._pageSpy && window.PageSpy) {
+      try {
+        window._pageSpy = new window.PageSpy({
+          api: PAGE_SPY_API, project: 'bible-study',
+          title: '读经 · ' + (window.Capacitor && window.Capacitor.isNativePlatform() ? 'APK' : 'Web'),
+        });
+      } catch (e) {}
+    }
+    return;
+  }
+  if (document.querySelector('script[data-pagespy]')) return;   // 正在加载，防重复注入
+  const s = document.createElement('script');
+  s.src = 'https://' + PAGE_SPY_API + '/page-spy/index.min.js';
+  s.crossOrigin = 'anonymous';
+  s.dataset.pagespy = '1';
+  s.onload = () => {
+    try {
+      window._pageSpy = new window.PageSpy({
+        api: PAGE_SPY_API, project: 'bible-study',
+        title: '读经 · ' + (window.Capacitor && window.Capacitor.isNativePlatform() ? 'APK' : 'Web'),
+      });
+    } catch (e) {}
+  };
+  document.head.appendChild(s);
+}
+function unloadPageSpy() {
+  if (window._pageSpy) {
+    try { window._pageSpy.abort(); } catch (e) {}
+    window._pageSpy = null;
+  }
+}
 function toggleDebugMode() {
   const on = localStorage.getItem(LS_VCONSOLE) === '1';
   if (on) {
     localStorage.removeItem(LS_VCONSOLE);
     unloadVConsole();
+    unloadPageSpy();
     showToast('调试模式已关闭', 'off');
   } else {
     localStorage.setItem(LS_VCONSOLE, '1');
     loadVConsole();
+    loadPageSpy();
     showToast('调试模式已开启——用完再次连点版本号关闭', 'on');
   }
 }
 function initDebugMode() {
-  if (localStorage.getItem(LS_VCONSOLE) === '1') loadVConsole();
+  if (localStorage.getItem(LS_VCONSOLE) === '1') { loadVConsole(); loadPageSpy(); }
 }
 
 /* ============ 设置菜单 ============ */
