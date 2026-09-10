@@ -137,14 +137,23 @@
     var headers = body !== undefined ? { "Content-Type": "application/json" } : {};
     var acct = account();
     if (acct && acct.token) headers["Authorization"] = "Bearer " + acct.token;
+    // 超时保护：连接黑洞（弱网/服务端半死）时 fetch 会永久挂起，
+    // 导致 flushing 永不清空、同步静默卡死且不产生 lastError
+    var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    var timedOut = false;
+    var timer = ctrl ? setTimeout(function () { timedOut = true; ctrl.abort(); }, 20000) : null;
     return fetch(API_BASE + path, {
       method: method,
       headers: headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: ctrl ? ctrl.signal : undefined,
     }).then(function (res) {
       if (!res.ok) throw new Error("http " + res.status);
       return res.json();
-    });
+    }).catch(function (e) {
+      if (timedOut) throw new Error("请求超时");
+      throw e;
+    }).finally(function () { if (timer) clearTimeout(timer); });
   }
 
   // ---------- 本地改动 → outbox ops ----------
@@ -249,9 +258,10 @@
   }
 
   // ---------- 应用服务端条目到本地 ----------
+  /* 返回是否应用成功：存储写入失败（如配额）返回 false，供 pullKind 决定是否推进游标 */
   function applyServerItem(kind, it) {
     var localKey = KIND_TO_KEY[kind];
-    if (!localKey) return;
+    if (!localKey) return true;
     var raw = readRaw(localKey);
     if (KIND_IS_ARRAY[kind]) {
       var arr = Array.isArray(raw) ? raw : [];
@@ -267,26 +277,35 @@
       } else {
         arr.push(it.payload);
       }
-      try { localStorage.setItem(localKey, JSON.stringify(arr)); } catch (e) { return; }
+      try { localStorage.setItem(localKey, JSON.stringify(arr)); } catch (e) { return false; }
     } else {
       var obj = (raw && typeof raw === "object" && !Array.isArray(raw)) ? raw : {};
       if (it.deleted) obj[it.item_id] = { _del: 1, _t: it.server_updated_at || Date.now() };
       else obj[it.item_id] = it.payload;
-      try { localStorage.setItem(localKey, JSON.stringify(obj)); } catch (e) { return; }
+      try { localStorage.setItem(localKey, JSON.stringify(obj)); } catch (e) { return false; }
     }
     var lastLocal = getLastLocal();
     lastLocal[localKey] = readRaw(localKey);   // 快照同步，防后续 diff 误判
     jset(LS_LASTLOCAL, lastLocal);
+    return true;
   }
 
   // ---------- 冲突裁决 ----------
-  function recordConflict(kind, op, current) {
+  /* 备份一场冲突的双方全文（localWins 时本地是胜者，标签需相应翻转）。
+     注意：sync2-test 场景 4/5 的断言依赖 winner/loser 语义，改动需同步测试 */
+  function recordConflict(kind, op, current, localWins) {
+    var localPayload = op.op === "upsert" ? op.item : null;
+    var localDeleted = op.op === "del";
+    var serverPayload = current.payload;
+    var serverDeleted = !!current.deleted;
     var list = getConflicts();
     list.push({
       at: Date.now(), kind: kind, item_id: op.item_id,
-      loser: op.op === "upsert" ? op.item : null, loserDeleted: op.op === "del",
-      winner: current.payload, winnerDeleted: !!current.deleted,
-      winnerDevice: current.device_id,
+      loser: localWins ? serverPayload : localPayload,
+      loserDeleted: localWins ? serverDeleted : localDeleted,
+      winner: localWins ? localPayload : serverPayload,
+      winnerDeleted: localWins ? localDeleted : serverDeleted,
+      winnerDevice: localWins ? (op.device_id || "") : current.device_id,
     });
     if (list.length > 100) list = list.slice(-100);   // 上限 100 条，够回溯用
     jset(LS_CONFLICTS, list);
@@ -304,13 +323,13 @@
       removeOutbox(op.op_id);                  // 旧 op 出队，换新 op_id/base 重新排队
       op.base_server_rev = current.server_rev;
       op.op_id = uuid();
-      recordConflict(kind, op, current);       // 胜者亦记录（备份被覆盖的服务端版本）
+      recordConflict(kind, op, current, true);   // 本地胜：备份被覆盖的服务端版本（loser=服务端）
       var ob = getOutbox();
       ob.push(op);
       setOutbox(ob);
       setItemRev(kind, op.item_id, current.server_rev);
     } else {
-      recordConflict(kind, op, current);
+      recordConflict(kind, op, current, false);  // 服务端胜：备份本地编辑（loser=本地）
       applyServerItem(kind, {
         item_id: op.item_id, payload: current.payload, deleted: current.deleted,
         server_updated_at: Date.now(),
@@ -389,9 +408,12 @@
     if (flushTimer) return;
     flushTimer = setTimeout(function () {
       flushTimer = null;
-      if (flushing) flushing = flushing.then(function () { return flushOutbox(); });
-      else flushing = flushOutbox();
-      flushing.then(function () { flushing = null; }, function () { flushing = null; });
+      // 追踪器守卫：旧 flush 完成时若已链上新 flush（flushing 已被替换）不得清空，
+      // 否则后续 timer 会与在途 flush 并发（重复 POST；服务端幂等但浪费）
+      var p = flushing ? flushing.then(function () { return flushOutbox(); }) : flushOutbox();
+      flushing = p;
+      var settle = function () { if (flushing === p) flushing = null; };
+      p.then(settle, settle);
     }, 800);
   }
 
@@ -410,12 +432,17 @@
     return http("/api/sync/" + kind + "/changes?since=" + since).then(function (d) {
       var ob = getOutbox();
       var items = d.items || [];
+      var failed = 0;
       items.forEach(function (it) {
         var pending = ob.some(function (o) { return o.kind === kind && o.item_id === it.item_id; });
         if (pending) return;                       // 本地有未确认编辑：不覆盖，交由 push conflict 流程
-        applyServerItem(kind, it);
-        setItemRev(kind, it.item_id, it.server_rev);
+        if (applyServerItem(kind, it)) setItemRev(kind, it.item_id, it.server_rev);
+        else failed++;
       });
+      if (failed) {
+        // 应用失败（如存储配额）不推进游标：下次拉取重试本批（已成功条目重复应用幂等）
+        throw new Error("本地存储写入失败 " + failed + " 条，本批稍后重试");
+      }
       var lp = getLastPull();
       lp[kind] = d.to_rev;                         // 全量应用完毕才推进拉取游标
       jset(LS_LAST_PULL, lp);
@@ -584,7 +611,10 @@
     });
   }
 
-  /* 以云端为准：清空 outbox（放弃本地未确认编辑）→ 游标归零全量拉取重建 */
+  /* 以云端为准：清空 outbox（放弃本地未确认编辑）→ 游标归零全量拉取重建。
+     语义注意（2026-09-10 用户确认保持现状，勿当 bug 修）：本函数是「云端合并进本机」——
+     applyServerItem 只覆盖/追加，不删除本机独有条目；与 forcePushAll 的完整覆盖
+     语义刻意不对称，防误删本地数据。 */
   function forcePullAll(localKeys) {
     if (!syncActive()) return Promise.resolve({ pulled: 0, failed: 0 });
     setOutbox([]);

@@ -116,8 +116,19 @@ const Sync = window.BibleStudySync || null;
 function syncActive() { return !!(Sync && state.account); }
 const SYNC_KEYS = [LS_ANNOTATIONS, LS_CHAPTER_NOTES, LS_LR_NOTES, LS_BOOK_NOTES, LS_MORNING_NOTES];
 
+let _saveWarnAt = 0;
 function save(key, val) {
-  localStorage.setItem(key, JSON.stringify(val));
+  try {
+    localStorage.setItem(key, JSON.stringify(val));
+  } catch (e) {
+    // 配额/隐私模式等写入失败：不抛异常（防打断渲染链/输入处理），节流提示；
+    // 本次未落盘 → 不推同步（diff 以存储为准，避免误解基准）
+    if (Date.now() - _saveWarnAt > 10000) {
+      _saveWarnAt = Date.now();
+      showToast('保存失败：存储空间不足或被限制');
+    }
+    return;
+  }
   if (syncActive() && SYNC_KEYS.includes(key)) {
     // 防抖推送（sync.js schedulePush）：合并 800ms 内的连续写为一次推送；
     // 推送前先拉服务器当前值合并（防旧快照覆盖其他设备），落笔即标 pending（防抖窗口内关页面不丢数据）
@@ -989,7 +1000,9 @@ function homeSearch(q) {
   state.annotations.filter(a => (a.note || '').includes(q) || (a.text || '').includes(q)).slice(0, 20).forEach(a => {
     out.push({
       key: 'ann-' + a.id,
-      loc: a.type === 'verse' ? `${bookName(a.book)} ${a.chapter}:${a.verse}` : `${bookName(a.book)} 生命读经`,
+      loc: a.type === 'verse'
+        ? `${bookName(a.book)} ${a.chapter}:${a.verse}${a.half || ''}`
+        : hlLocText(a),   // 书报/听抄/生命读经用各自的规范定位文案（反馈：非 verse 一律「生命读经」标签错误）
       text: (a.note || a.text || '').slice(0, 30),
       go: () => { enterModule('bible'); navigateToAnnotation(a); },
     });
@@ -4130,13 +4143,15 @@ function showFloatTool(rect) {
   const sep2 = document.createElement('div');
   sep2.className = 'tool-sep';
   tool.appendChild(sep2);
-  // 引用到笔记
-  const qt = document.createElement('button');
-  qt.className = 'tool-btn';
-  qt.textContent = '引用到笔记';
-  qt.title = '把选中文字（带出处）追加到本章笔记';
-  bindPress(qt, quoteToNotes);
-  tool.appendChild(qt);
+  // 引用到笔记（仅读经模块：写入当前经文章笔记；生命读经/书报/听抄模块没有对应「本章」概念）
+  if (state.activeModule === 'bible') {
+    const qt = document.createElement('button');
+    qt.className = 'tool-btn';
+    qt.textContent = '引用到笔记';
+    qt.title = '把选中文字（带出处）追加到本章笔记';
+    bindPress(qt, quoteToNotes);
+    tool.appendChild(qt);
+  }
   // 复制纯文本（自动过滤注号）
   const cp = document.createElement('button');
   cp.className = 'tool-btn';
@@ -4996,7 +5011,7 @@ function updateSettingsBadge() {
 
 function closeUpdateModal() {
   $('updateModal').hidden = true;
-  document.body.classList.remove('scroll-locked');
+  lockScroll(false);
 }
 
 function openUpdateModal() {
@@ -5008,7 +5023,7 @@ function openUpdateModal() {
   const percent = $('updatePercent');
   const action = $('updateAction');
   modal.hidden = false;
-  document.body.classList.add('scroll-locked');
+  lockScroll(true);
   status.textContent = '检查中…';
   body.innerHTML = '';
   progress.hidden = true;

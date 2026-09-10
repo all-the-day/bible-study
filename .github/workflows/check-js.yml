@@ -8,6 +8,7 @@ on:
     paths:
       - 'app.js'
       - 'sync.js'
+      - 'update.js'
       - 'manifest.json'
       - 'sw.js'
       - 'scripts/*.js'
@@ -27,7 +28,7 @@ jobs:
       - name: node --check 全部 JS
         run: |
           FAIL=0
-          for f in app.js sync.js manifest.json sw.js scripts/*.js scripts/*.mjs scripts/feedback/*.mjs; do
+          for f in app.js sync.js update.js manifest.json sw.js scripts/*.js scripts/*.mjs scripts/feedback/*.mjs; do
             [ -f "$f" ] || continue
             if [ "${f##*.}" = "json" ]; then
               node -e "JSON.parse(require('fs').readFileSync('$f','utf8'))" || FAIL=1

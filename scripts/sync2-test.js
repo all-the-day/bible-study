@@ -69,7 +69,7 @@ function makeSync2(server, opts = {}) {
   };
   const localStorage = {
     getItem: (k) => (k in store ? store[k] : null),
-    setItem: (k, v) => { store[k] = String(v); },
+    setItem: (k, v) => { if (store.__failSet === k) throw new Error("QuotaExceededError(mock)"); store[k] = String(v); },
     removeItem: (k) => { delete store[k]; },
   };
   const fetch = async (url, o) => {
@@ -191,7 +191,7 @@ function ann(id, text, extra) {
     await Sync.flushPending();
     assert("场景5 本地胜：服务端最终为本地内容", JSON.parse(server.rows["u1|annotations|a"].payload).note === "本地新编辑");
     const conflicts = JSON.parse(store["bible-study.sync:v2:conflicts"] || "[]");
-    assert("场景5 冲突备份（败者=服务端旧文本）", conflicts.some((c) => c.winner === "服务端旧文本" || (c.loser && c.loser.text === "服务端旧文本") || c.winnerDevice === "dev-B"));
+    assert("场景5 冲突备份（本地胜：败者=服务端旧文本、胜者=本地新编辑）", conflicts.some((c) => c.loser && c.loser.text === "服务端旧文本" && c.winner && c.winner.note === "本地新编辑"));
   }
 
   /* 场景 6：pull 跳过 outbox 在途条目（未 flush 前拉取不覆盖本地编辑） */
@@ -281,6 +281,28 @@ function ann(id, text, extra) {
     await Sync.flushPending();   // 恢复后重推成功
     const st2 = JSON.parse(store["bible-study.sync:v2:status"]);
     assert("场景10 成功后记录 lastSuccess 且错误清除", !!st2.lastSuccess && !st2.lastError);
+  }
+
+  /* 场景 11：拉取应用失败（存储配额）→ 不推进游标，恢复后重拉带回 */
+  {
+    const server = makeServer();
+    const { Sync, store } = makeSync2(server);
+    // 服务端先有数据（另一设备写入）
+    server.processOps("u1", "annotations", [
+      { op_id: "srv-1", op: "upsert", item_id: "x", base_server_rev: 0, client_updated_at: 5, device_id: "dev-B", item: ann("x") },
+    ]);
+    store.__failSet = "bible-study.annotations";   // 模拟本地存储写入失败（配额）
+    await Sync.pullAll(["bible-study.annotations"]);
+    const lp = JSON.parse(store["bible-study.sync:v2:last_pulled_rev"] || "{}");
+    assert("场景11 应用失败：拉取游标不推进", !lp.annotations);
+    const st = JSON.parse(store["bible-study.sync:v2:status"]);
+    assert("场景11 应用失败：记录 lastError", !!st.lastError);
+    // 恢复存储后重拉：条目带回且游标推进
+    delete store.__failSet;
+    await Sync.pullAll(["bible-study.annotations"]);
+    const lp2 = JSON.parse(store["bible-study.sync:v2:last_pulled_rev"]).annotations;
+    const local = Sync.stripDeleted(JSON.parse(store["bible-study.annotations"]));
+    assert("场景11 恢复后重拉带回条目且游标推进", lp2 > 0 && local.some((x) => x.id === "x"));
   }
 
   console.log(failed === 0 ? "\n全部通过" : "\n有 " + failed + " 项失败");

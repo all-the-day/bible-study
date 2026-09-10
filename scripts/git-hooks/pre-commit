@@ -13,7 +13,7 @@ check_file() {
   fi
 }
 
-for f in app.js sync.js manifest.json sw.js scripts/*.js scripts/*.mjs; do
+for f in app.js sync.js update.js manifest.json sw.js scripts/*.js scripts/*.mjs scripts/feedback/*.mjs; do
   [ -f "$f" ] || continue
   check_file "$f"
 done
