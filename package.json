@@ -1,6 +1,6 @@
 {
   "name": "bible-study",
-  "version": "1.0.27",
+  "version": "1.0.28",
   "private": true,
   "description": "读经研读笔记 - PWA + Capacitor 离线 APK",
   "scripts": {
@@ -20,4 +20,3 @@
     "@capacitor/assets": "^3.0.5"
   }
 }
-
