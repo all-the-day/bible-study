@@ -50,6 +50,15 @@
     return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   }
 
+  /* 本地浏览器（非原生）访问 localhost → 开发/自动化环境，启动静默检查自动跳过，
+     省 GitHub API 匿名配额（60 次/小时/IP），无需再手动注入 BIBLE_SKIP_UPDATE。
+     注意：Capacitor 原生 WebView 的 origin 也是 https://localhost，必须先排除原生。 */
+  function isLocalDev() {
+    if (isNative()) return false;
+    const h = location.hostname;
+    return h === "localhost" || h === "127.0.0.1" || h === "[::1]";
+  }
+
   /* 本地版本：manifest.json（CI 在 www/ 里用 package.json 版本重写） */
   let _localVersion = null;
   function localVersion() {
@@ -207,6 +216,7 @@
     download,
     cleanupOldApks,
     isNative,
+    isLocalDev,
     localVersion,
     compareVersion,
   };

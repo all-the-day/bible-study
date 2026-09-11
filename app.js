@@ -88,6 +88,7 @@ const state = {
   lrTitleIndex: null,    // 生命读经全卷篇目标题索引缓存（data/lr-titles.json）
   notesGroup: null,           // 左栏树选中的叶子分组（过滤主区）
   notesSelectedItem: null,    // 右栏编辑目标：{kind:'ann',id} | {kind:'note',dict,key}
+  notesListScroll: 0,         // 移动端：打开全屏编辑面板前的列表滚动位置（返回时恢复）
 };
 
 /* 合集注册表（数据驱动）：首页块列表，点击 = 直接进入对应阅读器模块。
@@ -897,7 +898,7 @@ const READER_MODULES = {
       if (state.bookSeries) await ensureBookMeta();
       await ensureMorningIndex();
     },
-    renderNav() { renderNotesTree(); },
+    renderNav() { renderNotesTree(); renderDrawer(); },
     renderMain() { renderNotesList(); },
     renderSide() { renderNotesPanel(); },
     renderCrumb() {
@@ -905,7 +906,7 @@ const READER_MODULES = {
       $('chapterLabel').textContent = '';
     },
     onMenu() { toggleDrawerDock(); },
-    onCrumbClick() {},
+    onCrumbClick() { openNavDrawer(); },   // 移动端=开统一抽屉（桌面在 openNavDrawer 内对 notes 直接 return）
   },
 };
 
@@ -1764,9 +1765,24 @@ function deleteBigNote(dict, key) {
 }
 
 function selectNotesItem(item) {
+  // 移动端：先把列表滚动位置记下来（renderNotesList 会重建列表并把 scrollTop 归零）
+  const tc = $('textCol');
+  const scrollSnapshot = (isMobile() && tc) ? tc.scrollTop : 0;
   state.notesSelectedItem = item;
   renderNotesList();
   renderNotesPanel();
+  // 移动端：选中条目 = 打开全屏编辑面板（push 语义，取代原顶栏「研读」pill）
+  if (isMobile()) {
+    state.notesListScroll = scrollSnapshot;
+    setMobileView('study');
+  }
+}
+
+// 移动端「‹ 返回列表」：切回列表视图并恢复滚动位置（桌面不显示该按钮）
+function closeNotesEditor() {
+  setMobileView('read');
+  const tc = $('textCol');
+  if (tc) tc.scrollTop = state.notesListScroll || 0;
 }
 
 // 删除确认（复用 openPopup，不新建组件）
@@ -1849,9 +1865,20 @@ function notesFiltered() {
   return { anns, bigNotes };
 }
 
-/* ---- 左栏分类树 ---- */
+/* ---- 分类树 ---- */
+/* 渲染目标：桌面用左栏 #notesNav；移动端 notes 用统一导航抽屉 #dwBody（全高单列，
+   避免分类树在顶部堆叠挤占列表）。所有既有 renderNotesTree() 调用点自动跟随。 */
+function notesTreeTarget() {
+  return (isMobile() && state.activeModule === 'notes') ? $('dwBody') : $('notesNav');
+}
+
 function renderNotesTree() {
-  const nav = $('notesNav');
+  const nav = notesTreeTarget();
+  // 仅 notes 模块内清理另一侧残留（模块/视口切换后不串；不误清其他模块的抽屉内容）
+  if (state.activeModule === 'notes' && nav) {
+    const other = (nav.id === 'dwBody') ? $('notesNav') : $('dwBody');
+    if (other) other.innerHTML = '';
+  }
   nav.innerHTML = '';
   const wrap = document.createElement('div');
   wrap.className = 'notes-tree';
@@ -1886,6 +1913,7 @@ function renderNotesTree() {
       renderNotesTree();
       renderNotesList();
       renderNotesPanel();
+      if (isMobile()) closeNavDrawer();   // 移动端：选完来源收起抽屉
     }));
     if (isAll || collapsed) return;
     const children = buildNotesTreeChildren(src.id, annOf(src.types), bigOf(src.types));
@@ -1898,7 +1926,12 @@ function buildNotesTreeChildren(sourceId, anns, bigNotes) {
   const wrap = document.createElement('div');
   wrap.className = 'notes-tree-children';
   if (!anns.length && !bigNotes.length) return wrap;
-  const setGroup = (g) => { state.notesGroup = g; renderNotesTree(); renderNotesList(); };
+  const setGroup = (g) => {
+    state.notesGroup = g;
+    renderNotesTree();
+    renderNotesList();
+    if (isMobile()) closeNavDrawer();   // 移动端：选完分组收起抽屉（列表已按该分组过滤）
+  };
 
   if (sourceId === 'all') {
     // 复用 groupHlGlobal 扁平分组做叶子；大段笔记单独按组挂（无标注组时自成节点）
@@ -2035,6 +2068,7 @@ function isNotesGroupActive(g) {
 function renderNotesList() {
   const main = $('notesMain');
   main.innerHTML = '';
+  if (state.notesGroup && isMobile()) main.appendChild(buildNotesGroupChip());   // 移动端补一个可清除的分组标签（桌面靠左栏树高亮）
   main.appendChild(buildNotesToolbar());
   const listWrap = document.createElement('div');
   listWrap.className = 'notes-list';
@@ -2042,49 +2076,103 @@ function renderNotesList() {
   renderNotesListBody(listWrap);
 }
 
-function buildNotesToolbar() {
-  const bar = document.createElement('div');
-  bar.className = 'notes-toolbar';
-  [['all', '全部'], ['verse', '经文'], ['lr', '生命读经'], ['book', '书报'], ['morning', '听抄']].forEach(([v, label]) => {
-    const t = document.createElement('button');
-    t.className = 'notes-tab' + (state.notesSource === v ? ' active' : '');
-    t.textContent = label;
-    t.addEventListener('click', () => {
-      state.notesSource = v;
-      state.notesGroup = null;
-      state.notesSelectedItem = null;
-      saveNotesPrefs();
-      renderNotesTree();
-      renderNotesList();
-      renderNotesPanel();
-    });
-    bar.appendChild(t);
-  });
-  const colorBtn = document.createElement('button');
-  colorBtn.className = 'notes-color' + (state.notesColor === 'all' ? ' active' : '');
-  colorBtn.textContent = '全';
-  colorBtn.title = '全部颜色';
-  colorBtn.addEventListener('click', () => {
-    state.notesColor = 'all';
-    saveNotesPrefs();
+/* 分组标签文案（当前分组 chip 用；与分类树分组语义一致） */
+function notesGroupLabel(g) {
+  if (!g) return '';
+  if (g.source === 'all') return g.label;
+  if (g.type === 'verse') return bookName(g.book) + (g.chapter != null ? ` · 第${g.chapter}章` : '');
+  if (g.type === 'lr') return bookName(g.book) + ' · 生命读经' + (g.articleId != null ? ` 第${g.articleId}篇` : '');
+  if (g.type === 'book') {
+    const v = state.bookMeta && state.bookMeta.volumes[g.volume - 1];
+    const b = v && v.books && v.books[g.book];
+    return `${(state.bookMeta && state.bookMeta.name) || '书报'} · ${v ? v.title : '卷' + g.volume} · ${b ? b.title : '书' + (g.book + 1)}`;
+  }
+  if (g.type === 'morning') {
+    const t = state.morningIndex && state.morningIndex.trainings.find(x => x.id === g.period);
+    return `${(t && (t.title || t.season)) || g.period} · 听抄` + (g.chapterId != null ? ` 第${g.chapterId}篇` : '');
+  }
+  return '';
+}
+
+/* 当前分组标签（点了分组后显示，可一键清除 → 回到全部分组） */
+function buildNotesGroupChip() {
+  const wrap = document.createElement('div');
+  wrap.className = 'notes-group-chip';
+  const span = document.createElement('span');
+  span.textContent = '分组：' + notesGroupLabel(state.notesGroup);
+  const x = document.createElement('button');
+  x.className = 'notes-group-chip-x';
+  x.textContent = '×';
+  x.title = '清除分组筛选';
+  x.addEventListener('click', () => {
+    state.notesGroup = null;
+    renderNotesTree();
     renderNotesList();
   });
-  bar.appendChild(colorBtn);
-  COLORS.forEach(c => {
+  wrap.appendChild(span);
+  wrap.appendChild(x);
+  return wrap;
+}
+
+function buildNotesToolbar() {
+  const mobile = isMobile();
+  const bar = document.createElement('div');
+  bar.className = 'notes-toolbar' + (mobile ? ' notes-toolbar-mobile' : '');
+  const row = (cls) => { const d = document.createElement('div'); d.className = cls; return d; };
+  const btn = (cls, text, onClick) => {
     const b = document.createElement('button');
-    b.className = 'notes-color' + (state.notesColor === c.id ? ' active' : '');
-    b.style.background = c.hex;
-    b.title = c.name + '：' + c.desc;
-    b.addEventListener('click', () => {
-      state.notesColor = c.id;
-      saveNotesPrefs();
-      renderNotesList();
-    });
-    bar.appendChild(b);
+    b.className = cls; b.textContent = text;
+    b.addEventListener('click', onClick);
+    return b;
+  };
+  const applySource = (v) => {
+    state.notesSource = v;
+    state.notesGroup = null;
+    state.notesSelectedItem = null;
+    saveNotesPrefs();
+    renderNotesTree();
+    renderNotesList();
+    renderNotesPanel();
+  };
+  const applyColor = (v) => { state.notesColor = v; saveNotesPrefs(); renderNotesList(); };
+  const applySort = (v) => { state.notesSort = v; saveNotesPrefs(); renderNotesList(); };
+  const toggleSel = () => {
+    state.notesSelectMode = !state.notesSelectMode;
+    state.notesSelected = new Set();
+    state.notesSelectedItem = null;
+    renderNotesList();
+    renderNotesPanel();
+    // 移动端：退出多选时若残留在全屏编辑视图（多选期间 push 过），切回列表
+    if (isMobile() && !state.notesSelectMode && document.body.classList.contains('mobile-study')) setMobileView('read');
+  };
+
+  // 来源（桌面平铺进工具条；移动端放进可横滑的一行，含「多选」）
+  const srcWrap = mobile ? row('notes-tabs-row') : bar;
+  [['all', '全部'], ['verse', '经文'], ['lr', '生命读经'], ['book', '书报'], ['morning', '听抄']].forEach(([v, label]) => {
+    srcWrap.appendChild(btn('notes-tab' + (state.notesSource === v ? ' active' : ''), label, () => applySource(v)));
   });
+  if (mobile) {
+    srcWrap.appendChild(btn('notes-sort' + (state.notesSelectMode ? ' active' : ''), '多选', toggleSel));
+    bar.appendChild(srcWrap);
+  }
+
+  // 颜色：桌面平铺；移动端收进「筛选」弹窗（一层深）
+  if (!mobile) {
+    const all = btn('notes-color' + (state.notesColor === 'all' ? ' active' : ''), '全', () => applyColor('all'));
+    all.title = '全部颜色';
+    bar.appendChild(all);
+    COLORS.forEach(c => {
+      const b = btn('notes-color' + (state.notesColor === c.id ? ' active' : ''), '', () => applyColor(c.id));
+      b.style.background = c.hex;
+      b.title = c.name + '：' + c.desc;
+      bar.appendChild(b);
+    });
+  }
+
+  // 搜索（移动端常驻一行）
   const search = document.createElement('input');
   search.className = 'notes-search';
-  search.placeholder = '搜索划文本 / 笔记…';
+  search.placeholder = mobile ? '搜索笔记…' : '搜索划文本 / 笔记…';
   search.value = state.notesQuery;
   // 只刷新列表主体（保留输入框焦点，连续输入不被重建打断）
   search.addEventListener('input', () => {
@@ -2092,30 +2180,59 @@ function buildNotesToolbar() {
     const listWrap = document.querySelector('#notesMain .notes-list');
     if (listWrap) renderNotesListBody(listWrap);
   });
-  bar.appendChild(search);
-  [['book', '书卷序'], ['time', '时间倒序']].forEach(([v, label]) => {
-    const b = document.createElement('button');
-    b.className = 'notes-sort' + (state.notesSort === v ? ' active' : '');
-    b.textContent = label;
-    b.addEventListener('click', () => {
-      state.notesSort = v;
-      saveNotesPrefs();
-      renderNotesList();
+
+  if (mobile) {
+    const r1 = row('notes-row');
+    r1.appendChild(search);
+    const fb = btn('notes-filter-btn', '筛选 ▾', openNotesFilter);
+    if (state.notesColor !== 'all' || state.notesSort !== 'book') fb.classList.add('active');
+    r1.appendChild(fb);
+    bar.insertBefore(r1, bar.firstChild);
+  } else {
+    bar.appendChild(search);
+    [['book', '书卷序'], ['time', '时间倒序']].forEach(([v, label]) => {
+      bar.appendChild(btn('notes-sort' + (state.notesSort === v ? ' active' : ''), label, () => applySort(v)));
     });
-    bar.appendChild(b);
-  });
-  const selBtn = document.createElement('button');
-  selBtn.className = 'notes-sort' + (state.notesSelectMode ? ' active' : '');
-  selBtn.textContent = '多选';
-  selBtn.addEventListener('click', () => {
-    state.notesSelectMode = !state.notesSelectMode;
-    state.notesSelected = new Set();
-    state.notesSelectedItem = null;
-    renderNotesList();
-    renderNotesPanel();
-  });
-  bar.appendChild(selBtn);
+    bar.appendChild(btn('notes-sort' + (state.notesSelectMode ? ' active' : ''), '多选', toggleSel));
+  }
   return bar;
+}
+
+/* 移动端「筛选」弹窗：颜色 + 排序（复用 openPopup 弹窗栈） */
+function openNotesFilter() {
+  const colorHtml = [
+    `<button class="notes-fp-color${state.notesColor === 'all' ? ' active' : ''}" data-color="all">全</button>`,
+    ...COLORS.map(c => `<button class="notes-fp-color${state.notesColor === c.id ? ' active' : ''}" data-color="${c.id}" style="background:${c.hex}" title="${c.name}：${c.desc}"></button>`),
+  ].join('');
+  openPopup('筛选', `
+    <div class="notes-fp-sec">
+      <div class="notes-fp-label">颜色</div>
+      <div class="notes-fp-colors">${colorHtml}</div>
+    </div>
+    <div class="notes-fp-sec">
+      <div class="notes-fp-label">排序</div>
+      <div class="notes-fp-sorts">
+        <button class="notes-sort${state.notesSort === 'book' ? ' active' : ''}" data-sort="book">书卷序</button>
+        <button class="notes-sort${state.notesSort === 'time' ? ' active' : ''}" data-sort="time">时间倒序</button>
+      </div>
+    </div>
+    <div class="fb-actions"><button class="popup-btn primary" id="notesFpDone">完成</button></div>
+  `);
+  const body = $('popupBody');
+  body.querySelectorAll('.notes-fp-color').forEach(b => b.addEventListener('click', () => {
+    state.notesColor = b.dataset.color;
+    saveNotesPrefs();
+    body.querySelectorAll('.notes-fp-color').forEach(x => x.classList.toggle('active', x === b));
+    renderNotesList();
+  }));
+  body.querySelectorAll('.notes-sort').forEach(b => b.addEventListener('click', () => {
+    state.notesSort = b.dataset.sort;
+    saveNotesPrefs();
+    body.querySelectorAll('.notes-sort').forEach(x => x.classList.toggle('active', x === b));
+    renderNotesList();
+  }));
+  const done = $('notesFpDone');
+  if (done) done.addEventListener('click', () => { closePopupAll(); renderNotesList(); });
 }
 
 function renderNotesListBody(listWrap) {
@@ -2240,7 +2357,15 @@ function renderNotesItem(a, hideLoc) {
     if (noteEl) div.insertBefore(time, noteEl);
     else div.appendChild(time);
   }
-  div.addEventListener('click', () => selectNotesItem({ kind: 'ann', id: a.id }));
+  div.addEventListener('click', () => {
+    // 移动端多选态：点条目本体 = 勾选/取消；无复选框（大段笔记）则不动，绝不进全屏编辑面板
+    if (state.notesSelectMode && isMobile()) {
+      const cb = div.querySelector('.notes-item-check');
+      if (cb) cb.click();
+      return;
+    }
+    selectNotesItem({ kind: 'ann', id: a.id });
+  });
   return div;
 }
 
@@ -2261,7 +2386,15 @@ function renderNotesBigItem(n) {
   div.appendChild(kind);
   div.appendChild(loc);
   div.appendChild(text);
-  div.addEventListener('click', () => selectNotesItem({ kind: 'note', dict: n.dict, key: n.key }));
+  div.addEventListener('click', () => {
+    // 移动端多选态：点条目本体 = 勾选/取消；无复选框（大段笔记）则不动，绝不进全屏编辑面板
+    if (state.notesSelectMode && isMobile()) {
+      const cb = div.querySelector('.notes-item-check');
+      if (cb) cb.click();
+      return;
+    }
+    selectNotesItem({ kind: 'note', dict: n.dict, key: n.key });
+  });
   return div;
 }
 
@@ -2596,6 +2729,7 @@ function updateMobileNav() {
 
 // 底部翻页：仅读经模式翻章（研读模式无底部导航，翻章/翻篇走 crumb 选章 / ☰ 篇目导航）
 function mobileNavGo(dir) {
+  if (state.activeModule !== 'bible') return;   // 兜底：非读经模块无「章」概念（按钮已由 CSS 隐藏）
   const ch = state.currentChapter + dir;
   if (ch < 1 || ch > state.currentBook.chapters) return;
   selectChapter(ch);
@@ -3350,9 +3484,10 @@ function toggleDrawerDock() {
 }
 
 function openNavDrawer() {
-  if (state.screen === 'home' || state.activeModule === 'notes') return;
+  if (state.screen === 'home') return;
   if (window.innerWidth > 900) {
-    // 桌面：停靠展开（已展开 no-op，内容随 select* 自动刷新）
+    // 桌面：notes 用左栏 #navCol 树（不参与停靠抽屉），其余模块停靠展开
+    if (state.activeModule === 'notes') return;
     if (!state.drawerDocked) setDocked(true);
     return;
   }
@@ -3387,6 +3522,22 @@ function renderDrawer(sync = true) {
     else if (mod === 'morning') dwState.vol = state.morningPeriod;
   }
   // 搜索条：placeholder 按模块、回填搜索词、非空渲染结果层
+  // 笔记管理：抽屉只承担层级导航（搜索在列表工具条、无阅读历史）→ 隐藏搜索条与 Segment，
+  // 直接把分类树渲染进 #dwBody（见 renderDrawerBrowse 的 notes 分支）
+  const notesMode = mod === 'notes';
+  const searchWrap = $('dwSearchInput').closest('.dw-search');
+  if (searchWrap) searchWrap.hidden = notesMode;
+  $('dwSeg').hidden = notesMode;
+  if (notesMode) {
+    dwState.seg = 'browse';
+    dwState.query = '';
+    $('dwSearchInput').value = '';
+    const res = $('dwSearchResults');
+    res.hidden = true; res.innerHTML = '';
+    $('dwFoot').innerHTML = '';
+    renderDrawerBrowse('notes');
+    return;
+  }
   const inp = $('dwSearchInput');
   inp.placeholder = { bible: '搜索书卷…', lifereading: '搜索全部篇目…', books: '搜索全部书卷/章节…', morning: '搜索全部篇目…' }[mod] || '';
   if (document.activeElement !== inp) inp.value = dwState.query || '';
@@ -3422,6 +3573,8 @@ function renderDrawer(sync = true) {
 // 浏览段：按模块渲染双栏主从（左栏=层级一列表，右栏=层级二列表）
 async function renderDrawerBrowse(mod) {
   const body = $('dwBody');
+  // 笔记管理：复用左栏分类树（渲染目标由 notesTreeTarget() 决定 → 移动端即 #dwBody）
+  if (mod === 'notes') { renderNotesTree(); return; }
   if (mod === 'bible') {
     let cur = dwState.left;
     const [a, z] = dwState.testament === 'ot' ? [1, 39] : [40, 66];
@@ -3714,7 +3867,7 @@ function bindEvents() {  // 首页：合集块点击 + 顶部搜索 + ⌂ 回首
     applyHideMarks();
     save(LS_HIDE_MARKS, state.hideMarks);
   });
-  // 菜单 ☰：桌面=停靠列收起/展开（全模块统一）；移动端=浮层导航抽屉（notes 不动作）
+  // 菜单 ☰：桌面=停靠列收起/展开（全模块统一）；移动端=浮层导航抽屉
   $('menuBtn').addEventListener('click', () => {
     if (state.screen === 'home') return;   // 首页隐藏 ☰（CSS 双保险）
     if (window.innerWidth > 900) {
@@ -3722,8 +3875,7 @@ function bindEvents() {  // 首页：合集块点击 + 顶部搜索 + ⌂ 回首
       if (mod && mod.onMenu) mod.onMenu();
       return;
     }
-    // 移动端：notes 模块不动作；读经研读视图仅生命读经 tab 提供篇目/纲目导航
-    if (state.activeModule === 'notes') return;
+    // 移动端：读经研读视图仅生命读经 tab 提供篇目/纲目导航（notes 走统一抽屉，见 openNavDrawer）
     if (state.activeModule === 'bible' && document.body.classList.contains('mobile-study')) {
       if (state.activeTab === 'lifereading') openLrNavSheet();
       return;
@@ -3815,6 +3967,8 @@ function bindEvents() {  // 首页：合集块点击 + 顶部搜索 + ⌂ 回首
   // 笔记编辑器
   $('noteSave').addEventListener('click', saveNoteEditor);
   $('noteCancel').addEventListener('click', cancelNoteEditor);
+  // 笔记管理移动端：全屏编辑面板的返回条
+  $('notesBackBtn').addEventListener('click', closeNotesEditor);
   $('noteModal').addEventListener('mousedown', (e) => { if (e.target === $('noteModal')) cancelNoteEditor(); });
   // 弹窗关闭
   $('popupBack').addEventListener('click', closePopup);
@@ -4545,7 +4699,8 @@ async function submitFeedback() {
 const popupStack = [];
 
 function openPopup(title, bodyHtml) {
-  if (!$('popup').hidden) {
+  const wasOpen = !$('popup').hidden;   // 已在栈内切换时不再重复加锁（否则 closePopup 的返回分支不减计数 → scroll-locked 泄漏）
+  if (wasOpen) {
     popupStack.push({ title: $('popupTitle').textContent, body: $('popupBody').innerHTML });
   } else {
     popupStack.length = 0;
@@ -4555,7 +4710,7 @@ function openPopup(title, bodyHtml) {
   $('popup').hidden = false;
   $('overlay').hidden = false;
   $('popupBack').hidden = popupStack.length === 0;
-  lockScroll(true);
+  if (!wasOpen) lockScroll(true);
 }
 
 // 返回上一层（栈空则完全关闭）
@@ -4572,11 +4727,12 @@ function closePopup() {
 
 // 完全关闭
 function closePopupAll() {
+  const wasOpen = !$('popup').hidden;
   popupStack.length = 0;
   $('popup').hidden = true;
   $('overlay').hidden = true;
   $('popupBack').hidden = true;
-  lockScroll(false);
+  if (wasOpen) lockScroll(false);   // 仅实际关闭时解锁（已关闭时重复调用不减计数）
 }
 
 function showFootnotePopup(n, key) {
@@ -5105,6 +5261,7 @@ init();
 // 启动后静默检查更新：发现新版给 ⚙️ 加红点，设置弹窗行显示状态
 setTimeout(() => {
   if (!window.BibleStudyUpdate) return;
+  if (window.BibleStudyUpdate.isLocalDev()) return;   // 本地浏览器/自动化（localhost）自动跳过，省 GitHub API 配额；原生 APK 照常检查
   window.BibleStudyUpdate.check().then((res) => {
     _updateInfo = res;
     updateSettingsBadge();

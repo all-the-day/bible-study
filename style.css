@@ -1111,6 +1111,8 @@ body.home .mobile-nav { display: none; }
 
 /* ── 笔记管理模块：左栏分类树 / 主区工具条+列表+批量 / 右栏编辑面板 ── */
 .notes-nav { padding: 8px 6px; overflow-y: auto; }
+/* 移动端：分类树整体渲染进统一导航抽屉 #dwBody（见 app.js notesTreeTarget）→ 撑满并自身滚动 */
+#dwBody > .notes-tree { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 6px; }
 .notes-tree-node {
   display: flex; align-items: center; gap: 6px; width: 100%;
   text-align: left; padding: 6px 8px; border: none; background: transparent;
@@ -1179,6 +1181,18 @@ body.home .mobile-nav { display: none; }
 .notes-batch-bar .popup-btn { padding: 4px 12px; font-size: 13px; }
 
 .notes-side { padding: 12px; overflow-y: auto; }
+/* 移动端编辑面板返回条：桌面隐藏（见 @media max-width:900px 内 body.body-mod-notes 规则） */
+.notes-backbar { display: none; }
+/* 移动端「筛选」弹窗（颜色 + 排序，复用 openPopup 弹窗栈） */
+.notes-fp-sec { margin-bottom: 14px; }
+.notes-fp-label { font-size: 13px; color: var(--text-muted); margin-bottom: 8px; }
+.notes-fp-colors { display: flex; gap: 8px; flex-wrap: wrap; }
+.notes-fp-color {
+  width: 34px; height: 34px; border-radius: 50%; border: 2px solid #fff;
+  box-shadow: 0 0 0 1px var(--border); cursor: pointer; font-size: 12px; color: var(--text-soft);
+}
+.notes-fp-color.active { box-shadow: 0 0 0 2px var(--brand); }
+.notes-fp-sorts { display: flex; gap: 8px; }
 .notes-panel-title { font-weight: 700; color: var(--heading); font-size: 15px; margin-bottom: 10px; }
 .notes-panel-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
 .notes-panel-meta { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; line-height: 1.6; }
@@ -1213,6 +1227,9 @@ body.home .mobile-nav { display: none; }
     height: 52px; background: var(--surface); border-top: 1px solid var(--border);
     padding-bottom: env(safe-area-inset-bottom);
   }
+  /* 仅读经模块显示：其余模块（生命读经/书报/听抄/笔记管理）无「章」概念，
+     按钮却仍绑 selectChapter → 会静默改掉圣经章号并写坏 crumb */
+  body:not(.body-mod-bible) .mobile-nav { display: none; }
   .mnav-btn {
     flex: 1; height: 100%; border: none; background: transparent;
     font-size: 15px; color: var(--text); cursor: pointer;
@@ -1236,6 +1253,50 @@ body.home .mobile-nav { display: none; }
   body.mobile-study .mobile-nav { display: none; }
   body.mobile-study .study-col { bottom: 0; }
   body.mobile-study .study-body { padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
+
+  /* ── 笔记管理模块（≤900px，2026-09-11 方案 B）：单列 + 编辑面板走全屏 push ── */
+  /* 该模块不使用「读经|研读」pill：列表 → 编辑改由「点条目 push + 返回条」承担
+     （Material 3：窄屏 pane 切换走返回栈；NN/g：长时停留/复杂内容不用 overlay） */
+  body.body-mod-notes #modePill { display: none; }
+  /* 分类树改由统一导航抽屉承担（桌面仍用左栏 #navCol 树） */
+  body.body-mod-notes .nav-col { display: none; }
+  /* 编辑面板顶部返回条（仅移动端 notes 显示） */
+  body.body-mod-notes .notes-backbar {
+    display: flex; align-items: center; flex: 0 0 auto;
+    padding: 6px 10px; background: var(--surface); border-bottom: 1px solid var(--border);
+  }
+  #notesBackBtn {
+    height: 36px; padding: 0 12px; border: 1px solid var(--border); border-radius: 999px;
+    background: var(--surface); color: var(--brand); font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  #notesBackBtn:active { background: var(--surface-alt); }
+  /* 工具条收敛：第 1 行「搜索 + 筛选」，第 2 行「来源 chips（可横滑）+ 多选」 */
+  .notes-toolbar-mobile { flex-direction: column; align-items: stretch; gap: 8px; }
+  .notes-toolbar-mobile .notes-row { display: flex; gap: 6px; align-items: center; }
+  .notes-toolbar-mobile .notes-search { flex: 1; min-width: 0; }
+  .notes-toolbar-mobile .notes-tabs-row { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+  .notes-toolbar-mobile .notes-tabs-row::-webkit-scrollbar { display: none; }
+  .notes-toolbar-mobile .notes-tab,
+  .notes-toolbar-mobile .notes-sort,
+  .notes-toolbar-mobile .notes-filter-btn { flex: 0 0 auto; white-space: nowrap; }
+  /* 当前分组标签（可一键清除） */
+  .notes-group-chip {
+    display: inline-flex; align-items: center; gap: 6px; align-self: flex-start;
+    margin: 0 0 8px; padding: 5px 10px; border-radius: 999px;
+    background: rgba(var(--brand-rgb), .12); color: var(--brand); font-size: 13px;
+  }
+  .notes-group-chip-x {
+    border: 0; background: transparent; color: var(--brand);
+    font-size: 16px; line-height: 1; cursor: pointer; padding: 0 2px;
+  }
+  /* 批量条改底部固定（拇指可达；原为列表顶部 sticky） */
+  body.body-mod-notes .notes-batch-bar {
+    position: fixed; left: 0; right: 0; bottom: 0; top: auto; z-index: 46;
+    margin: 0;   /* 基础规则带 margin-bottom:10px，会把 fixed 底边顶上去 */
+    border-top: 1px solid var(--border); border-bottom: 0;
+    padding-bottom: env(safe-area-inset-bottom);
+    box-shadow: 0 -4px 14px rgba(0, 0, 0, .06);
+  }
 
   .text-col { padding: 16px 16px calc(68px + env(safe-area-inset-bottom)); }
   /* 生命读经模块主区（反馈 #11，方案 A 定稿）：移动端去掉外层 .lr-item 文章卡片，
