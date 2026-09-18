@@ -264,7 +264,10 @@ def export_lifereading(name_to_acronym):
                     lines = lines[1:]
                 # 过滤末尾元数据行（来源/URL/获取时间，不应作为正文显示）
                 lines = [l for l in lines if not l.strip().startswith(('**来源**', '**URL**', '**获取时间**'))]
-                content = '\n'.join(lines).strip()
+                content = '\n'.join(lines)
+                # 源 md 混入转换残留的制表符（多为 6 个一组插在句子中间），
+                # .lr-content 是 pre-wrap，制表符会渲染成大片空白，导出时清除
+                content = content.replace('\t', '').strip()
             article = {
                 'id': a.get('id'),
                 'title': a.get('title', ''),

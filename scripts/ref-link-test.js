@@ -113,6 +113,28 @@ async function main() {
   keys = await page.evaluate(() => resolveRefString('创一2下'));
   check('7q. 真实半节数据不受影响（创1:2下）', JSON.stringify(keys) === JSON.stringify(['创1:2下']), JSON.stringify(keys));
 
+  // 7r-7w. 列举式（反馈 #15）：章后多节用 、和与 连接（三章一、二节 / 七章三十七和三十八节），
+  //       此前只认范围连接符 至/到/～，列举式仅第一处命中
+  r = await refsOf('主耶稣在约翰七章三十七和三十八节也说到喝');
+  check('7r. 七章三十七和三十八节 整段识别', r.length === 1 && r[0] === '约翰七章三十七和三十八节', JSON.stringify(r));
+  keys = await page.evaluate(() => resolveRefString('约翰七章三十七和三十八节'));
+  check('7s. 和 列举展开 约7:37/约7:38',
+    JSON.stringify(keys) === JSON.stringify(['约7:37', '约7:38']), JSON.stringify(keys));
+  r = await refsOf('在撒迦利亚三章一、二节，我们看见');
+  check('7t. 顿号列举整段识别', r.length === 1 && r[0] === '亚三章一、二节', JSON.stringify(r));
+  keys = await page.evaluate(() => resolveRefString('亚三章一、二节'));
+  check('7u. 顿号列举展开 亚3:1/亚3:2',
+    JSON.stringify(keys) === JSON.stringify(['亚3:1', '亚3:2']), JSON.stringify(keys));
+  keys = await page.evaluate(() => resolveRefString('创三章一、二、三节'));
+  check('7v. 节只在末尾（一、二、三节）展开 创3:1～3:3',
+    JSON.stringify(keys) === JSON.stringify(['创3:1', '创3:2', '创3:3']), JSON.stringify(keys));
+  keys = await page.evaluate(() => resolveRefString('创三章一至三节、五至七节'));
+  check('7w. 范围+列举混用展开 创3:1～3:3、3:5～3:7',
+    JSON.stringify(keys) === JSON.stringify(['创3:1', '创3:2', '创3:3', '创3:5', '创3:6', '创3:7']), JSON.stringify(keys));
+  // 7x. 列举延续项不吃进下一个「X章」引用（、十一章 不得当作 九章的第11节）
+  r = await refsOf('但以理九章九节、十一章七至十三节');
+  check('7x. 列举不跨章吞并', r.length === 1 && r[0] === '但以理九章九节', JSON.stringify(r));
+
   // 8. 纯数字误判防护：25章 / 25:11 / 1920年 不识别
   r = await refsOf('（创二四62，25章）');
   check('8a. 25章 不识别', r.length === 1 && r[0] === '创二四62', JSON.stringify(r));

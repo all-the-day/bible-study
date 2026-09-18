@@ -4826,7 +4826,8 @@ function resolveRefString(raw) {
       if (!r) continue;
       const maxCh = bookChapterCount(acronym);
       if (r.chapter && maxCh && r.chapter > maxCh) continue;   // 章号越界 → 该切分不成立
-      const probe = r.key || (r.range ? `${acronym}${r.chapter}:${r.range[0]}` : '');
+      const probe = r.key || (r.range ? `${acronym}${r.chapter}:${r.range[0]}`
+        : (r.verses ? `${acronym}${r.chapter}:${r.verses[0]}` : ''));
       if (probe && verseKeyExists(probe)) { chosen = { acronym, r }; break; }
       if (!chosen) chosen = { acronym, r };   // 仅解出章号的切分兜底
     }
@@ -4834,8 +4835,9 @@ function resolveRefString(raw) {
       curAcronym = chosen.acronym;
       const r = chosen.r;
       if (r) {
-        // 节范围（如 9～10、19～26、二章六至九节）展开为单节 key
+        // 节范围/列举（如 9～10、19～26、二章六至九节、三章一、二节）逐节展开
         if (r.range) for (let v = r.range[0]; v <= r.range[1]; v++) pushKey(`${chosen.acronym}${r.chapter}:${v}`);
+        else if (r.verses) r.verses.forEach((v) => pushKey(`${chosen.acronym}${r.chapter}:${v}`));
         else if (r.key) pushKey(r.key);
         if (r.chapter) curChapter = r.chapter;
       }
@@ -4847,10 +4849,47 @@ function resolveRefString(raw) {
       if (m2) {
         const ch = cnToInt(m2[1]);
         if (ch) { pushKey(`${curAcronym}${ch}:${m2[2]}${m2[3] || ''}`); curChapter = ch; }
+        continue;
+      }
+      // 列举/范围被 、 拆出的残段（如「创三章一、二、三节」的「二」「三节」、
+      // 「…、五至七节」的「五至七节」）：同章内相对节序列；含「章」的段属另一章节引用，不接受
+      if (curChapter && !/章/.test(token)) {
+        const seq = parseVerseSeq(token);
+        if (seq) { seq.forEach((v) => pushKey(`${curAcronym}${curChapter}:${v}`)); continue; }
       }
     }
   }
   return out;
+}
+
+// 节序列解析（「章」之后的部分）：一至三节 / 一、二节 / 三十七和三十八节 / 一至三节、五至七节。
+// 返回展开后的节号数组（如 [1,2,3,5,6,7]），非法返回 null
+function parseVerseSeq(seq) {
+  const cn = '一二三四五六七八九十百〇○';
+  const raw = (seq || '').replace(/节/g, '');
+  if (!raw) return null;
+  const parts = raw.split(new RegExp('([、和与])')).filter(Boolean);
+  const out = [];
+  let expectValue = true;
+  for (const p of parts) {
+    if (/^[、和与]$/.test(p)) {
+      if (expectValue) return null;   // 连续连接符
+      expectValue = true;
+      continue;
+    }
+    if (!expectValue) return null;    // 缺连接符
+    const m = p.match(new RegExp('^([' + cn + ']+)(?:[-~～至到]([' + cn + ']+))?$'));
+    if (!m) return null;
+    const v1 = cnToInt(m[1]);
+    if (!v1) return null;
+    if (m[2]) {
+      const v2 = cnToInt(m[2]);
+      if (!v2 || v2 < v1) return null;
+      for (let v = v1; v <= v2; v++) out.push(v);
+    } else out.push(v1);
+    expectValue = false;
+  }
+  return expectValue ? null : out;
 }
 
 function parseRefTail(acronym, rest, defChapter) {
@@ -4875,13 +4914,14 @@ function parseRefTail(acronym, rest, defChapter) {
       return { key: `${acronym}${ch}:${m[2]}${half}`, chapter: ch };
     }
   }
-  // 中文章节式（三章十九节 / 二章六至九节 / 二章六节至九节）
-  m = rest.match(/^第?([一二三四五六七八九十百〇○]+)章([一二三四五六七八九十百〇○]+)节?(?:[-~～至到]([一二三四五六七八九十百〇○]+)节?)?$/);
+  // 中文章节式（三章十九节 / 二章六至九节 / 三章一、二节 / 七章三十七和三十八节）
+  m = rest.match(/^第?([一二三四五六七八九十百〇○]+)章(.+)$/);
   if (m) {
-    const ch = cnToInt(m[1]), v = cnToInt(m[2]), v2 = m[3] ? cnToInt(m[3]) : null;
-    if (ch && v) {
-      if (v2 && v2 > v) return { range: [v, v2], chapter: ch };
-      return { key: `${acronym}${ch}:${v}${half}`, chapter: ch };
+    const ch = cnToInt(m[1]);
+    const verses = ch ? parseVerseSeq(m[2]) : null;
+    if (verses && verses.length) {
+      if (verses.length === 1) return { key: `${acronym}${ch}:${verses[0]}${half}`, chapter: ch };
+      return { verses, chapter: ch };
     }
   }
   // 纯章号（约一1 → 约壹 第1章，节由后续 token 提供）
@@ -4906,8 +4946,13 @@ function buildRefRegex() {
   const aliasAlt = _refAliasesSorted.map(escapeRegex).join('|');
   // 只识别带节号/范围/「章…节」的引用；不识别裸「书卷+中文数字」（如 利百、雅各一、
   // 创世记十一、创世记二十五），避免人名/描述性章节范围被误判为经文引用
+  // 列举式（三章一、二节 / 七章三十七和三十八节 / 十二章一至三节、五至七节）：
+  // 延续项用 、和与 连接，且「节」可只出现在末尾（三章一、二、三节）。
+  // 延续项前的 (?!cn+章) 防吃进下一个「X章」引用（如「九章九节、十一章七节」）
+  const verseItem = '[' + cn + ']+(?:[-~～至到][' + cn + ']+)?';
   const tail = '(?:\\d+:\\d+(?:[-~～]\\d+)?|[' + cn + ']+\\d+(?:[-~～]\\d+)?[上下]?'
-    + '|第?[' + cn + ']+章[' + cn + ']+节?(?:[-~～至到][' + cn + ']+节?)?)';
+    + '|第?[' + cn + ']+章[' + cn + ']+节?(?:[-~～至到][' + cn + ']+节?)?'
+    + '(?:[、和与](?!(?:[' + cn + ']+)章)' + verseItem + '节?)*)';
   // 引导词（参/见/参看…）可选前缀，不参与捕获（组 1=书卷别名，组 2=章節尾）
   return new RegExp('(?:参看|参阅|参见|参考|[参见])?(' + aliasAlt + ')(' + tail + ')', 'g');
 }
