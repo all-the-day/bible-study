@@ -121,7 +121,7 @@ async function main() {
   check('7s. 和 列举展开 约7:37/约7:38',
     JSON.stringify(keys) === JSON.stringify(['约7:37', '约7:38']), JSON.stringify(keys));
   r = await refsOf('在撒迦利亚三章一、二节，我们看见');
-  check('7t. 顿号列举整段识别', r.length === 1 && r[0] === '亚三章一、二节', JSON.stringify(r));
+  check('7t. 顿号列举整段识别（简称补漏后整词命中）', r.length === 1 && r[0] === '撒迦利亚三章一、二节', JSON.stringify(r));
   keys = await page.evaluate(() => resolveRefString('亚三章一、二节'));
   check('7u. 顿号列举展开 亚3:1/亚3:2',
     JSON.stringify(keys) === JSON.stringify(['亚3:1', '亚3:2']), JSON.stringify(keys));
@@ -131,9 +131,11 @@ async function main() {
   keys = await page.evaluate(() => resolveRefString('创三章一至三节、五至七节'));
   check('7w. 范围+列举混用展开 创3:1～3:3、3:5～3:7',
     JSON.stringify(keys) === JSON.stringify(['创3:1', '创3:2', '创3:3', '创3:5', '创3:6', '创3:7']), JSON.stringify(keys));
-  // 7x. 列举延续项不吃进下一个「X章」引用（、十一章 不得当作 九章的第11节）
+  // 7x. 列举延续项不吃进下一个「X章」引用（、十一章 不得当作 九章的第11节），
+  //     后段由相对章节式独立成链接（上下文书卷=但）
   r = await refsOf('但以理九章九节、十一章七至十三节');
-  check('7x. 列举不跨章吞并', r.length === 1 && r[0] === '但以理九章九节', JSON.stringify(r));
+  check('7x. 列举不跨章吞并且各自成链接',
+    JSON.stringify(r) === JSON.stringify(['但以理九章九节', '但十一章七至十三节']), JSON.stringify(r));
 
   // 8. 纯数字误判防护：25章 / 25:11 / 1920年 不识别
   r = await refsOf('（创二四62，25章）');
@@ -190,6 +192,49 @@ async function main() {
   // 14. 单章书卷的裸节号（犹16 = 犹1:16）
   keys = await page.evaluate(() => resolveRefString('犹16'));
   check('14. 犹16 → 犹1:16', JSON.stringify(keys) === JSON.stringify(['犹1:16']), JSON.stringify(keys));
+
+  // 15. 相对章节式（无书卷前缀，靠 defaultAcronym / 前文上下文）：正文常写「在四十九章五、六节」
+  r = await refsOf('在四十九章五、六节雅各说', '创');
+  check('15a. 相对章节式列举 四十九章五、六节', r.length === 1 && r[0] === '创四十九章五、六节', JSON.stringify(r));
+  r = await refsOf('雅各在二十八章二十、二十一节许愿说', '创');
+  check('15b. 相对章节式列举 二十八章二十、二十一节', r.length === 1 && r[0] === '创二十八章二十、二十一节', JSON.stringify(r));
+  keys = await page.evaluate(() => resolveRefString('创四十九章五、六节'));
+  check('15c. 解析为 创49:5/创49:6', JSON.stringify(keys) === JSON.stringify(['创49:5', '创49:6']), JSON.stringify(keys));
+
+  // 15d. 跨章范围：首章起节→章末 + 中间整章 + 末章 1→止节（书10:28～12:24 = 16+23+24 = 63 节）
+  r = await refsOf('约书亚十章二十八节至十二章二十四节记载', '书');
+  check('15d. 跨章范围整段识别', r.length === 1 && r[0] === '约书亚十章二十八节至十二章二十四节', JSON.stringify(r));
+  keys = await page.evaluate(() => resolveRefString('书十章二十八节至十二章二十四节'));
+  check('15e. 跨章范围展开 63 节（书10:28…书12:24）',
+    keys.length === 63 && keys[0] === '书10:28' && keys[62] === '书12:24' && keys[15] === '书10:43' && keys[16] === '书11:1',
+    JSON.stringify(keys.slice(0, 3).concat(['…', keys.length])));
+
+  // 15f. 书卷归属回退：最近上下文是加拉太（加仅 6 章），二十一章…越界 → 回退 defaultAcronym（创）
+  r = await refsOf('保罗在加拉太四章二十二至三十一节讲得透彻，他也说到二十一章十三至三十四节', '创');
+  check('15f. 上下文卷越界回退 defaultAcronym',
+    r.length === 2 && r[0] === '加拉太四章二十二至三十一节' && r[1] === '创二十一章十三至三十四节', JSON.stringify(r));
+
+  // 15g. 被否别名（「但」=but）只跳过别名，尾部按相对章节式归属上下文卷
+  r = await refsOf('但二十三章十二和十三节论到守安息日', '出');
+  check('15g. 越界别名回退（但=but → 出23:12/13）', r.length === 1 && r[0] === '出二十三章十二和十三节', JSON.stringify(r));
+
+  // 15h. 书卷简称补漏：全名去「书」写法（哈巴谷/何西阿/希伯来/约书亚）整词命中
+  r = await refsOf('哈巴谷二章四节说', '哈');
+  check('15h. 哈巴谷二章四节 整词命中', r.length === 1 && r[0] === '哈巴谷二章四节', JSON.stringify(r));
+  r = await refsOf('何西阿十一章一节说', '何');
+  check('15i. 何西阿十一章一节 整词命中', r.length === 1 && r[0] === '何西阿十一章一节', JSON.stringify(r));
+  r = await refsOf('希伯来一章五至十三节', '来');
+  check('15j. 希伯来一章五至十三节 整词命中', r.length === 1 && r[0] === '希伯来一章五至十三节', JSON.stringify(r));
+
+  // 15k. 阿拉伯数字混用（五章16）+ 顿号续节（25）
+  keys = await page.evaluate(() => resolveRefString('加五章16，25'));
+  check('15k. 加五章16，25 → 加5:16/加5:25', JSON.stringify(keys) === JSON.stringify(['加5:16', '加5:25']), JSON.stringify(keys));
+
+  // 15l. 守卫：相对章节式以「节/上下」或标点收尾才认（防「第三章第二段」的「二」当节号）
+  r = await refsOf('第三章第二段的内容', '创');
+  check('15l. 第三章第二段 不识别', r.length === 0, JSON.stringify(r));
+  r = await refsOf('第二十二章的记载', '创');
+  check('15m. 第二十二章（无节号）不识别', r.length === 0, JSON.stringify(r));
 
   console.log(`\n${pass} passed, ${fail} failed`);
   console.log('JS 错误:', errors.length ? errors : '无');

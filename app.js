@@ -4761,6 +4761,9 @@ const BOOK_ALIASES = {
   // 简称别名（注：路加/马可不可缺——正文常写「路加十七章二十七节」，
   // 若缺失会退化为把「加/可」当加拉太/马可福音，识别成「加17:27」类越界死链）
   '但以理':'但','以西结':'结','以赛亚':'赛','耶利米':'耶','出埃及':'出','腓立比':'腓','以弗所':'弗','歌罗西':'西','加拉太':'加','马太':'太','马可':'可','路加':'路','约翰':'约','罗马':'罗','哀歌':'哀','行传':'徒','雅各':'雅',
+  // 语料实测补漏（按 lifereading/注解/书报/纲目全量扫描出现次数）：全名去「书/记」的写法
+  // 未登记时，含缩写字的名字（如「哈巴谷」含「哈」）无法整词命中，会漏链或只链到名字中段
+  '希伯来':'来','撒迦利亚':'亚','何西阿':'何','约书亚':'书','玛拉基':'玛','哈巴谷':'哈','尼希米':'尼','约珥':'珥','提多':'多','以斯拉':'拉','阿摩司':'摩','西番雅':'番','以斯帖':'斯','弥迦':'弥','列王记上':'王上','列王记下':'王下','彼得前':'彼前','使徒行':'徒',
   // 注意：本数据源（恢复本串珠/注解）里「约一/约二/约三」= 约翰福音第 1/2/3 章
   // （创1:1 串珠「约一1，2」= 约1:1-2、箴8:35「约三36」= 约3:36），
   // 约翰书信一律写作「约壹/约贰/约参」，故不得把 约一/约二/约三 映射到 约翰一/二/三书
@@ -4825,9 +4828,11 @@ function resolveRefString(raw) {
       const r = parseRefTail(acronym, rest, null);
       if (!r) continue;
       const maxCh = bookChapterCount(acronym);
-      if (r.chapter && maxCh && r.chapter > maxCh) continue;   // 章号越界 → 该切分不成立
-      const probe = r.key || (r.range ? `${acronym}${r.chapter}:${r.range[0]}`
-        : (r.verses ? `${acronym}${r.chapter}:${r.verses[0]}` : ''));
+      const chs = r.chunks ? r.chunks.map((c) => c.chapter) : (r.chapter ? [r.chapter] : []);
+      if (maxCh && chs.some((c) => c > maxCh)) continue;   // 章号越界 → 该切分不成立
+      const probe = r.key || (r.chunks ? `${acronym}${r.chunks[0].chapter}:${r.chunks[0].verses[0]}`
+        : (r.range ? `${acronym}${r.chapter}:${r.range[0]}`
+        : (r.verses ? `${acronym}${r.chapter}:${r.verses[0]}` : '')));
       if (probe && verseKeyExists(probe)) { chosen = { acronym, r }; break; }
       if (!chosen) chosen = { acronym, r };   // 仅解出章号的切分兜底
     }
@@ -4837,6 +4842,7 @@ function resolveRefString(raw) {
       if (r) {
         // 节范围/列举（如 9～10、19～26、二章六至九节、三章一、二节）逐节展开
         if (r.range) for (let v = r.range[0]; v <= r.range[1]; v++) pushKey(`${chosen.acronym}${r.chapter}:${v}`);
+        else if (r.chunks) expandRefChunks(chosen.acronym, r.chunks, (ch, v) => pushKey(`${chosen.acronym}${ch}:${v}`));
         else if (r.verses) r.verses.forEach((v) => pushKey(`${chosen.acronym}${r.chapter}:${v}`));
         else if (r.key) pushKey(r.key);
         if (r.chapter) curChapter = r.chapter;
@@ -4878,7 +4884,7 @@ function parseVerseSeq(seq) {
       continue;
     }
     if (!expectValue) return null;    // 缺连接符
-    const m = p.match(new RegExp('^([' + cn + ']+)(?:[-~～至到]([' + cn + ']+))?$'));
+    const m = p.match(new RegExp('^([' + cn + '\\d]+)(?:[-~～至到]([' + cn + '\\d]+))?$'));
     if (!m) return null;
     const v1 = cnToInt(m[1]);
     if (!v1) return null;
@@ -4915,13 +4921,24 @@ function parseRefTail(acronym, rest, defChapter) {
     }
   }
   // 中文章节式（三章十九节 / 二章六至九节 / 三章一、二节 / 七章三十七和三十八节）
-  m = rest.match(/^第?([一二三四五六七八九十百〇○]+)章(.+)$/);
-  if (m) {
-    const ch = cnToInt(m[1]);
-    const verses = ch ? parseVerseSeq(m[2]) : null;
-    if (verses && verses.length) {
-      if (verses.length === 1) return { key: `${acronym}${ch}:${verses[0]}${half}`, chapter: ch };
-      return { verses, chapter: ch };
+  // 跨章范围（十章二十八节至十二章二十四节）→ chunks（首章起节、末章止节，中间整章）
+  if (/^第?[一二三四五六七八九十百〇○\d]+章/.test(rest)) {
+    const chunks = [];
+    let ok = true;
+    for (const part of rest.split(/[-~～至到](?=第?[一二三四五六七八九十百〇○\d]+章)/)) {
+      const mm = part.match(/^第?([一二三四五六七八九十百〇○\d]+)章(.+)$/);
+      const ch = mm ? cnToInt(mm[1]) : null;
+      const verses = ch ? parseVerseSeq(mm[2]) : null;
+      if (!verses || !verses.length) { ok = false; break; }
+      chunks.push({ chapter: ch, verses });
+    }
+    if (ok && chunks.length) {
+      if (chunks.length === 1) {
+        const c = chunks[0];
+        if (c.verses.length === 1) return { key: `${acronym}${c.chapter}:${c.verses[0]}${half}`, chapter: c.chapter };
+        return { verses: c.verses, chapter: c.chapter };
+      }
+      return { chunks, chapter: chunks[0].chapter };
     }
   }
   // 纯章号（约一1 → 约壹 第1章，节由后续 token 提供）
@@ -4949,10 +4966,15 @@ function buildRefRegex() {
   // 列举式（三章一、二节 / 七章三十七和三十八节 / 十二章一至三节、五至七节）：
   // 延续项用 、和与 连接，且「节」可只出现在末尾（三章一、二、三节）。
   // 延续项前的 (?!cn+章) 防吃进下一个「X章」引用（如「九章九节、十一章七节」）
-  const verseItem = '[' + cn + ']+(?:[-~～至到][' + cn + ']+)?';
+  // 阿拉伯数字与中文数字混用（五章16节 / 三章5～7节）同样接受
+  const cnDigits = '[' + cn + '\\d]+';
+  // 节内范围的右值前加 (?!cn+章)：防把跨章范围「十章二十八节至十二章二十四节」的
+  // 「至十二」当成节内范围吃掉，导致匹配截断
+  const item = cnDigits + '节?(?:[-~～至到](?!' + cnDigits + '章)' + cnDigits + '节?)?';
   const tail = '(?:\\d+:\\d+(?:[-~～]\\d+)?|[' + cn + ']+\\d+(?:[-~～]\\d+)?[上下]?'
-    + '|第?[' + cn + ']+章[' + cn + ']+节?(?:[-~～至到][' + cn + ']+节?)?'
-    + '(?:[、和与](?!(?:[' + cn + ']+)章)' + verseItem + '节?)*)';
+    + '|第?' + cnDigits + '章' + item
+    + '(?:[、和与](?!' + cnDigits + '章)' + item + ')*'
+    + '(?:[-~～至到]第?' + cnDigits + '章' + item + ')?)';
   // 引导词（参/见/参看…）可选前缀，不参与捕获（组 1=书卷别名，组 2=章節尾）
   return new RegExp('(?:参看|参阅|参见|参考|[参见])?(' + aliasAlt + ')(' + tail + ')', 'g');
 }
@@ -4963,6 +4985,17 @@ function buildRefRegex() {
 function buildRelativeRefRegex() {
   const cn = '一二三四五六七八九十百〇○';
   return new RegExp('(?:[' + cn + ']+\\d+(?:[-~～]\\d+)?[上下]?|\\d{1,3}(?:[-~～]\\d{1,3})?[上下]?)', 'g');
+}
+
+// 相对章节式（无书卷前缀）：三章十九节 / 三章一、二节 / 三章一至三节、五至七节 /
+// 十章二十八节至十二章二十四节（跨章）。与全书式 tail 同构，另配左右边界守卫
+function buildRelativeChapterRefRegex() {
+  const cn = '一二三四五六七八九十百〇○';
+  const cnDigits = '[' + cn + '\\d]+';
+  const item = cnDigits + '节?(?:[-~～至到](?!' + cnDigits + '章)' + cnDigits + '节?)?';
+  return new RegExp('第?' + cnDigits + '章' + item
+    + '(?:[、和与](?!' + cnDigits + '章)' + item + ')*'
+    + '(?:[-~～至到]第?' + cnDigits + '章' + item + ')?', 'g');
 }
 
 // 纯阿拉伯节相对引用要求右边界为分隔符/句末标点，防误匹配词中/日期数字（如 1920年、25章）
@@ -4976,6 +5009,37 @@ function bookChapterCount(acronym) {
     (state.books || []).forEach(b => { _bookChaptersMap[b.acronym] = b.chapters; });
   }
   return _bookChaptersMap[acronym] || 0;
+}
+
+// 书卷缩写 + 章 → 该章最大节号（bible-text 键派生，懒建一次缓存）。
+// 跨章范围（十章二十八节至十二章二十四节）展开中间整章时需要；bibleText 未加载时返回 0（调用方退化处理）
+let _chapterVersesMap = null;
+function chapterVerseCount(acronym, chapter) {
+  if (!_chapterVersesMap) {
+    _chapterVersesMap = {};
+    for (const key of Object.keys(state.bibleText || {})) {
+      const m = key.match(/^([^\d]+)(\d+):(\d+)/);
+      if (!m) continue;
+      const k = m[1] + m[2], v = +m[3];
+      if (!(_chapterVersesMap[k] >= v)) _chapterVersesMap[k] = v;
+    }
+  }
+  return _chapterVersesMap[acronym + chapter] || 0;
+}
+
+// 跨章范围逐节展开：首章「起节→章末」+ 中间章整章 + 末章「1→止节」（章末节号未知时只给显式节）
+function expandRefChunks(acronym, chunks, emit) {
+  const first = chunks[0], last = chunks[chunks.length - 1];
+  if (chunks.length === 1) { first.verses.forEach((v) => emit(first.chapter, v)); return; }
+  first.verses.forEach((v) => emit(first.chapter, v));
+  const firstEnd = chapterVerseCount(acronym, first.chapter);
+  if (firstEnd) for (let v = first.verses[first.verses.length - 1] + 1; v <= firstEnd; v++) emit(first.chapter, v);
+  for (let ch = first.chapter + 1; ch < last.chapter; ch++) {
+    const n = chapterVerseCount(acronym, ch);
+    for (let v = 1; v <= n; v++) emit(ch, v);   // n=0（bibleText 未加载）时不展开中间章
+  }
+  for (let v = 1; v <= last.verses[0]; v++) emit(last.chapter, v);
+  last.verses.slice(1).forEach((v) => emit(last.chapter, v));
 }
 
 // 相对引用解析出的节必须真实存在于经文数据（防书卷/节号推断错误给出错误链接）；
@@ -4993,6 +5057,7 @@ function detectRefs(text, defaultAcronym) {
   text = text || '';
   const fullRe = buildRefRegex();
   const relRe = buildRelativeRefRegex();
+  const relChapRe = buildRelativeChapterRefRegex();
   const refs = [];
   let curAcronym = defaultAcronym || null, curChapter = null;
   fullRe.lastIndex = 0;
@@ -5004,12 +5069,52 @@ function detectRefs(text, defaultAcronym) {
     // 上一引用之后、下一引用之前：扫描相对引用（无上下文则不识别）
     if (curAcronym && segStart < segEnd) {
       const seg = text.slice(segStart, segEnd);
+      // 候选按位置合并：章节式（需相对上下文）与 中文章+阿拉伯节/纯阿拉伯节 两种相对引用
+      // 统一从左到右消费，保证 curChapter 上下文推进顺序与文本一致
+      const cands = [];
+      relChapRe.lastIndex = 0;
+      let cm;
+      while ((cm = relChapRe.exec(seg)) !== null) cands.push({ i: cm.index, body: cm[0], chap: true });
       relRe.lastIndex = 0;
       let rm;
-      while ((rm = relRe.exec(seg)) !== null) {
-        const absStart = segStart + rm.index;
-        const absEnd = absStart + rm[0].length;
-        const body = rm[0];
+      while ((rm = relRe.exec(seg)) !== null) cands.push({ i: rm.index, body: rm[0], chap: false });
+      cands.sort((a, b) => a.i - b.i);
+      let coveredUntil = -1;   // 章节式引用已覆盖到的绝对位置（相对式候选不重复包裹）
+      for (const cand of cands) {
+        const absStart = segStart + cand.i;
+        const absEnd = absStart + cand.body.length;
+        if (absStart < coveredUntil) continue;
+        if (cand.chap) {
+          // 左边界：前面不能是数字/章/第（防从「…十二章」中段截出）；
+          // 右边界：匹配须以「节/上/下」收尾，或以标点/空白/文末收尾
+          //（防「第三章第二段」的「二」被当节号）
+          const before = text[absStart - 1];
+          if (before && /[一二三四五六七八九十百〇○\d章第]/.test(before)) continue;
+          const after = text[absEnd];
+          if (!/[节上下]$/.test(cand.body) && after && !REL_DIGIT_RIGHT.test(after)) continue;
+          // 书卷归属：优先「最近上下文书卷」，其章越界/节不存在时回退 defaultAcronym
+          // （生命读经正文=篇目所属卷、注解=注解所在书卷）——正文常先提别的卷再回到本卷
+          let acr = curAcronym, parsed = null;
+          for (const tryAcr of (defaultAcronym && defaultAcronym !== curAcronym ? [curAcronym, defaultAcronym] : [curAcronym])) {
+            const p = parseRefTail(tryAcr, cand.body, null);
+            if (!p || !p.chapter) continue;
+            const maxCh = bookChapterCount(tryAcr);
+            const chs = p.chunks ? p.chunks.map((c) => c.chapter) : [p.chapter];
+            if (maxCh && chs.some((c) => c > maxCh)) continue;
+            const firstV = p.chunks ? p.chunks[0].verses[0] : (p.verses ? p.verses[0] : null);
+            const probe = p.key || (firstV ? `${tryAcr}${chs[0]}:${firstV}` : '');
+            if (!probe || !verseKeyExists(probe)) continue;
+            acr = tryAcr; parsed = p; break;
+          }
+          if (!parsed) continue;
+          // data-refs 用完整规范引用（补书卷前缀），点击弹窗可直接解析
+          refs.push({ start: absStart, end: absEnd, refText: acr + cand.body });
+          curAcronym = acr;
+          curChapter = parsed.chapter;
+          coveredUntil = absEnd;
+          continue;
+        }
+        const body = cand.body;
         // 左边界须为分隔符/标点/文本开头，避免误匹配词中数字；
         // 纯数字形式不接在「:」后（防 25:11 被拆出 11 误判为相对引用）
         const before = text[absStart - 1];
@@ -5029,13 +5134,20 @@ function detectRefs(text, defaultAcronym) {
         if (!mm) continue;
         const ch = mm[1] ? cnToInt(mm[1]) : curChapter;
         if (!ch) continue;
-        // 章越界 → 书卷推断错误（如 弗 的文章里裸写「一一九66」实为诗篇），不包裹以免给出错误链接
-        const maxCh = bookChapterCount(curAcronym);
-        if (maxCh && ch > maxCh) continue;
-        // data-refs 用完整规范引用（书卷前缀），点击弹窗可直接解析
-        const key = `${curAcronym}${ch}:${mm[2]}${half}` + (mm[3] ? `～${mm[3]}` : '');
-        if (!verseKeyExists(key)) continue;
+        // 章越界 → 书卷推断错误（如 弗 的文章里裸写「一一九66」实为诗篇），不包裹以免给出错误链接；
+        // 带显式章号的写法（二五11）在最近上下文不成立时回退 defaultAcronym（同章节式相对引用）
+        let acr = curAcronym, key = '';
+        for (const tryAcr of (mm[1] && defaultAcronym && defaultAcronym !== curAcronym ? [curAcronym, defaultAcronym] : [curAcronym])) {
+          const maxCh = bookChapterCount(tryAcr);
+          if (maxCh && ch > maxCh) continue;
+          // data-refs 用完整规范引用（书卷前缀），点击弹窗可直接解析
+          const k = `${tryAcr}${ch}:${mm[2]}${half}` + (mm[3] ? `～${mm[3]}` : '');
+          if (!verseKeyExists(k)) continue;
+          acr = tryAcr; key = k; break;
+        }
+        if (!key) continue;
         refs.push({ start: absStart, end: absEnd, refText: key });
+        curAcronym = acr;
         if (mm[1]) curChapter = ch;
       }
     }
@@ -5051,7 +5163,13 @@ function detectRefs(text, defaultAcronym) {
       if (fr && fr.chapter) fullChapter = fr.chapter;
     }
     const aliasMaxCh = aliasBook ? bookChapterCount(aliasBook) : 0;
-    if (fullChapter && aliasMaxCh && fullChapter > aliasMaxCh) { segStart = end; continue; }
+    if (fullChapter && aliasMaxCh && fullChapter > aliasMaxCh) {
+      // 章数越界 → 别名多半是词的一部分（「但二十三章…」的「但=but」）或后缀误匹配：
+      // 不按该卷包裹、也不据此建立上下文；只跳过别名本身，让「X章Y节」走相对引用
+      // （以最近上下文/defaultAcronym 归属，仍解不出则不包裹）
+      segStart = start + (alias ? alias.length : nextFull[0].length);
+      continue;
+    }
     refs.push({ start, end, refText: nextFull[0] });
     // 全书引用建立上下文，供后续相对引用使用
     // 必须用正则实际匹配到的别名（捕获组 1）：正则可能回溯到较短别名
