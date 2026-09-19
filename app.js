@@ -722,6 +722,25 @@ function renderHome() {
       <div class="home-block-icon">${c.icon}</div>
       <div class="home-block-title">${c.title}</div>
     </div>`).join('');
+  renderHomeHistory();
+}
+
+// 首页「最近阅读」（反馈 #16）：取 LS_HISTORY 最近 HOME_HIST_MAX 条，置于合集块下方。
+// 数据源与抽屉历史段共用，点击复用 jumpHistory；无历史时整块不渲染（不留空态）。
+function renderHomeHistory() {
+  const box = $('homeHist');
+  if (!box) return;
+  const list = load(LS_HISTORY, []).slice(0, HOME_HIST_MAX);
+  if (!list.length) { box.innerHTML = ''; return; }
+  box.innerHTML = `<div class="home-hist-head">
+      <span class="home-hist-title">最近阅读</span>
+      <button class="home-hist-more" data-hist-all>全部 ›</button>
+    </div>
+    <div class="home-hist-list">` + list.map((h, i) => `
+      <div class="home-hist-item" data-hist="${i}" role="button" tabindex="0">
+        <span class="t">${escapeHtml(h.title || '')}</span>
+        <span class="sub">${HISTORY_LABELS[h.module] || ''} · ${relTime(h.t)}</span>
+      </div>`).join('') + '</div>';
 }
 
 // 进首页：body.home 隐藏工作区（CSS 驱动），清掉研读 overlay 残留与弹窗
@@ -957,6 +976,12 @@ function bindHomeEvents() {
     if (!tile) return;
     const c = COLLECTIONS.find(x => x.id === tile.dataset.entry);
     if (c && c.entry) c.entry();
+  });
+  // 首页「最近阅读」点击委托：条目=跳回原文（复用 jumpHistory），「全部 ›」=开抽屉历史段
+  $('homeHist').addEventListener('click', (e) => {
+    if (e.target.closest('[data-hist-all]')) { openHomeHistoryAll(); return; }
+    const item = e.target.closest('.home-hist-item');
+    if (item) jumpHistory(load(LS_HISTORY, [])[+item.dataset.hist]);
   });
   $('homeBtn').addEventListener('click', showHome);
   const input = $('homeSearch');
@@ -3405,6 +3430,8 @@ async function openMorningArticle(periodId, chapterId) {
 
 /* ============ 统一导航抽屉（WeBible 模式：双栏主从 + Segment 浏览/历史 + 阅读历史 + 模块级搜索） ============ */
 const LS_HISTORY = 'bible-study.history';   // [{module, loc, title, t}] 阅读历史（纯本地，上限 50）
+const HISTORY_LABELS = { bible: '读经', lifereading: '生命读经', books: '书报', morning: '听抄' };   // 历史条目模块名（首页块与抽屉历史段共用）
+const HOME_HIST_MAX = 5;   // 首页「最近阅读」展示条数（反馈 #16）
 
 // 抽屉内浏览态：left=左栏选中（bible/lr=书卷 index、books=辑内书 0 基、morning 未用）、
 // vol=books 辑号（1 基）/morning 期 id；seg='browse'|'history'；testament=bible 左栏旧约/新约过滤；
@@ -3672,10 +3699,9 @@ function renderDrawerHistory() {
   const body = $('dwBody');
   const list = load(LS_HISTORY, []);
   if (!list.length) { body.innerHTML = '<div class="dw-empty">暂无阅读历史</div>'; return; }
-  const labels = { bible: '读经', lifereading: '生命读经', books: '书报', morning: '听抄' };
   body.innerHTML = '<div class="dw-hist-wrap"><div class="dw-hist-head"><div class="dw-clear-btn" data-clear="1">清空历史</div></div><div class="dw-hist-list">' +
     list.map((h, i) =>
-      `<div class="dw-hist-item" data-h="${i}"><span class="t">${escapeHtml(h.title || '')}</span><span class="sub">${labels[h.module] || ''} · ${relTime(h.t)}</span></div>`).join('') +
+      `<div class="dw-hist-item" data-h="${i}"><span class="t">${escapeHtml(h.title || '')}</span><span class="sub">${HISTORY_LABELS[h.module] || ''} · ${relTime(h.t)}</span></div>`).join('') +
     '</div></div>';
 }
 
@@ -3767,6 +3793,19 @@ async function jumpHistory(h) {
   } else if (h.module === 'morning') {
     await openMorningArticle(h.loc.period, h.loc.chapterId);
   }
+}
+
+// 首页「全部 ›」：进工作区并打开抽屉「历史」段（历史不按模块过滤，四模块共用一份）。
+// notes 模块的抽屉不承载历史段（走分类树），故目标模块取最近一条所属模块。
+async function openHomeHistoryAll() {
+  const first = load(LS_HISTORY, [])[0];
+  const target = state.activeModule === 'notes' && first ? first.module : state.activeModule;
+  if (target !== state.activeModule) await enterModule(target);
+  else enterWork();
+  dwState.seg = 'history';
+  dwState._lastMod = target;        // 防 renderDrawer 判「模块切换」把段重置回浏览
+  openNavDrawer();
+  if (isDocked()) renderDrawer();   // 已停靠时 openNavDrawer 提前 return，需补一次渲染
 }
 
 // 右栏项点击（浏览段）：关抽屉 → 走各模块统一入口

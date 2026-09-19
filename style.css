@@ -1002,6 +1002,28 @@ body.home .mobile-nav { display: none; }
 .home-block-icon { font-size: 40px; line-height: 1; }
 .home-block-title { font-size: 16px; font-weight: 600; color: var(--heading); }
 
+/* 首页「最近阅读」（反馈 #16）：合集块下方的极简行列表（无卡片底，仅细分隔线） */
+.home-hist { margin-top: 26px; }
+.home-hist:empty { display: none; }
+.home-hist-head { display: flex; align-items: baseline; justify-content: space-between; padding: 0 2px; }
+.home-hist-title { font-size: 13px; font-weight: 600; color: var(--text-muted); letter-spacing: .5px; }
+.home-hist-more {
+  border: none; background: none; padding: 0; cursor: pointer;
+  font-family: inherit; font-size: 13px; color: var(--brand);
+}
+.home-hist-more:hover { text-decoration: underline; }
+.home-hist-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 2px; cursor: pointer; border-bottom: 1px solid var(--border);
+}
+.home-hist-item:last-child { border-bottom: none; }
+.home-hist-item .t {
+  flex: 1; min-width: 0; font-size: 14px; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.home-hist-item .sub { flex: none; font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.home-hist-item:hover .t { color: var(--brand); }
+
 /* 我的笔记：本章|全部 范围切换 */
 .note-scope { display: flex; gap: 8px; margin: 2px 0 10px; }
 .note-scope-btn {

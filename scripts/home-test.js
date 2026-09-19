@@ -1,4 +1,5 @@
-/* 首页 + 合集块冒烟测试（阅读器直进版）：启动进首页 → 三个块直进阅读器 → ⌂ 回首页 → 搜索 */
+/* 首页 + 合集块冒烟测试（阅读器直进版）：启动进首页 → 三个块直进阅读器 → ⌂ 回首页 → 搜索
+   末尾含「首页最近阅读」（反馈 #16）：最多 5 条 / 位于合集块下方 / 点击跳原文并置顶 / 全部›开抽屉历史段 / 空历史整块隐藏 */
 const { spawn } = require('child_process');
 const ROOT = require('path').resolve(__dirname, '..');
 const PORT = 8765;
@@ -152,6 +153,75 @@ async function main() {
                sBible.mod && !sBible.otherMod && sBible.verse !== 'none' &&
                sLr2.mod && !sLr2.otherMod && sLr2.lrMain === 'block';
   console.log('9. 模块往返切换:', swOk ? '✓' : '✗', '| 生命读经→读经→生命读经 类互斥正确');
+
+  // 10. 首页「最近阅读」（反馈 #16）：最多 5 条、位于合集块下方、带模块/时间
+  await page.evaluate(() => {
+    const now = Date.now();
+    localStorage.setItem('bible-study.history', JSON.stringify([
+      { module: 'bible',       loc: { book: 1, chapter: 24 },                         title: '创世记 24章',      t: now - 4 * 60e3 },
+      { module: 'lifereading', loc: { book: 45, articleId: 2 },                       title: '第2篇 神的福音',    t: now - 55 * 60e3 },
+      { module: 'books',       loc: { series: 'ni', volume: 1, book: 2, chapter: 3 }, title: '某书 · 第4章 标题', t: now - 2 * 36e5 },
+      { module: 'morning',     loc: { period: '2026-03', chapterId: 1 },              title: '某期 · 第1篇 标题', t: now - 3 * 864e5 },
+      { module: 'bible',       loc: { book: 43, chapter: 7 },                         title: '约翰福音 7章',      t: now - 5 * 864e5 },
+      { module: 'bible',       loc: { book: 1, chapter: 1 },                          title: '创世记 1章',        t: now - 9 * 864e5 },
+    ]));
+  });
+  await page.reload({ waitUntil: 'networkidle0' });
+  await page.waitForSelector('#homeHist .home-hist-item', { timeout: 15000 });
+  const h10 = await page.evaluate(() => {
+    const box = document.querySelector('#homeHist');
+    const grid = document.querySelector('#homeGrid');
+    return {
+      n: box.querySelectorAll('.home-hist-item').length,
+      titles: [...box.querySelectorAll('.home-hist-item .t')].map(e => e.textContent),
+      subs: [...box.querySelectorAll('.home-hist-item .sub')].map(e => e.textContent),
+      allBtn: !!box.querySelector('[data-hist-all]'),
+      title: (box.querySelector('.home-hist-title') || {}).textContent,
+      belowGrid: !!(grid.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING),
+    };
+  });
+  const h10ok = h10.n === 5 && h10.titles[0] === '创世记 24章' && h10.titles[4] === '约翰福音 7章' &&
+    !h10.titles.includes('创世记 1章') && h10.subs[1] === '生命读经 · 55分钟前' &&
+    h10.title === '最近阅读' && h10.allBtn && h10.belowGrid;
+  console.log('10. 首页最近阅读(最多5条/在合集块下方):', h10ok ? '✓' : '✗',
+    '| 条数:', h10.n, '| 首条:', h10.titles[0], h10.subs[0], '| 末条:', h10.titles[4], '| 标题:', h10.title, '| 全部›:', h10.allBtn, '| 在块下方:', h10.belowGrid);
+
+  // 11. 点条目 → 跳原文；⌂ 回首页后该条置顶（pushHistory 去重置顶）
+  await page.evaluate(() => document.querySelectorAll('#homeHist .home-hist-item')[4].click());
+  await new Promise((r) => setTimeout(r, 2000));
+  const r11 = await page.evaluate(() => ({
+    home: document.body.classList.contains('home'),
+    modBible: document.body.classList.contains('body-mod-bible'),
+    book: document.querySelector('#bookName').textContent,
+    ch: document.querySelector('#chapterLabel').textContent,
+  }));
+  await page.click('#homeBtn');
+  await new Promise((r) => setTimeout(r, 300));
+  const h11 = await page.evaluate(() => [...document.querySelectorAll('#homeHist .home-hist-item .t')].map(e => e.textContent));
+  const h11ok = !r11.home && r11.modBible && r11.book === '约翰福音' && r11.ch === '7章' &&
+    h11[0] === '约翰福音 7章' && h11.length === 5;
+  console.log('11. 最近阅读点击跳转+置顶:', h11ok ? '✓' : '✗', '|', r11.book, r11.ch, '| 置顶:', h11[0], '| 条数:', h11.length);
+
+  // 12. 「全部 ›」→ 抽屉历史段（全量 6 条 + 清空按钮）；历史清空后首页整块隐藏（不留空态）
+  await page.click('#homeHist [data-hist-all]');
+  await new Promise((r) => setTimeout(r, 600));
+  const r12 = await page.evaluate(() => ({
+    home: document.body.classList.contains('home'),
+    segSel: (document.querySelector('#dwSeg [data-seg="history"]') || {}).className,
+    rows: document.querySelectorAll('#navDrawer .dw-hist-item').length,
+    clearBtn: !!document.querySelector('#navDrawer .dw-clear-btn'),
+  }));
+  await page.evaluate(() => localStorage.setItem('bible-study.history', '[]'));
+  await page.evaluate(() => showHome());
+  await new Promise((r) => setTimeout(r, 300));
+  const r12b = await page.evaluate(() => ({
+    html: document.querySelector('#homeHist').innerHTML,
+    blocks: document.querySelectorAll('#homeGrid .home-block').length,
+  }));
+  const r12ok = !r12.home && r12.segSel === 'sel' && r12.rows === 6 && r12.clearBtn &&
+    r12b.html === '' && r12b.blocks === 5;
+  console.log('12. 全部›开抽屉历史段+空历史隐藏:', r12ok ? '✓' : '✗',
+    '| 抽屉历史行:', r12.rows, '| 段选中:', r12.segSel, '| 清空按钮:', r12.clearBtn, '| 清空后首页块:', r12b.blocks, 'HTML空:', r12b.html === '');
 
   console.log('\nJS 错误:', errors.length ? errors : '无');
   await browser.close();
