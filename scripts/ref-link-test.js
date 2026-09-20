@@ -236,6 +236,21 @@ async function main() {
   r = await refsOf('第二十二章的记载', '创');
   check('15m. 第二十二章（无节号）不识别', r.length === 0, JSON.stringify(r));
 
+  // 16. 听抄篇首经文串（反馈 #18）：多书卷串珠链，串首全书式引用自建上下文，
+  // 后续相对续节（、16）/相对章节式（二一15～17）/半角 ~（林后六14~16）逐一归属
+  r = await refsOf('约十11、16，二一15～17，彼前二25，五4，来十三20，启一13，二1、7');
+  check('16a. 听抄经文串：约/彼前/来/启 链',
+    JSON.stringify(r) === JSON.stringify(['约十11', '约10:16', '约21:15～17', '彼前二25', '彼前5:4', '来十三20', '启一13', '启2:1', '启2:7']), JSON.stringify(r));
+  r = await refsOf('哈三2，徒二六19、22，太十四19、22～23，腓一19～22、25，约二一15～17');
+  check('16b. 听抄经文串：哈/徒/太/腓/约 链',
+    JSON.stringify(r) === JSON.stringify(['哈三2', '徒二六19', '徒26:22', '太十四19', '太14:22～23', '腓一19～22', '腓1:25', '约二一15～17']), JSON.stringify(r));
+  r = await refsOf('约四24，彼后一1、4~11，约壹一5，四8、16，路十八1~18');
+  check('16c. 听抄经文串：约壹消歧 + 半角~范围',
+    JSON.stringify(r) === JSON.stringify(['约四24', '彼后一1', '彼后1:4～11', '约壹一5', '约壹4:8', '约壹4:16', '路十八1~18']), JSON.stringify(r));
+  r = await refsOf('太五1，二八19，林后六14~16，林前一2，彼前四16');
+  check('16d. 听抄经文串：相对续章（二八19/六14~16/一2/四16）',
+    JSON.stringify(r) === JSON.stringify(['太五1', '太28:19', '林后六14~16', '林前一2', '彼前四16']), JSON.stringify(r));
+
   console.log(`\n${pass} passed, ${fail} failed`);
   console.log('JS 错误:', errors.length ? errors : '无');
   await browser.close();

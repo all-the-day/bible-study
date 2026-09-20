@@ -1124,6 +1124,7 @@ async function selectChapter(chapter) {
   renderChapterNav();
   renderStudy();
   updateMobileNav();
+  $('textCol').scrollTop = 0;   // 翻章滚顶；jumpToVerse 等跳转路径随后自行 scrollIntoView 覆盖
   save(LS_LAST, { book: state.currentBook.index, chapter });
   pushHistory('bible', { book: state.currentBook.index, chapter }, `${state.currentBook.name} ${chapter}章`);
   // 生命读经懒加载（结果同时缓存到 lrVolumes，供首页篇目列表/全局笔记复用）
@@ -3328,7 +3329,9 @@ function renderMorningMain() {
   if (ch.scripture) {
     const sc = document.createElement('div');
     sc.className = 'morning-scripture';
-    sc.textContent = '经文：' + ch.scripture;
+    // 经文串（如「约十11、16，二一15～17，彼前二25，五4」多书卷串珠）包 ref-link 可点击；
+    // 串首为全书式引用自建上下文，后续相对引用靠它归属，故 defaultAcronym 传 null
+    sc.innerHTML = '经文：' + linkifyRefs(ch.scripture, null);
     main.appendChild(sc);
   }
   const content = document.createElement('div');
@@ -4737,11 +4740,11 @@ async function submitFeedback() {
 /* ============ 弹窗 ============ */
 const popupStack = [];
 
-function openPopup(title, bodyHtml) {
+function openPopup(title, bodyHtml, opts) {
   const wasOpen = !$('popup').hidden;   // 已在栈内切换时不再重复加锁（否则 closePopup 的返回分支不减计数 → scroll-locked 泄漏）
-  if (wasOpen) {
+  if (wasOpen && !(opts && opts.replace)) {
     popupStack.push({ title: $('popupTitle').textContent, body: $('popupBody').innerHTML });
-  } else {
+  } else if (!wasOpen) {
     popupStack.length = 0;
   }
   $('popupTitle').textContent = title;
@@ -5332,7 +5335,17 @@ function markedToHtml(marked, key) {
   return html;
 }
 
-function showRefsPopup(title, refString) {
+async function showRefsPopup(title, refString) {
+  // 生命读经/听抄/书报直进时经文数据未加载（4 文件共 ~8.7MB，慢网首拉可达数十秒）：
+  // 先弹「加载中」占位，补载完成后原位替换（replace 不把占位层压入弹窗栈）；
+  // 用户在加载期间关掉弹窗则不再重开
+  let lazy = false;
+  if (!state.bibleText) {
+    openPopup(title, '<div class="empty-hint">经文加载中…</div>');
+    lazy = true;
+    await ensureBibleData();
+    if ($('popup').hidden) return;
+  }
   const refs = resolveRefString(refString);
   let html = `<div style="color:var(--text-muted);font-size:13px;margin-bottom:8px">${escapeHtml(refString)}</div>`;
   let found = 0;
@@ -5344,7 +5357,9 @@ function showRefsPopup(title, refString) {
     }
   }
   if (!found) html += '<div class="empty-hint">未收录此经文</div>';
-  openPopup(title, html);
+  // lazy 时 replace：原位替换占位层不入栈；非 lazy（bible 模块弹窗已开，如注脚弹窗内点引用）
+  // 保持既有压栈行为——返回键可回注脚弹窗
+  openPopup(title, html, lazy ? { replace: true } : undefined);
 }
 
 function escapeHtml(s) {

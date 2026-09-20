@@ -38,6 +38,34 @@ async function main() {
   console.log('1. 晨兴直进:', r1.modMorning && r1.filter && r1.paras >= 10 ? '✓' : '✗',
     '| 篇数:', r1.artCount, '| 层级标题:', r1.heads, '| 段落:', r1.paras, '| crumb:', r1.crumb);
 
+  // 1b. 反馈 #18：篇首经文串（多书卷串珠）包 ref-link 可点击
+  const sc1 = await page.evaluate(() =>
+    [...document.querySelectorAll('.morning-scripture .ref-link')].map(s => s.dataset.refs));
+  console.log('1b. 篇首经文串链接:', sc1.length === 5 ? '✓' : '✗', '|', sc1.join(' , '));
+
+  // 1c. 反馈 #18 配套：经文数据未载时点引用 → 立即弹「加载中」占位，补载后原位填充。
+  // init 启动预渲染已加载 bibleText，须清空模拟「模块直进早于经文数据加载」时序；
+  // 占位在 showRefsPopup 的 await 前同步弹出，断言无需等待
+  await page.evaluate(() => { state.bibleText = null; });
+  await page.evaluate(() => document.querySelector('.morning-scripture .ref-link').click());
+  const popLoading = await page.evaluate(() => ({
+    open: !document.querySelector('#popup').hidden,
+    loading: document.querySelector('#popupBody').textContent.includes('加载中'),
+  }));
+  console.log('1c-1. 立即弹加载占位:', popLoading.open && popLoading.loading ? '✓' : '✗');
+  await new Promise((r) => setTimeout(r, 4000));   // ensureBibleData 补载 4 文件（~8.7MB）
+  const pop1 = await page.evaluate(() => ({
+    open: !document.querySelector('#popup').hidden,
+    verses: document.querySelectorAll('#popupBody .popup-verse').length,
+    backHidden: document.querySelector('#popupBack').hidden,
+  }));
+  console.log('1c-2. 补载后填充经文:', pop1.open && pop1.verses > 0 ? '✓' : '✗', '| 节数:', pop1.verses);
+  console.log('1c-3. 占位层未入弹窗栈:', pop1.backHidden ? '✓' : '✗', '| 返回键:', pop1.backHidden ? '隐藏' : '可见');
+  await page.click('#popupClose');
+  await new Promise((r) => setTimeout(r, 300));
+  const popClosed = await page.evaluate(() => document.querySelector('#popup').hidden);
+  console.log('1c-4. 关一次即净:', popClosed ? '✓' : '✗');
+
   // 2. 统一导航抽屉（期列表 + 篇列表）切期（国殇节特会，6 篇）
   await page.evaluate(() => openNavDrawer());
   await new Promise((r) => setTimeout(r, 800));
@@ -55,6 +83,11 @@ async function main() {
   }));
   console.log('2. 抽屉切期:', r2a.periodCur === '国殇节国际相调特会' && r2a.arts === 6 && r2.artCount === 6 ? '✓' : '✗',
     '| 期:', r2a.periodCur, '|', r2.title);
+
+  // 2b. 反馈 #18：切期后经文串链接跟随新篇目（2026-03 第 1 篇 8 个引用）
+  const sc2 = await page.evaluate(() =>
+    [...document.querySelectorAll('.morning-scripture .ref-link')].map(s => s.dataset.refs));
+  console.log('2b. 切期后经文串链接:', sc2.length === 8 ? '✓' : '✗', '|', sc2.join(' , '));
 
   // 3. 切篇（第2篇，停靠列右栏）
   await page.evaluate(() => { document.querySelectorAll('#navDrawer .dw-cols .dw-col:nth-child(2) .dw-item')[1].click(); });

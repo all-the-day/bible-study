@@ -46,6 +46,26 @@ const puppeteer = require('D:/coder/aiWorkSpace/bible-reader/node_modules/puppet
   const ch24Text = await page.$eval('.verse .vtext', el => el.textContent);
   console.log('创24 首节:', ch24Text.slice(0, 40));
 
+  // 5b. 反馈 #17：翻章后自动滚到顶部（jumpToVerse 等跳转路径随后自行定位，不受影响）
+  await page.evaluate(() => { $('textCol').scrollTop = 2000; });
+  await page.evaluate(() => selectChapter(25));
+  await new Promise((r) => setTimeout(r, 600));
+  const st = await page.evaluate(() => ({ top: $('textCol').scrollTop, label: document.querySelector('#chapterLabel').textContent }));
+  console.log('翻章滚顶:', st.top === 0 && st.label === '25章' ? '✓' : '✗', '| scrollTop:', st.top, '|', st.label);
+
+  // 5c. 跳转路径不被滚顶破坏：跨章 jumpToVerse 走 selectChapter().then(scrollToVerse)
+  //（滚顶在 selectChapter 内同步执行，定位在其后，须验证顺序不颠倒；同章直滚分支不覆盖此路径）
+  await page.evaluate(() => { $('textCol').scrollTop = 0; });
+  await page.evaluate(() => jumpToVerse(26, 20, ''));
+  await new Promise((r) => setTimeout(r, 900));
+  const jv = await page.evaluate(() => ({
+    flashed: !!document.querySelector('.verse.flash'),
+    top: $('textCol').scrollTop,
+    label: document.querySelector('#chapterLabel').textContent,
+  }));
+  console.log('跳转定位:', jv.flashed && jv.top > 0 && jv.label === '26章' ? '✓' : '✗',
+    '| flash:', jv.flashed, '| scrollTop:', jv.top, '|', jv.label);
+
   // 6. 检查生命读经 tab
   await page.click('.study-tab[data-tab="lifereading"]');
   await new Promise((r) => setTimeout(r, 2000));
