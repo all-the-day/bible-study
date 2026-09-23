@@ -27,6 +27,13 @@ const LS_MORNING_NOTES = 'bible-study.morningNotes'; // {"period:chapterId": tex
 const LS_NOTES_PREFS = 'bible-study.notesPrefs';     // {source, color, sort} 笔记管理模块偏好
 const LS_DRAWER_DOCKED = 'bible-study.drawerDocked'; // 桌面导航抽屉是否停靠展开（收起后 ☰/crumb 再展开）
 const LS_VCONSOLE = 'bible-study.vconsole';          // 调试模式（PageSpy）开关：'1'=开启，设置弹窗版本号连点 5 次切换
+const LS_TYPO = 'bible-study.typography';            // {scale, lh} 阅读排版（字号倍率 / 行距），纯本地不入云同步
+// 阅读排版取值约束（必须在 state 初始化前声明：state.typography 依赖 normalizeTypo 读取这两个常量）
+const TYPO_DEFAULTS = { scale: 1, lh: 2 };
+const TYPO_RANGE = { scale: [0.85, 2], lh: [1.5, 2.4] };   // 字号上限 2.0：满足 WCAG 1.4.4「文字可放大 200%」
+const TYPO_STEP = 0.05;
+// 各模块正文基准字号（对应 style.css 的 calc(Npx * var(--reading-scale))，仅用于面板上的 px 显示）
+const TYPO_BASE_FS = { bible: 18, lifereading: 17, books: 15, morning: 15 };
 const PAGE_SPY_API = 'pagespy.duoban.xyz';           // PageSpy 服务端（Caddy 反代 127.0.0.1:6752，面板有 basic_auth）
 
 // 反馈提交地址（bible-kv 服务器，Caddy /bible-api/ 反代）
@@ -85,6 +92,7 @@ const state = {
   notesSelected: new Set(),   // 多选模式选中的标注 id
   notesCollapsed: new Set(),  // 分类树折叠节点
   drawerDocked: load(LS_DRAWER_DOCKED, true),  // 桌面导航抽屉停靠展开（可收起）
+  typography: normalizeTypo(load(LS_TYPO, null)),  // {scale, lh} 阅读排版（Aa 面板可调，本机保存）
   lrTitleIndex: null,    // 生命读经全卷篇目标题索引缓存（data/lr-titles.json）
   notesGroup: null,           // 左栏树选中的叶子分组（过滤主区）
   notesSelectedItem: null,    // 右栏编辑目标：{kind:'ann',id} | {kind:'note',dict,key}
@@ -335,6 +343,80 @@ function toggleDebugMode() {
 }
 function initDebugMode() {
   if (localStorage.getItem(LS_VCONSOLE) === '1') loadPageSpy();
+}
+
+/* ============ 阅读排版（Aa 面板）：字号 / 行距 ============ */
+// 纯本地偏好（与 viewMode/studyWidth 同类），不入云同步。通过 :root 上的
+// --reading-scale / --reading-lh 驱动，style.css 各正文元素以 calc(基准px * scale) 消费。
+// 取值约束常量 TYPO_DEFAULTS / TYPO_RANGE / TYPO_STEP / TYPO_BASE_FS 见文件顶部常量区。
+
+// 读入值归一：越界钳制到边界（步进越界时停在上下限，不能跳回默认），非数字/缺失回退默认
+function normalizeTypo(v) {
+  const out = { ...TYPO_DEFAULTS };
+  ['scale', 'lh'].forEach((k) => {
+    const n = v ? v[k] : undefined;
+    const [lo, hi] = TYPO_RANGE[k];
+    // 只认真正的 number：Number(null) === 0 是有限数，若按 isFinite 判断会把「无存储」误当成
+    // 合法值 0 再钳到下限——首次安装的用户会直接拿到最小字号
+    out[k] = typeof n === 'number' && Number.isFinite(n)
+      ? Math.min(hi, Math.max(lo, n))
+      : TYPO_DEFAULTS[k];
+  });
+  return out;
+}
+
+function applyTypography() {
+  const root = document.documentElement.style;
+  root.setProperty('--reading-scale', String(state.typography.scale));
+  root.setProperty('--reading-lh', String(state.typography.lh));
+}
+
+// 面板上的「18px · 1.00×」按当前模块基准换算（切模块时同步刷新）
+function typoFsLabel() {
+  const base = TYPO_BASE_FS[state.activeModule] || TYPO_BASE_FS.bible;
+  return `${Math.round(base * state.typography.scale)}px · ${state.typography.scale.toFixed(2)}×`;
+}
+
+function syncTypoUI() {
+  const fs = $('fsRange'), lh = $('lhRange');
+  if (!fs || !lh) return;
+  fs.value = Math.round(state.typography.scale * 100);
+  lh.value = Math.round(state.typography.lh * 100);
+  $('fsVal').textContent = typoFsLabel();
+  $('lhVal').textContent = state.typography.lh.toFixed(2);
+}
+
+function setTypography(patch) {
+  state.typography = normalizeTypo({ ...state.typography, ...patch });
+  applyTypography();
+  save(LS_TYPO, state.typography);
+  syncTypoUI();
+}
+
+function stepTypography(key, delta) {
+  setTypography({ [key]: +(state.typography[key] + delta).toFixed(2) });
+}
+
+function openTypoModal() {
+  const m = $('typoModal');
+  if (!m || !m.hidden) return;
+  m.hidden = false;
+  $('typographyBtn').classList.add('active');
+  lockScroll(true);
+  syncTypoUI();
+}
+
+function closeTypoModal() {
+  const m = $('typoModal');
+  if (!m || m.hidden) return;
+  m.hidden = true;
+  $('typographyBtn').classList.remove('active');
+  lockScroll(false);
+}
+
+function resetTypography() {
+  setTypography({ ...TYPO_DEFAULTS });
+  showToast('已恢复默认排版');
 }
 
 /* ============ 设置菜单 ============ */
@@ -685,6 +767,7 @@ async function init() {
   _refAliasesSorted = Object.keys(REF_ALIASES).sort((a, b) => b.length - a.length);
   applyHideMarks();
   applyLayout();
+  applyTypography();   // 冷启动应用本机排版偏好（字号/行距）
   bindViewport();
   state.activeModule = 'bible';
   applyModuleBodyClass('bible');
@@ -946,6 +1029,9 @@ async function enterModule(id, opts) {
   state.activeModule = id;
   applyModuleBodyClass(id);
   enterWork();
+  // 面板开着时切模块：px 标签按新模块基准刷新（各模块基准字号不同）
+  const typoPanel = $('typoModal');
+  if (typoPanel && !typoPanel.hidden) syncTypoUI();
   if (firstEnter) {
     await mod.enter(opts);
     await Promise.all([mod.renderNav(), mod.renderMain(), mod.renderSide(), mod.renderCrumb()]);
@@ -3957,6 +4043,22 @@ function bindEvents() {  // 首页：合集块点击 + 顶部搜索 + ⌂ 回首
   $('mNextBtn').addEventListener('click', () => mobileNavGo(1));
   // 设置菜单（⚙️）——行点击走委托，弹窗栈返回后依然有效
   $('settingsBtn').addEventListener('click', openSettingsModal);
+  // 排版面板（Aa）：字号 / 行距，滑杆即时生效（style.css 消费 --reading-scale / --reading-lh）
+  $('typographyBtn').addEventListener('click', () => {
+    if ($('typoModal').hidden) openTypoModal(); else closeTypoModal();
+  });
+  $('typoClose').addEventListener('click', closeTypoModal);
+  $('typoModal').addEventListener('click', (e) => { if (e.target === $('typoModal')) closeTypoModal(); });
+  $('fsRange').addEventListener('input', (e) => setTypography({ scale: +e.target.value / 100 }));
+  $('lhRange').addEventListener('input', (e) => setTypography({ lh: +e.target.value / 100 }));
+  $('fsMinus').addEventListener('click', () => stepTypography('scale', -TYPO_STEP));
+  $('fsPlus').addEventListener('click', () => stepTypography('scale', TYPO_STEP));
+  $('lhMinus').addEventListener('click', () => stepTypography('lh', -TYPO_STEP));
+  $('lhPlus').addEventListener('click', () => stepTypography('lh', TYPO_STEP));
+  $('typoReset').addEventListener('click', resetTypography);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$('typoModal').hidden) closeTypoModal();
+  });
   document.addEventListener('click', onSettingsRow);
   // 调试模式开关：设置弹窗底部版本号 3 秒内连点 5 次
   document.addEventListener('click', (e) => {

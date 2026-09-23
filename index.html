@@ -36,6 +36,7 @@
       <button id="studyFullBtn" class="top-btn" aria-label="研读全屏">研读全屏</button>
       <button id="feedbackBtn" class="top-btn" aria-label="反馈">反馈</button>
     </div>
+    <button id="typographyBtn" class="icon-btn aa-btn" aria-label="排版设置" title="排版">Aa</button>
     <button id="settingsBtn" class="icon-btn" aria-label="设置">⚙️</button>
   </header>
 
@@ -147,6 +148,36 @@
       <div class="notemodal-actions">
         <button id="updateCancel" class="popup-btn">关闭</button>
         <button id="updateAction" class="popup-btn primary" hidden>下载并安装</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 排版面板（Aa）：正文字号 + 行距，即时生效。桌面居中弹层，移动端底部 sheet。
+       独立 modal 而非 popup 栈：排版要「拖到舒服为止」，不被弹窗栈返回逻辑干扰 -->
+  <div id="typoModal" class="notemodal" hidden>
+    <div class="notemodal-card typo-card">
+      <div class="typo-grab"></div>
+      <div class="typo-head">
+        <span class="typo-title">排版</span>
+        <button id="typoClose" class="icon-btn" aria-label="关闭">×</button>
+      </div>
+      <div class="typo-row">
+        <span class="typo-label">字号</span>
+        <button class="typo-step" id="fsMinus" aria-label="缩小字号">A−</button>
+        <input type="range" id="fsRange" min="85" max="200" step="5" value="100" aria-label="字号">
+        <button class="typo-step" id="fsPlus" aria-label="放大字号">A+</button>
+        <span class="typo-val" id="fsVal"></span>
+      </div>
+      <div class="typo-row">
+        <span class="typo-label">行距</span>
+        <button class="typo-step" id="lhMinus" aria-label="减小行距">−</button>
+        <input type="range" id="lhRange" min="150" max="240" step="5" value="200" aria-label="行距">
+        <button class="typo-step" id="lhPlus" aria-label="增大行距">+</button>
+        <span class="typo-val" id="lhVal"></span>
+      </div>
+      <div class="typo-foot">
+        <span class="typo-hint">即时生效 · 仅本机保存</span>
+        <button class="popup-btn" id="typoReset">恢复默认</button>
       </div>
     </div>
   </div>
