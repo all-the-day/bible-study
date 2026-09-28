@@ -7,7 +7,7 @@
 与兄弟项目的边界：
 - **bible**（`../bible`）— 数据源，通过 `query_api.py` 提供经文/注解/串珠/生命读经。本项目的 `scripts/export.py` 从它导出静态 JSON，**不直接读 bible.db**；书报系列数据也来自 `../bible/data/raw/spiritual_food/`
 - **bible-reader** — 纯划线阅读器，定位「干净、无注解」。本项目的**颜色概念体系沿用它的 5 色语义**，但功能上不复用其代码。
-- **晨读 app（特会信息合集）** — UI 与标注交互机制的参考样板，且**听抄模块的数据源**（反编译其 APK 资源导出 `data/morning/`，见「数据导出」节）
+- **晨读 app（特会信息合集）** — UI 与标注交互机制的参考样板
 
 ## 技术栈
 
@@ -33,8 +33,7 @@
 | `capacitor.config.json` / `package.json` | APK 打包配置（`resources/icon.png` 为图标源） |
 | `config/android/` | 原生更新插件源码（ApkInstallerPlugin：download 原生下载 + install 安装；MainActivity/file_paths.xml），CI 注入 android/ 工程，不入本地构建 |
 | `scripts/export.py` | 从 `../bible` 导出静态 JSON → `data/` |
-| `scripts/export-morning.py` | 从晨读 APK 资源导出听抄 → `data/morning/`（默认只导当年，`--exclude` 排除期，旧期自动清理；`EPUB_PERIODS` 内的期跳过并保留——其听抄由 epub 导出） |
-| `scripts/export-morning-epub.py` | 从特会信息 epub（Notion 下载，如 2026-3-MDC.epub）导出**完整听抄** → `data/morning/{期}.json`（反编译 App 资源 detail_sections 听抄被截断，每篇缺 18-27%；**2026-08 起听抄以 epub 为准**）；同时更新 index.json 该期条目 |
+| `scripts/export-morning-epub.py` | 从特会信息 epub（Notion 下载，如 2026-3-MDC.epub）导出**完整听抄** → `data/morning/{期}.json`；同时更新 index.json 该期条目。**听抄唯一来源**（旧反编译晨读 APK 资源 detail_sections 被截断每篇缺 18-27%，已废弃，2026-08 起以 epub 为准） |
 | `scripts/export-spiritual.py` | 从 `../bible/data/raw/spiritual_food/` 导出书报 → `data/books/`（系列索引 + 元数据 + 按辑懒加载） |
 | `scripts/export-verses.py` | 从 export.py 产物 `data/bible-text.json` 派生精选经节 → `data/verses.json`（首屏 splash 随机经节数据源，~190 节几 KB） |
 | `start.bat` / `icons/` | 本地预览服务器（python http.server 8765）/ PWA 图标（icon-192/512，`resources/icon.png` 为 APK 图标源） |
@@ -96,7 +95,7 @@
 - **模块感知标注**：`renderLrArticle` 输出 `data-book`；`renderBookMain` 输出 `data-series/volume/book/chapter`；`renderMorningMain` 输出 `data-period/chapter`；`findAnnotatable` 加 `data-article`/`data-chapter` 守卫（**修复 renderFootnotes 注解容器误标 .lr-content 致 articleId=NaN 的隐患**）；`handleSelection` 按 data-book / data-volume / data-period 定位源文本；`navigateToAnnotation` 模块感知（lr/books/morning 模块内就地跳转，跨模块回 bible）；`buildAnnotation` 按 type 存定位字段（verse: chapter/verse/half、lr: articleId、book: series/volume/book/chapter、morning: period/chapterId）
 - **顶部搜索 `homeSearch(q)`**（轻量五条过滤，**不做全文**）：① 书卷+章正则走 `REF_ALIASES`/`resolveBookAlias` → `enterModule('bible')` 进工作区选章；② 标注 note/text 包含匹配（截 20 条，`navigateToAnnotation` 跳转）；③ 生命读经篇目标题（仅 `state.lrVolumes` 已缓存卷，不建全量索引）→ `openLrArticle` 直进阅读器；④ 书报章标题（仅 bookMeta 已加载）→ `openBookChapter`；⑤ 听抄篇标题（仅已加载期）→ `openMorningArticle`
 - **测试**：e2e 类测试启动后需 `enterWork()` 切回工作区（init 后台预渲染使 DOM 存在但被 body.home 隐藏，直接 page.click 隐藏元素会抛错）；`home-test.js`（直进版冒烟）/ `home-test-mobile.js` / `lr-reader-test.js`（阅读器专项：直进/切卷/切篇/纲目/笔记/折叠/划线/恢复）为首页+阅读器链路测试
-- **数据源（已落地）**：听抄 = 反编译晨读 APK 资源 `d:/迅雷下载/晨读appRes/resources/assets/public/`（`trainings.json` + 每月 `{期}/training.json`：chapters → outline_sections/detail_sections/morning_revivals 周一~周六），`scripts/export-morning.py` 导出 `data/morning/`（**默认只导当年，`--exclude` 排除期，旧期自动清理**；当前 2026-03/04 两期 18 篇）。**2026-08 起听抄以特会信息 epub 为准**（`export-morning-epub.py`）：epub 含完整听抄 `{n}_ts.htm` + 读经 `{n}_cv.htm`，反编译资源 detail_sections 每篇缺 18-27% 正文；epub 托管的期列入 `export-morning.py` 的 `EPUB_PERIODS`（2026-03 已迁，后续特会从 Notion 下载 epub 后 `export-morning-epub.py <epub> --period {期}` 迁移并加入集合）；书报 = `../bible/data/raw/spiritual_food/倪柝声文集/`（目录索引 + md），`scripts/export-spiritual.py` 导出 `data/books/`（index.json 系列清单 + {id}.json 元数据 + {id}-{辑}.json 内容，3 辑 62 本 1325 章）。标注 type 扩展 `'book'`/`'morning'` 已落地（向后兼容旧 verse/lr）。其他 30 个书报系列（十二篮/荒漠甘泉/新约总论等）渐进加：导出脚本同构扩展 → 系列条自动多一项，前端零改动
+- **数据源（已落地）**：听抄 = 特会信息 epub（Notion 下载，`export-morning-epub.py <epub> --period {期}` 迁移，epub 含完整听抄 `{n}_ts.htm` + 读经 `{n}_cv.htm`；旧反编译晨读 APK 资源 detail_sections 每篇缺 18-27% 正文，已废弃不再用；当前 2026-03/04 两期 18 篇均已由 epub 导出。epub 源：mygoodland.notion.site 特会页「资源」子页的 epub&pdb.zip——zip 内文件 URL 需签名无法程序化下载，需手动下载后交给脚本）；书报 = `../bible/data/raw/spiritual_food/倪柝声文集/`（目录索引 + md），`scripts/export-spiritual.py` 导出 `data/books/`（index.json 系列清单 + {id}.json 元数据 + {id}-{辑}.json 内容，3 辑 62 本 1325 章）。标注 type 扩展 `'book'`/`'morning'` 已落地（向后兼容旧 verse/lr）。其他 30 个书报系列（十二篮/荒漠甘泉/新约总论等）渐进加：导出脚本同构扩展 → 系列条自动多一项，前端零改动
 
 ## 阅读排版（Aa 面板，2026-09）
 
@@ -183,12 +182,11 @@ npm run feedback:close <id>      # 标记已处理
 
 ```bash
 cd scripts && python export.py          # 经文/注解/串珠/纲目/生命读经（含 lr-titles.json 篇目标题索引）
-cd scripts && python export-morning.py  # 听抄（默认只导当年，--exclude 排除期；EPUB_PERIODS 内期跳过）
-cd scripts && python export-morning-epub.py /path/2026-3-MDC.epub --period 2026-03  # epub 完整听抄（迁移期后加进 export-morning.py 的 EPUB_PERIODS）
+cd scripts && python export-morning-epub.py /path/2026-3-MDC.epub --period 2026-03  # 听抄唯一导出脚本（epub 完整听抄）
 cd scripts && python export-spiritual.py # 书报系列（倪柝声文集等）
 cd scripts && python export-verses.py    # 精选经节（依赖 export.py 产出的 bible-text.json，需在其后跑）
 ```
-- 数据源路径 `../bible/data/raw/bible_root/bible.db`（只读）与 `../bible/data/raw/life_study/`（只读）；听抄源为晨读 APK 资源 `d:/迅雷下载/晨读appRes/resources/assets/public/`；书报源为 `../bible/data/raw/spiritual_food/`
+- 数据源路径 `../bible/data/raw/bible_root/bible.db`（只读）与 `../bible/data/raw/life_study/`（只读）；听抄源为 Notion 下载的特会信息 epub；书报源为 `../bible/data/raw/spiritual_food/`
 - 导出到 `data/`，改动数据源后需重跑导出
 - 生命读经 `verses` 来自 `../bible` 的 `生命读经章节映射.json`（ezoe.work 目录页精确标注）；合并卷按「读经：」行拆分到子卷，verses 优先用精确标注，为空或章节号与主书卷不对应时用读经行补齐
 
@@ -201,6 +199,7 @@ vercel --prod --yes --archive=tgz
 - 账号 all-the-day；沿用 lingliang-search 的 `--archive=tgz` 约定
 - **关键**：`data/` 大文件在 `.gitignore` 里被忽略，但 `.vercelignore` 覆盖了它（只排除 `.vercel/` `.git/` `scripts/`），保证部署时数据能上传。改动数据后先重跑导出再部署。
 - **版本同步流程（发版必经，两步缺一不可）**：① push 触发 APK 构建 → 构建自动 patch+1 并把 `[skip ci]` 升版提交写回 main（同时改 package.json + manifest.json）；② 本地 `git pull --rebase origin main` 拉取升版提交 → 再 `vercel --prod` 重新部署，让网页版 manifest.json 与 GitHub Release 对齐。否则网页版本号落后、设置弹窗「检查更新」一直提示新版本。**注意**：push 前若本地落后（有远端升版/其他提交），需先 rebase 再 push，且**部署要在 rebase 之后的干净工作区执行**，避免把旧 manifest.json 部署上去。
+- **发版后验证 Release 资产：别只信 `gh api` 的 `assets` 字段**。2026-09-23 实测资产已正常上传且完整可下载，但 `gh release view --json assets` 与 `gh api .../releases/tags/bible-study-main` 仍返回 `assets: []`（误报为空），`gh release view` 文本态也不列资产——据此判断会误以为发版失败。也**不要**只看 `releases/download/<tag>/<file>` 的 302：其 `filename=` 是从请求路径推断的，资产不存在同样 302。可靠做法是**实际跟随重定向取内容**校验 `Content-Length`（应与 workflow artifact `bible-study-debug-apk` 一致）与 ZIP 魔数 `504b0304`；本机直连 `release-assets.githubusercontent.com` 会 TLS 失败（exit 35，H3C 拦截），须走代理 `-x http://127.0.0.1:7897`。
 
 ## APK 打包（GitHub Actions）
 

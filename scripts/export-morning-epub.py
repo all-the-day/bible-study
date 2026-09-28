@@ -3,8 +3,10 @@
 """export-morning-epub.py — 从特会信息 epub 导出完整听抄 → data/morning/{期}.json
 
 数据源：Notion 下载的特会信息 epub（权威完整转写稿，如 2026-3-MDC.epub）。
-背景：反编译晨读 App 资源的 detail_sections 听抄被截断（每篇缺 18-27%），
-自此期起听抄以 epub 为准（2026-08 决定）。
+听抄唯一来源——旧反编译晨读 App 资源的 detail_sections 听抄被截断
+（每篇缺 18-27%），已废弃（2026-08 决定，export-morning.py 已移除）。
+epub 下载源：mygoodland.notion.site 特会页「资源」子页的 epub&pdb.zip
+（zip 内文件 URL 需签名，无法程序化下载，需手动下载）。
 
 用法：
   python export-morning-epub.py <epub 路径> --period 2026-03
@@ -15,7 +17,7 @@ epub 结构（OPS/*.htm）：
   {n}_ts.htm   听抄全文（<p> 段落，含纲目标题行「壹/一/1/a」等）
   {n}_cv.htm   晨兴（含「读经：」经文行，作为 chapter.scripture）
   {n}_dg.htm   纲目；{n}_ce.htm 中英对照（本脚本不导出）
-输出与反编译导出同 schema：{id,title,subtitle,year,season,mottos,
+输出 schema：{id,title,subtitle,year,season,mottos,
   chapters:[{number,title,scripture,content}]}，并更新 data/morning/index.json 该期条目
 （其他期不动）。
 """
