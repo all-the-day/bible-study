@@ -21,19 +21,25 @@ self.addEventListener('fetch', (e) => {
   // 防标注/笔记数据残留 Cache Storage（共用设备隐私），也防离线时回退陈旧 KV
   if (url.origin !== self.location.origin) return;
 
-  // 数据 JSON：网络优先、失败回退缓存（数据会随 export.py 重跑更新，需即时生效）
+  // 数据 JSON：stale-while-revalidate（先给缓存、后台静默更新）
+  // 背景：站点部署在 Cloudflare Pages，大陆访问跨境链路慢，每次启动重下约 2.94MB(brotli) 数据要 8 秒左右；
+  // 数据只在重跑 export 后才会变，故有缓存时立即返回缓存保证秒开，同时后台拉取最新并写回，下次访问生效。
   if (url.pathname.startsWith('/data/')) {
-    e.respondWith(
-      fetch(e.request)
+    e.respondWith((async () => {
+      const cache = await caches.open(DATA_CACHE);
+      const cached = await cache.match(e.request);
+      const network = fetch(e.request)
         .then((res) => {
-          if (res.ok) {
-            const clone = res.clone();
-            caches.open(DATA_CACHE).then((c) => c.put(e.request, clone));
-          }
+          if (res && res.ok) cache.put(e.request, res.clone());
           return res;
         })
-        .catch(() => caches.match(e.request).then((r) => r || Response.error()))
-    );
+        .catch(() => null);
+      if (cached) {
+        e.waitUntil(network);
+        return cached;
+      }
+      return (await network) || Response.error();
+    })());
     return;
   }
 

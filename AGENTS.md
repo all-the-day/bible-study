@@ -29,7 +29,7 @@
 | `index.html` / `style.css` / `app.js` | 单页应用全部逻辑 |
 | `sync.js` | 标注/笔记云同步客户端（**条目级 v2 协议**：outbox + 增量拉取 + 冲突裁决，见「云同步」节） |
 | `update.js` | App 内检查更新客户端（GitHub Releases 查版本 + 原生下载 APK + 安装；下载走 ApkInstallerPlugin 原生 HTTP，不用 WebView fetch——CORS 根因见「App 内更新」节） |
-| `manifest.json` / `sw.js` | PWA 安装与离线缓存（网络优先；**跨域请求不代理不缓存**——防 duoban.xyz 同步数据残留 Cache Storage） |
+| `manifest.json` / `sw.js` | PWA 安装与离线缓存（核心代码文件网络优先保证更新即时生效；`/data/*` 数据文件为 **stale-while-revalidate**——先回缓存秒开、后台静默更新，下次访问生效；**跨域请求不代理不缓存**——防 duoban.xyz 同步数据残留 Cache Storage） |
 | `capacitor.config.json` / `package.json` | APK 打包配置（`resources/icon.png` 为图标源） |
 | `config/android/` | 原生更新插件源码（ApkInstallerPlugin：download 原生下载 + install 安装；MainActivity/file_paths.xml），CI 注入 android/ 工程，不入本地构建 |
 | `scripts/export.py` | 从 `../bible` 导出静态 JSON → `data/` |
