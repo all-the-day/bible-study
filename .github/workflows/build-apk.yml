@@ -85,11 +85,19 @@ jobs:
       - name: 下载数据（从 CF Pages）
         run: |
           BASE="https://bible-study-7rb.pages.dev/data"
-          # -f 失败即退出（HTTP 错误码不静默写坏文件）；--retry-all-errors 兜底 CF edge
-          # 偶发连接重置；-4 规避 IPv6 链路问题
+          # --retry-all-errors 兜底 CF edge 偶发连接重置；-4 规避 IPv6 链路问题
           CURL="curl -sfL --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 15 --max-time 240 -4"
+          # CF Pages SPA fallback：无 404.html 的项目对缺失路径回 200 + text/html（index.html），
+          # http_code 守卫与 curl -f 全部失效（Vercel 静态项目缺失路径是 404，迁 CF 前守卫有效）。
+          # 故必须按「内容是否合法 JSON」校验：check_json=硬失败（数据缺失是 staging 同步失误，
+          # APK 不许静默带坏数据）；lifereading 卷沿用原缺卷宽容语义（rm 跳过——部分书卷本无生命读经）
+          check_json() {
+            python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$1" || {
+              echo "::error::$1 非法 JSON（疑似 CF Pages SPA fallback 回的 HTML 页面，检查 staging 是否漏同步该文件）"; exit 1; }
+          }
           for f in books.json bible-text.json bible-notes.json bible-xrefs.json bible-outlines.json lr-titles.json; do
             $CURL "$BASE/$f" -o "www/data/$f"
+            check_json "www/data/$f"
           done
           for acr in $(python3 -c "import json; print(' '.join(b['acronym'] for b in json.load(open('www/data/books.json'))))"); do
             # CF Pages 对非 ASCII 路径要求百分号编码（裸中文 400，Vercel 当年自动容忍）：
@@ -97,19 +105,26 @@ jobs:
             enc=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))" "$acr")
             code=$(curl -sL --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 15 --max-time 240 -4 -w "%{http_code}" -o "www/data/lifereading/$acr.json" "$BASE/lifereading/$enc.json")
             if [ "$code" != "200" ]; then rm -f "www/data/lifereading/$acr.json"; fi
+            # SPA fallback 兜底：200 也可能是 HTML 页，按内容校验，坏则删（宽容语义）
+            python3 -c "import json,sys; json.load(open(sys.argv[1]))" "www/data/lifereading/$acr.json" 2>/dev/null || rm -f "www/data/lifereading/$acr.json"
           done
           # 书报：系列索引 → 各系列元数据 → 各辑内容（倪柝声文集等，系列自动扩展）
           $CURL "$BASE/books/index.json" -o "www/data/books/index.json"
+          check_json "www/data/books/index.json"
           for sid in $(python3 -c "import json; print(' '.join(s['id'] for s in json.load(open('www/data/books/index.json'))['series']))"); do
             $CURL "$BASE/books/$sid.json" -o "www/data/books/$sid.json"
+            check_json "www/data/books/$sid.json"
             for v in $(python3 -c "import json; print(' '.join(str(i) for i in range(1, len(json.load(open('www/data/books/$sid.json')).get('volumes', [])) + 1)))"); do
               $CURL "$BASE/books/$sid-$v.json" -o "www/data/books/$sid-$v.json"
+              check_json "www/data/books/$sid-$v.json"
             done
           done
           # 听抄：期索引 → 各期内容
           $CURL "$BASE/morning/index.json" -o "www/data/morning/index.json"
+          check_json "www/data/morning/index.json"
           for pid in $(python3 -c "import json; print(' '.join(t['id'] for t in json.load(open('www/data/morning/index.json'))['trainings']))"); do
             $CURL "$BASE/morning/$pid.json" -o "www/data/morning/$pid.json"
+            check_json "www/data/morning/$pid.json"
           done
           echo "lifereading: $(ls www/data/lifereading/ | wc -l) | books: $(ls www/data/books/ | wc -l) | morning: $(ls www/data/morning/ | wc -l)"
           du -sh www/data
