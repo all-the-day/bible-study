@@ -251,6 +251,29 @@ async function main() {
   check('16d. 听抄经文串：相对续章（二八19/六14~16/一2/四16）',
     JSON.stringify(r) === JSON.stringify(['太五1', '太28:19', '林后六14~16', '林前一2', '彼前四16']), JSON.stringify(r));
 
+  // 16e/16f. 反馈 #20：听抄正文逐行渲染，引用常在段首省略书卷——carry 参数携带跨行书卷上下文
+  let cr = await page.evaluate(() => {
+    const ctx = { acronym: '约', chapter: 12 };
+    const refs = detectRefs('（四24，约壹一5，四8、16）', null, ctx).map(x => x.refText);
+    return { refs, ctx };
+  });
+  check('16e. carry 上下文：段首四24 → 约4:24（并沿用 约壹 解 四8、16）',
+    JSON.stringify(cr.refs) === JSON.stringify(['约4:24', '约壹一5', '约壹4:8', '约壹4:16']), JSON.stringify(cr.refs));
+  check('16f. carry 写回最新上下文（约壹 第4章）', cr.ctx.acronym === '约壹' && cr.ctx.chapter === 4, JSON.stringify(cr.ctx));
+
+  // 17. 反馈 #20 端到端：听抄 2026-04 第 2 篇正文段首「（四24，…）」渲成 ref-link 约4:24
+  //     （上一段的「约一12」提供书卷上下文，逐行渲染须跨行继承）
+  await page.evaluate(() => openMorningArticle('2026-04', 2));
+  await page.waitForFunction(() => {
+    const el = document.querySelector('#morningMain .morning-content');
+    return el && el.querySelector('.ref-link');
+  }, { timeout: 20000 });
+  const bodyRefs = await page.evaluate(() =>
+    [...document.querySelectorAll('#morningMain .morning-content .ref-link')].map(s => s.dataset.refs));
+  check('17. 听抄正文跨行上下文：四24 → 约4:24', bodyRefs.includes('约4:24'), JSON.stringify(bodyRefs.slice(0, 12)));
+  check('17b. 同段四8、16 → 约壹4:8/约壹4:16',
+    bodyRefs.includes('约壹4:8') && bodyRefs.includes('约壹4:16'), JSON.stringify(bodyRefs));
+
   console.log(`\n${pass} passed, ${fail} failed`);
   console.log('JS 错误:', errors.length ? errors : '无');
   await browser.close();

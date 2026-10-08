@@ -3425,8 +3425,11 @@ function renderMorningMain() {
   content.dataset.period = state.morningPeriod;
   content.dataset.chapter = ch.number;
   // 逐行渲染：听抄层级标题（壹/一/1/（一）等，detectLrHeading 识别）加粗，段落普通
+  // refCtx：跨行书卷上下文（#20）——正文引用常在段首省略书卷（如「（四24，…）」的 四24
+  // 实为上文「约一12」的 约），逐行检测会丢失上下文，故在整篇内延续
   const lines = (ch.content || '').split('\n');
   let offset = 0;
+  const refCtx = {};
   for (const line of lines) {
     if (line.trim() === '') { offset += line.length + 1; continue; }
     const div = document.createElement('div');
@@ -3437,7 +3440,7 @@ function renderMorningMain() {
       div.className = 'morning-para';
     }
     div.dataset.base = offset;
-    renderLrLine(div, line, offset, anns);
+    renderLrLine(div, line, offset, anns, null, refCtx);
     content.appendChild(div);
     offset += line.length + 1;
   }
@@ -5197,13 +5200,17 @@ function verseKeyExists(key) {
   return false;
 }
 
-function detectRefs(text, defaultAcronym) {
+// carry（可选）：跨行/跨段的书卷上下文——听抄正文逐行渲染，引用常出现在段首无书卷前缀
+// （如「（四24，约壹一5，四8、16）」的 四24，其书卷 约 来自上一段的「约一12」）。
+// 传入时以其为初始上下文，函数结束时把最新上下文写回，供下一行沿用。
+function detectRefs(text, defaultAcronym, carry) {
   text = text || '';
   const fullRe = buildRefRegex();
   const relRe = buildRelativeRefRegex();
   const relChapRe = buildRelativeChapterRefRegex();
   const refs = [];
-  let curAcronym = defaultAcronym || null, curChapter = null;
+  let curAcronym = (carry && carry.acronym) || defaultAcronym || null,
+    curChapter = (carry && carry.chapter) || null;
   fullRe.lastIndex = 0;
   let segStart = 0;
   let m;
@@ -5325,6 +5332,7 @@ function detectRefs(text, defaultAcronym) {
     segStart = end;
   }
   refs.sort((a, b) => a.start - b.start);
+  if (carry) { carry.acronym = curAcronym; carry.chapter = curChapter; }
   return refs;
 }
 
@@ -5373,8 +5381,8 @@ function detectLrHeading(line) {
 }
 
 // 渲染单行：经文引用包 ref-link，叠加标注 mark（baseOffset 为该行在全文中的偏移）
-function renderLrLine(parent, text, baseOffset, annotations, defaultAcronym) {
-  const refs = detectRefs(text || '', defaultAcronym);
+function renderLrLine(parent, text, baseOffset, annotations, defaultAcronym, carry) {
+  const refs = detectRefs(text || '', defaultAcronym, carry);
   let cursor = 0;
   const appendText = (t, base) => {
     if (!annotations.length) parent.appendChild(document.createTextNode(t));
