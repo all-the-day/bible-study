@@ -82,17 +82,20 @@ jobs:
             exit 1
           fi
 
-      - name: 下载数据（从 Vercel）
+      - name: 下载数据（从 CF Pages）
         run: |
-          BASE="https://bible-study-teal-seven.vercel.app/data"
-          # -f 失败即退出（HTTP 错误码不静默写坏文件）；--retry-all-errors 兜底 Vercel edge
-          # 偶发 TLS 连接重置（exit 35，runner→edge 数据中心链路）；-4 规避 IPv6 链路问题
+          BASE="https://bible-study-7rb.pages.dev/data"
+          # -f 失败即退出（HTTP 错误码不静默写坏文件）；--retry-all-errors 兜底 CF edge
+          # 偶发连接重置；-4 规避 IPv6 链路问题
           CURL="curl -sfL --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 15 --max-time 240 -4"
           for f in books.json bible-text.json bible-notes.json bible-xrefs.json bible-outlines.json lr-titles.json; do
             $CURL "$BASE/$f" -o "www/data/$f"
           done
           for acr in $(python3 -c "import json; print(' '.join(b['acronym'] for b in json.load(open('www/data/books.json'))))"); do
-            code=$(curl -sL --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 15 --max-time 240 -4 -w "%{http_code}" -o "www/data/lifereading/$acr.json" "$BASE/lifereading/$acr.json")
+            # CF Pages 对非 ASCII 路径要求百分号编码（裸中文 400，Vercel 当年自动容忍）：
+            # URL 用编码值，本地文件名仍用原文缩写
+            enc=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))" "$acr")
+            code=$(curl -sL --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 15 --max-time 240 -4 -w "%{http_code}" -o "www/data/lifereading/$acr.json" "$BASE/lifereading/$enc.json")
             if [ "$code" != "200" ]; then rm -f "www/data/lifereading/$acr.json"; fi
           done
           # 书报：系列索引 → 各系列元数据 → 各辑内容（倪柝声文集等，系列自动扩展）

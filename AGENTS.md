@@ -18,7 +18,7 @@
 
 ## 分支与构建
 
-- **单一 `main` 分支是唯一事实源**，部署 Vercel + 打包**单一 APK**（appId `com.allday.biblestudy`）
+- **单一 `main` 分支是唯一事实源**，部署 Cloudflare Pages + 打包**单一 APK**（appId `com.allday.biblestudy`）
 - **云同步是运行时可选功能**，不再区分安装包变体：默认纯本地，顶栏 ⚙️ 设置 →「云同步」行输入授权码兑换 `{uid,token}`（localStorage `bible-study.account`，null=未启用）后才参与云同步；`syncActive()`（app.js）运行时门控，未启用时即使 sync.js 存在也完全本地
 - 授权码体系已上线（见「云同步」节）；旧 `offline` 分支与离线变体构建已废弃（归档 tag `archive/offline` 保留历史）
 
@@ -192,20 +192,16 @@ cd scripts && python export-verses.py    # 精选经节（依赖 export.py 产�
 - 导出到 `data/`，改动数据源后需重跑导出
 - 生命读经 `verses` 来自 `../bible` 的 `生命读经章节映射.json`（ezoe.work 目录页精确标注）；合并卷按「读经：」行拆分到子卷，verses 优先用精确标注，为空或章节号与主书卷不对应时用读经行补齐
 
-## 部署
+## 部署（Vercel——2026-10-08 起停用，保留项目冷备）
 
-```bash
-vercel --prod --yes --archive=tgz
-```
-- 生产地址：**https://bible-study-teal-seven.vercel.app**
-- 账号 all-the-day；沿用 lingliang-search 的 `--archive=tgz` 约定
-- **关键**：`data/` 大文件在 `.gitignore` 里被忽略，但 `.vercelignore` 覆盖了它（只排除 `.vercel/` `.git/` `scripts/`），保证部署时数据能上传。改动数据后先重跑导出再部署。
-- **版本同步流程（发版必经，两步缺一不可）**：① push 触发 APK 构建 → 构建自动 patch+1 并把 `[skip ci]` 升版提交写回 main（同时改 package.json + manifest.json）；② 本地 `git pull --rebase origin main` 拉取升版提交 → 再 `vercel --prod` 重新部署，让网页版 manifest.json 与 GitHub Release 对齐。否则网页版本号落后、设置弹窗「检查更新」一直提示新版本。**注意**：push 前若本地落后（有远端升版/其他提交），需先 rebase 再 push，且**部署要在 rebase 之后的干净工作区执行**，避免把旧 manifest.json 部署上去。
-- **发版后验证 Release 资产：别只信 `gh api` 的 `assets` 字段**。2026-09-23 实测资产已正常上传且完整可下载，但 `gh release view --json assets` 与 `gh api .../releases/tags/bible-study-main` 仍返回 `assets: []`（误报为空），`gh release view` 文本态也不列资产——据此判断会误以为发版失败。也**不要**只看 `releases/download/<tag>/<file>` 的 302：其 `filename=` 是从请求路径推断的，资产不存在同样 302。可靠做法是**实际跟随重定向取内容**校验 `Content-Length`（应与 workflow artifact `bible-study-debug-apk` 一致）与 ZIP 魔数 `504b0304`；本机直连 `release-assets.githubusercontent.com` 会 TLS 失败（exit 35，H3C 拦截），须走代理 `-x http://127.0.0.1:7897`。
+- **不再部署、不再作为任何数据源**：web 入口与 APK 构建数据均已切 CF Pages（见下节）。项目 https://bible-study-teal-seven.vercel.app（账号 all-the-day）保留不删作冷备；`vercel --prod --yes --archive=tgz`、`.vercelignore`（只排除 `.vercel/` `.git/` `scripts/`，保证 gitignore 的 `data/` 能上传）仅作历史记录
+- 退役原因：`*.vercel.app` 大陆域名级阻断（TLS RST），对国内用户无回滚价值；CF Pages 实测 25/25 全通，且唯一硬依赖（APK 构建数据下载）已切走
+- **版本同步流程（发版必经，两步缺一不可）**：① push 触发 APK 构建 → 构建自动 patch+1 并把 `[skip ci]` 升版提交写回 main（同时改 package.json + manifest.json）；② 本地 `git pull --rebase origin main` 拉取升版提交 → 同步 staging 再 `wrangler pages deploy` 重新部署，让网页版 manifest.json 与 GitHub Release 对齐。否则网页版本号落后、设置弹窗「检查更新」一直提示新版本。**注意**：push 前若本地落后（有远端升版/其他提交），需先 rebase 再 push，且**部署要在 rebase 之后的干净工作区执行**，避免把旧 manifest.json 部署上去。
+- **发版后验证 Release 资产：别只信 `gh api` 的 `assets` 字段**（此条与平台无关，Vercel 停用后仍适用）。2026-09-23 实测资产已正常上传且完整可下载，但 `gh release view --json assets` 与 `gh api .../releases/tags/bible-study-main` 仍返回 `assets: []`（误报为空），`gh release view` 文本态也不列资产——据此判断会误以为发版失败。也**不要**只看 `releases/download/<tag>/<file>` 的 302：其 `filename=` 是从请求路径推断的，资产不存在同样 302。可靠做法是**实际跟随重定向取内容**校验 `Content-Length`（应与 workflow artifact `bible-study-debug-apk` 一致）与 ZIP 魔数 `504b0304`；本机直连 `release-assets.githubusercontent.com` 会 TLS 失败（exit 35，H3C 拦截），须走代理 `-x http://127.0.0.1:7897`。
 
-## 部署（Cloudflare Pages，国内可达主入口）
+## 部署（Cloudflare Pages，唯一生产入口）
 
-**2026-09-29 起实际生产主入口**：**https://bible-study-7rb.pages.dev**（Cloudflare Pages，大陆直连实测 25/25 请求全通）。起因：`*.vercel.app` 与 `vercel.com` 在大陆被域名级阻断（TLS RST），即便绑自定义域名 `study.duoban.xyz`→Vercel 也只解一半（Vercel 边缘 IP 一个 0/8、一个约 50% 被 RST），故增设 CF Pages 承载国内访问。
+**2026-09-29 起实际生产主入口**：**https://bible-study-7rb.pages.dev**（Cloudflare Pages，大陆直连实测 25/25 请求全通）。起因：`*.vercel.app` 与 `vercel.com` 在大陆被域名级阻断（TLS RST），即便绑自定义域名 `study.duoban.xyz`→Vercel 也只解一半（Vercel 边缘 IP 一个 0/8、一个约 50% 被 RST），故增设 CF Pages 承载国内访问；**2026-10-08 Vercel 退役（APK 数据源已切来，见上节）后成为唯一平台**。
 
 ```bash
 npx wrangler pages deploy "D:/coder/aiWorkSpace/.cf-bible-study" --project-name bible-study --branch main --commit-dirty=true
@@ -214,16 +210,16 @@ npx wrangler pages deploy "D:/coder/aiWorkSpace/.cf-bible-study" --project-name 
 - **staging 目录在仓库外**：`D:/coder/aiWorkSpace/.cf-bible-study`（避免污染 git；**不认 `.vercelignore`**，需手工维护）。内容 = 运行时文件（`index.html`/`style.css`/`app.js`/`sync.js`/`update.js`/`sw.js`/`manifest.json`/`icons/`/`data/`），排除 `scripts/`、`case/`、`node_modules`、`.git`、`.github/`、`config/`、`resources/`。**改完代码后必须先把改动文件覆盖进 staging 再 deploy**（wrangler 只传有差异的文件，staging 旧文件不会自己更新）
 - 限制：单文件 ≤25MB、单项目 ≤2 万文件（当前 90 文件 / 最大 9.3MB，余量充足）；上传约 4 分钟
 - 域名：**`study.duoban.xyz` 已绑定并生效**（2026-09-29：阿里云 CNAME → `bible-study-7rb.pages.dev`，CF 控制台 Custom domains 已认领，实测直连 200/1.4s）。**SW 缓存按域名隔离**——换指向或换域名后首次访问需重建数据缓存（约 8 秒，之后秒开）。`duoban.xyz` 主域与 `www` **必须继续指向阿里云 ECS**（101.132.34.193）保 ICP 备案——官方规则：主域名留在阿里云内地节点 + 有真实访问，子域指向境外不影响备案
-- **与 Vercel 的关系**：Vercel 部署保留（见上节），当前是 APK 构建的数据源（workflow curl 写的 Vercel 地址）；将来可把 `build-apk.yml` 数据源切到 CF Pages 后停用 Vercel。两个平台都要部署时，先 push 触发 APK 构建并 `git pull --rebase` 拉升版，再依次 vercel 与 wrangler
+- **与 Vercel 的关系**：**Vercel 已于 2026-10-08 停用**（见上节），`build-apk.yml` 数据源已切本节 CF Pages。CF 部署即唯一部署动作：push 触发 APK 构建并 `git pull --rebase` 拉升版后，同步 staging 再 `wrangler pages deploy` 一次即可
 - push 前置：wrangler 需已 `npx wrangler login`（浏览器 OAuth，长期有效）；push/部署 GitHub 相关操作需代理在线（见「本机环境坑」）
 
 ## APK 打包（GitHub Actions）
 
-- workflow `.github/workflows/build-apk.yml`：单一 job → **自动递增版本**（release 版本与 package.json 相同时 patch+1，构建成功后 `[skip ci]` 提交推送回 main）→ 版本一致性守卫（package/manifest 版本对齐）→ 准备 web 资源（`www/manifest.json` 版本重写为 package.json）+ 从 Vercel 下载 data（books/text/notes/xrefs/**outlines** + lifereading + books/ + morning/，curl 加固：`--retry-all-errors -4 -f` 兜底 Vercel edge 偶发 TLS 重置）→ `npm install` → `cap add android` → `cap sync` → `capacitor-assets generate`（图标）→ `scripts/patch-android.mjs`（注入原生更新插件 + **强制改写 signingConfigs.debug 指向固定 keystore**）→ 注入固定 keystore 到 `$HOME/.android/` → gradle 构建 debug APK → 上传 artifact
-  - **注意**：APK 数据只来自 Vercel 部署产物，不在 git 里；改 `data/` 后务必先 `vercel` 部署再让 APK 构建拉取，否则 APK 拿不到新数据。
+- workflow `.github/workflows/build-apk.yml`：单一 job → **自动递增版本**（release 版本与 package.json 相同时 patch+1，构建成功后 `[skip ci]` 提交推送回 main）→ 版本一致性守卫（package/manifest 版本对齐）→ 准备 web 资源（`www/manifest.json` 版本重写为 package.json）+ 从 **CF Pages**（`https://bible-study-7rb.pages.dev/data`）下载 data（books/text/notes/xrefs/**outlines** + lifereading + books/ + morning/；curl 加固：`--retry-all-errors -4 -f`；**lifereading 缩写为中文，URL 须百分号编码——CF 对非 ASCII 路径 400，Vercel 当年自动容忍**，编码值只用于 URL、本地文件名仍用原文）→ `npm install` → `cap add android` → `cap sync` → `capacitor-assets generate`（图标）→ `scripts/patch-android.mjs`（注入原生更新插件 + **强制改写 signingConfigs.debug 指向固定 keystore**）→ 注入固定 keystore 到 `$HOME/.android/` → gradle 构建 debug APK → 上传 artifact
+  - **注意**：APK 数据只来自 CF Pages 部署产物（staging 目录），不在 git 里；改 `data/` 后务必先同步 staging 并 `wrangler pages deploy`，再让 APK 构建拉取，否则 APK 拿不到新数据。
   - **注意**：workflow 的 `run:` 块不要用 heredoc（`<<EOF`）——GitHub 解析会失败导致 push 静默不触发，用 `printf`/`--notes-file` 等替代
 - 触发：push 到 **main** 且改动前端文件（`app.js`/`style.css`/`index.html`/`update.js` 等）或 `package.json`/`capacitor.config.json`/`resources/**`/`config/**`/`scripts/patch-android.mjs`；`workflow_dispatch` 手动触发
-- `scripts/export.py` 改动**不触发** APK 构建（数据走「重跑导出 → Vercel 部署 → APK 下次构建拉新数据」）
+- `scripts/export.py` 改动**不触发** APK 构建（数据走「重跑导出 → 同步 staging → `wrangler pages deploy` → APK 下次构建拉新数据」）
 - 产出单一 APK（appId `com.allday.biblestudy`，云同步为运行时可选功能）
 - **发版流程（版本号自动升级）**：push 触发构建时若 release 版本与 package.json 相同则**自动 patch+1**（构建成功后 `[skip ci]` 提交推送，不二次触发），手动改版本号优先；跨 minor 发版仍可用 `.github/workflows/release-bump.yml`（workflow_dispatch 填 `x.y.z`）显式指定；release 标题「读经 v{version} · 云同步版」，notes 自动取最近 8 条提交
 - **签名**：固定 debug keystore 提交在 `config/android/debug.keystore`（JKS，alias `androiddebugkey`，密码 `android`），`patch-android.mjs` 强制改写 `signingConfigs.debug` 指向它（绝对路径+密码），保证**每次构建签名一致**——覆盖安装/App 内更新不丢本地数据；**无上架需求，不配 release 签名**——产物仅限自装/小范围安装测试
