@@ -19,7 +19,7 @@ if ! curl -s -o /dev/null --max-time 2 http://localhost:8765/; then
 fi
 
 cd scripts || exit 1
-TESTS="e2e-test annotation-test lr-annotation-test lr-module-annotation-test \
+TESTS="e2e-test annotation-test copy-citation-test lr-annotation-test lr-module-annotation-test \
 ref-link-test notes-module-test drawer-test home-test home-test-mobile lr-reader-test \
 book-reader-test morning-reader-test lr-heading-test update-logic-test sync2-test \
 typography-test"

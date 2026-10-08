@@ -4161,7 +4161,10 @@ function onContentClick(e) {
   }
 }
 
-function handleSelection() {
+function handleSelection(e) {
+  // 点按浮动工具栏按钮引发的 mouseup/touchend 不重建工具栏：按钮在 mousedown/touchstart
+  // 里已处理并隐藏工具栏，此时选区仍在，不拦截会把工具栏再次拉起（复制后「关了又弹回」）
+  if (e && e.target && e.target.closest && e.target.closest('#floatTool')) return;
   const sel = window.getSelection();
   if (!sel || sel.isCollapsed) { hideFloatTool(); return; }
   const range = sel.getRangeAt(0);
@@ -4457,7 +4460,7 @@ function showFloatTool(rect) {
   const cp = document.createElement('button');
   cp.className = 'tool-btn';
   cp.textContent = '复制';
-  cp.title = '复制纯文本（不含注号）';
+  cp.title = '复制正文（含出处，不含注号）';
   bindPress(cp, copyPlainText);
   tool.appendChild(cp);
   positionMenuByRect(tool, rect);
@@ -4469,21 +4472,53 @@ function selectedPlainText() {
   return (r.plain || '').slice(r.start, r.end);
 }
 
-function selectedCitation() {
-  const r = pendingRange;
+// 选中文本的出处文案（反馈 #21）：跨模块完整出处「<作品> <定位> · <模块>」，
+// 「复制」（尾注式）与「引用到笔记」（括号式）共用。
+// 注意：不能再把非 verse 一律标成「生命读经 第N篇」——书报/听抄会标错（原 selectedCitation 的 bug）
+// withModule：复制到剪贴板时带「· 模块」（脱离 App 上下文后仍可辨识来源）；
+// 「引用到笔记」落在本模块笔记内、上下文自明，传 false 免冗余
+const CITATION_MODULE = { verse: '读经', lr: '生命读经', book: '书报', morning: '听抄' };
+function selectionCitation(r, withModule = true) {
   if (!r) return '';
-  return r.type === 'verse'
-    ? `${state.currentBook.acronym}${state.currentChapter}:${r.verse}${r.half || ''}`
-    : `生命读经 第${r.articleId}篇`;
+  let work = '', loc = '';
+  if (r.type === 'verse') {
+    work = (state.currentBook && state.currentBook.name) || '';
+    loc = `${state.currentChapter}:${r.verse}${r.half || ''}`;
+  } else if (r.type === 'lr') {
+    const bookIdx = r.book !== undefined ? r.book : state.lrBookIndex;
+    const vol = state.lrVolumes[bookIdx] || state.lifereading || {};
+    const art = (vol.articles || []).find((a) => a.id === r.articleId);
+    work = `${(vol.name || bookName(bookIdx))}·生命读经`;
+    loc = art ? dwArtLabel(art.title) : `第${r.articleId}篇`;
+  } else if (r.type === 'book') {
+    const meta = state.bookMeta || {};
+    const vol = (meta.volumes || [])[r.volume - 1] || {};
+    const bk = (vol.books || [])[r.book] || {};
+    const ct = (bk.chapters || [])[r.chapter];
+    work = [meta.name, vol.title, bk.title].filter(Boolean).join('·');
+    loc = ct ? String(typeof ct === 'string' ? ct : ct.title) : `第${r.chapter + 1}章`;
+  } else if (r.type === 'morning') {
+    const t = state.morningIndex && state.morningIndex.trainings.find((x) => x.id === r.period);
+    const data = state.morningData[r.period];
+    const ch = data && (data.chapters || []).find((c) => c.number === r.chapterId);
+    work = (t && (t.title || t.season)) || r.period;
+    loc = `第${r.chapterId}篇${ch && ch.title ? ' ' + ch.title : ''}`;
+  }
+  const mod = withModule ? CITATION_MODULE[r.type] : '';
+  return [work, loc].filter(Boolean).join(' ').trim() + (mod ? ` · ${mod}` : '');
 }
 
 function copyPlainText() {
   const text = selectedPlainText();
   if (!text) return;
+  const cit = selectionCitation(pendingRange);
+  const payload = cit ? `${text}\n—— ${cit}` : text;   // 尾注式：正文 + 出处另起一行
+  const done = () => showToast('已复制，含出处');
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+    navigator.clipboard.writeText(payload).then(done, () => { fallbackCopy(payload); done(); });
   } else {
-    fallbackCopy(text);
+    fallbackCopy(payload);
+    done();
   }
   hideFloatTool();
 }
@@ -4501,7 +4536,7 @@ function quoteToNotes() {
   const text = selectedPlainText();
   if (!text) return;
   const key = `${state.currentBook.index}:${state.currentChapter}`;
-  const citation = selectedCitation();
+  const citation = selectionCitation(pendingRange, false);
   const line = `「${text}」（${citation}）`;
   const prev = state.chapterNotes[key] || '';
   state.chapterNotes[key] = prev ? prev + '\n' + line : line;
