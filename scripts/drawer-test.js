@@ -108,6 +108,18 @@ async function main() {
     check('3. 高亮同步+新约切换', r3a.curL === '19' && r3a.curR && r3b.leftFirst === '40' && r3b.leftCount === 27 && r3 === '马太福音',
       `| 选中卷:${r3a.curL} 首卷:${r3b.leftFirst} NT卷:${r3b.leftCount} ${r3}`);
 
+    // 3b. 回归（反馈 #23/#25）：读新约书卷时重渲染抽屉，旧约/新约 tab 应随当前书卷自动同步
+    //     （此前 dwState.testament 只随手动点击变化，读新约首次开目录仍停在旧约、高亮被重置为创世记）
+    await page.evaluate(() => renderDrawer());
+    await wait(400);
+    const r3c = await page.evaluate(() => ({
+      ntSel: !!document.querySelector('#dwFoot [data-t="nt"].sel'),
+      otSel: !!document.querySelector('#dwFoot [data-t="ot"].sel'),
+      curL: document.querySelector('#dwBody .dw-col .dw-item.cur')?.dataset.l,
+    }));
+    check('3b. 新约书卷下目录 tab 自动同步', r3c.ntSel && !r3c.otSel && r3c.curL === '40',
+      `| NT选中:${r3c.ntSel} OT选中:${r3c.otSel} 当前卷:${r3c.curL}`);
+
     // 4. 模块级搜索（停靠列顶部搜索条）：输入 → 结果层 → 点结果跳转 → 搜索词清空
     await page.evaluate(() => { const el = document.querySelector('#dwSearchInput'); el.value = '撒母耳'; el.dispatchEvent(new Event('input', { bubbles: true })); });
     await wait(800);

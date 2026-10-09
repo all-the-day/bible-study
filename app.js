@@ -1209,6 +1209,7 @@ async function selectChapter(chapter) {
   renderChapter();
   renderChapterNav();
   renderStudy();
+  renderDrawer();   // 停靠抽屉同步 cur 高亮与旧约/新约 tab（jumpDrawerBrowse 先经 enterWork 用旧书卷渲染过一次，此处以新位置纠正；与书报/听抄/生命读经跳转一致，反馈 #23/#25）
   updateMobileNav();
   $('textCol').scrollTop = 0;   // 翻章滚顶；jumpToVerse 等跳转路径随后自行 scrollIntoView 覆盖
   save(LS_LAST, { book: state.currentBook.index, chapter });
@@ -3635,7 +3636,11 @@ function renderDrawer(sync = true) {
   // 浏览态同步到当前模块位置（sync=false = 抽屉内辑/期切换，保留浏览态；
   // 抽屉内左栏书卷/篇目浏览直接调 renderDrawerBrowse 不经过此处）
   if (sync) {
-    if (mod === 'bible') dwState.left = state.currentBook && state.currentBook.index;
+    if (mod === 'bible') {
+      dwState.left = state.currentBook && state.currentBook.index;
+      // 旧约/新约 tab 随当前书卷同步（否则读新约时目录仍停在旧约、高亮被重置为创世记，反馈 #23/#25）
+      dwState.testament = state.currentBook && state.currentBook.index > 39 ? 'nt' : 'ot';
+    }
     else if (mod === 'lifereading') dwState.left = state.lrBookIndex;
     else if (mod === 'books') { dwState.vol = state.bookVolume; dwState.left = state.bookBook; }
     else if (mod === 'morning') dwState.vol = state.morningPeriod;
@@ -3957,7 +3962,7 @@ function bindDrawerEvents() {
   // 底部固定切换：bible 旧约/新约、books 辑切换
   $('dwFoot').addEventListener('click', (e) => {
     const t = e.target.closest('[data-t]');
-    if (t) { dwState.testament = t.dataset.t; renderDrawer(); return; }
+    if (t) { dwState.testament = t.dataset.t; renderDrawer(false); return; }   // sync=false：保留抽屉内浏览态（同辑切换）
     const v = e.target.closest('[data-vol]');
     if (v) { dwState.vol = +v.dataset.vol; dwState.left = 0; renderDrawer(false); return; }   // sync=false：保留抽屉内浏览态
   });
@@ -5083,11 +5088,17 @@ function parseVerseSeq(seq) {
 function parseRefTail(acronym, rest, defChapter) {
   rest = (rest || '').trim();
   if (!rest) return null;
+  // 上下半节范围（一4下～5上 / 4下～5上）：按整节范围处理，弹窗逐节展开（反馈 #22）
+  let m = rest.match(/^([一二三四五六七八九十百〇○]+)?(\d+)[上下]?[-~～](\d+)[上下]?$/);
+  if (m) {
+    const ch = m[1] ? cnToInt(m[1]) : defChapter;
+    return ch ? { range: [+m[2], +m[3]], chapter: ch } : null;
+  }
   // 上下半节后缀（如 二五9上），剥出后拼回 key
   let half = '';
   if (/[上下]$/.test(rest)) { half = rest.slice(-1); rest = rest.slice(0, -1).trim(); }
   // 章:节（阿拉伯）1:2 / 1:2-3（支持全角波浪号 ～）
-  let m = rest.match(/^(\d+):(\d+)(?:[-~～](\d+))?$/);
+  m = rest.match(/^(\d+):(\d+)(?:[-~～](\d+))?$/);
   if (m) {
     const ch = m[1];
     if (m[3]) return { range: [+m[2], +m[3]], chapter: +ch };
@@ -5153,7 +5164,8 @@ function buildRefRegex() {
   // 节内范围的右值前加 (?!cn+章)：防把跨章范围「十章二十八节至十二章二十四节」的
   // 「至十二」当成节内范围吃掉，导致匹配截断
   const item = cnDigits + '节?(?:[-~～至到](?!' + cnDigits + '章)' + cnDigits + '节?)?';
-  const tail = '(?:\\d+:\\d+(?:[-~～]\\d+)?|[' + cn + ']+\\d+(?:[-~～]\\d+)?[上下]?'
+  // 裸节形式：上下半节可出现在范围的任一端（启一4下～5上 / 一4～5上 / 一4下～5，反馈 #22）
+  const tail = '(?:\\d+:\\d+(?:[-~～]\\d+)?|[' + cn + ']+\\d+[上下]?(?:[-~～]\\d+[上下]?)?'
     + '|第?' + cnDigits + '章' + item
     + '(?:[、和与](?!' + cnDigits + '章)' + item + ')*'
     + '(?:[-~～至到]第?' + cnDigits + '章' + item + ')?)';
@@ -5166,7 +5178,8 @@ function buildRefRegex() {
 // 与 resolveRefString 的相对引用规则一致。
 function buildRelativeRefRegex() {
   const cn = '一二三四五六七八九十百〇○';
-  return new RegExp('(?:[' + cn + ']+\\d+(?:[-~～]\\d+)?[上下]?|\\d{1,3}(?:[-~～]\\d{1,3})?[上下]?)', 'g');
+  // 范围两端均可带上下半节（一4下～5上 / 4下～5上，反馈 #22）
+  return new RegExp('(?:[' + cn + ']+\\d+[上下]?(?:[-~～]\\d+[上下]?)?|\\d{1,3}[上下]?(?:[-~～]\\d{1,3}[上下]?)?)', 'g');
 }
 
 // 相对章节式（无书卷前缀）：三章十九节 / 三章一、二节 / 三章一至三节、五至七节 /
@@ -5316,25 +5329,30 @@ function detectRefs(text, defaultAcronym, carry) {
         }
         const half = /[上下]$/.test(body) ? body.slice(-1) : '';
         const core = half ? body.slice(0, -1) : body;
-        const mm = core.match(/^([一二三四五六七八九十百〇○]+)?(\d+)(?:[-~～](\d+))?$/);
-        if (!mm) continue;
-        const ch = mm[1] ? cnToInt(mm[1]) : curChapter;
+        // 上下半节范围（一4下～5上 / 4下～5上）：按整节范围，key 不带半节（verseKeyExists 按首节校验）
+        const mr = body.match(/^([一二三四五六七八九十百〇○]+)?(\d+)[上下]?[-~～](\d+)[上下]?$/);
+        const mm = mr ? null : core.match(/^([一二三四五六七八九十百〇○]+)?(\d+)(?:[-~～](\d+))?$/);
+        if (!mr && !mm) continue;
+        const ch = (mr ? mr[1] : mm[1]) ? cnToInt(mr ? mr[1] : mm[1]) : curChapter;
         if (!ch) continue;
         // 章越界 → 书卷推断错误（如 弗 的文章里裸写「一一九66」实为诗篇），不包裹以免给出错误链接；
         // 带显式章号的写法（二五11）在最近上下文不成立时回退 defaultAcronym（同章节式相对引用）
+        const cnPrefix = mr ? mr[1] : mm[1];
         let acr = curAcronym, key = '';
-        for (const tryAcr of (mm[1] && defaultAcronym && defaultAcronym !== curAcronym ? [curAcronym, defaultAcronym] : [curAcronym])) {
+        for (const tryAcr of (cnPrefix && defaultAcronym && defaultAcronym !== curAcronym ? [curAcronym, defaultAcronym] : [curAcronym])) {
           const maxCh = bookChapterCount(tryAcr);
           if (maxCh && ch > maxCh) continue;
           // data-refs 用完整规范引用（书卷前缀），点击弹窗可直接解析
-          const k = `${tryAcr}${ch}:${mm[2]}${half}` + (mm[3] ? `～${mm[3]}` : '');
+          const k = mr
+            ? `${tryAcr}${ch}:${mr[2]}～${mr[3]}`
+            : `${tryAcr}${ch}:${mm[2]}${half}` + (mm[3] ? `～${mm[3]}` : '');
           if (!verseKeyExists(k)) continue;
           acr = tryAcr; key = k; break;
         }
         if (!key) continue;
         refs.push({ start: absStart, end: absEnd, refText: key });
         curAcronym = acr;
-        if (mm[1]) curChapter = ch;
+        if (cnPrefix) curChapter = ch;
       }
     }
     if (!nextFull) break;
@@ -5621,9 +5639,11 @@ if ('serviceWorker' in navigator) {
 init();
 
 // 启动后静默检查更新：发现新版给 ⚙️ 加红点，设置弹窗行显示状态
+// 仅原生 APK 执行（反馈 #24）：网页版内容经 SW 自动更新，静默检查只白耗 GitHub API
+// 匿名配额（60 次/小时/IP），多用户同一出口 IP 时被限流；网页版在设置里手动检查即可
 setTimeout(() => {
   if (!window.BibleStudyUpdate) return;
-  if (window.BibleStudyUpdate.isLocalDev()) return;   // 本地浏览器/自动化（localhost）自动跳过，省 GitHub API 配额；原生 APK 照常检查
+  if (!window.BibleStudyUpdate.isNative()) return;
   window.BibleStudyUpdate.check().then((res) => {
     _updateInfo = res;
     updateSettingsBadge();

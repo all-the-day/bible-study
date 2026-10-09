@@ -113,6 +113,23 @@ async function main() {
   keys = await page.evaluate(() => resolveRefString('创一2下'));
   check('7q. 真实半节数据不受影响（创1:2下）', JSON.stringify(keys) === JSON.stringify(['创1:2下']), JSON.stringify(keys));
 
+  // 7y. 上下半节范围（反馈 #22）：听抄「（启一4下～5上）」——此前裸节形式只允许一个上下后缀，
+  //     「～5上」落在匹配外；范围须整体命中并按整节展开（弹窗 启1:4~5）
+  r = await refsOf('（启一4下～5上）');
+  check('7y. 半节范围整体命中（启一4下～5上）', r.length === 1 && r[0] === '启一4下～5上', JSON.stringify(r));
+  keys = await page.evaluate(() => resolveRefString('启一4下～5上'));
+  check('7z. 半节范围展开 启1:4/启1:5', JSON.stringify(keys) === JSON.stringify(['启1:4', '启1:5']), JSON.stringify(keys));
+  r = await refsOf('一4下～5上', '启');
+  check('7z-2. 相对半节范围 → 启1:4～5', r.length === 1 && r[0] === '启1:4～5', JSON.stringify(r));
+  {
+    const carryKeys = await page.evaluate(() => {
+      const carry = { acronym: '启', chapter: 1 };
+      const refs = detectRefs('4下～5上', null, carry);
+      return refs.map(x => x.refText);
+    });
+    check('7z-3. carry 跨行半节范围 → 启1:4～5', JSON.stringify(carryKeys) === JSON.stringify(['启1:4～5']), JSON.stringify(carryKeys));
+  }
+
   // 7r-7w. 列举式（反馈 #15）：章后多节用 、和与 连接（三章一、二节 / 七章三十七和三十八节），
   //       此前只认范围连接符 至/到/～，列举式仅第一处命中
   r = await refsOf('主耶稣在约翰七章三十七和三十八节也说到喝');
