@@ -849,6 +849,7 @@ function enterWork() {
   document.body.classList.remove('home');
   // 恢复模块类（showHome 会清除，防止 body-mod-* 残留影响首页顶栏样式）
   applyModuleBodyClass(state.activeModule);
+  syncModePill();   // pill 高亮与实际视图对齐（跨模块进入时防残留，见 syncModePill 注释）
   applyDrawerDock();   // 恢复停靠列（isDocked 依赖 screen==='work'）
   const hb = $('homeBtn');
   if (hb) hb.classList.remove('active');
@@ -2816,9 +2817,16 @@ function isMobile() { return window.innerWidth <= 900; }
 function setMobileView(view) {
   if (!isMobile() || state.screen === 'home') return;   // 首页是第三种态，不切读/研
   document.body.classList.toggle('mobile-study', view === 'study');
+  syncModePill();
+  updateMobileNav();
+}
+
+// pill 高亮与实际视图态对齐（showHome 会把 body.mobile-study 重置回读经，但首页不更新
+// pill——带着「研读」高亮进下一模块时高亮残留，与实际显示的读经视图脱节，四模块切换对比发现）
+function syncModePill() {
+  const view = document.body.classList.contains('mobile-study') ? 'study' : 'read';
   document.querySelectorAll('#modePill .mode-pill-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.view === view));
-  updateMobileNav();
 }
 
 // 当前章匹配的生命读经篇目（与 renderLifereading 同一套匹配：lrMap 手动覆盖 + autoMatch 自动）
