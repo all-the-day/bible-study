@@ -1,4 +1,5 @@
-/* 书报阅读器专项测试：直进第1辑第1本、辑条切辑、书列表切书、右栏章列表/笔记、
+/* 书报阅读器专项测试：直进第1辑第1本、辑条切辑、书列表切书、抽屉切章、右栏本章笔记
+ * （原右栏「章列表」tab 与目录抽屉冗余已删，切章统一走抽屉）、
  * 书报划线标注、全局笔记书报分组跳转、回首页再进恢复 */
 const { spawn } = require('child_process');
 const ROOT = require('path').resolve(__dirname, '..');
@@ -33,19 +34,20 @@ async function main() {
     title: document.querySelector('.bk-title')?.textContent,
     paraCount: document.querySelectorAll('.bk-para').length,
     sideTabs: [...document.querySelectorAll('#bookSide .lr-side-tab')].map(t => t.textContent).join('|'),
+    notesTa: !!document.querySelector('#bookSide .lr-note-ta'),
     actionsHidden: getComputedStyle(document.querySelector('#viewModeBtn')).display === 'none',
   }));
   console.log('1. 书报直进:', r1.modBooks && r1.filter && r1.bookCount === 20 && r1.crumb.includes('灵修指微') ? '✓' : '✗',
-    '| crumb:', r1.crumb, '| 章数:', r1.paraCount > 0 ? '>' + r1.paraCount : '✗', '| tabs:', r1.sideTabs);
+    '| crumb:', r1.crumb, '| 章数:', r1.paraCount > 0 ? '>' + r1.paraCount : '✗', '| tabs:', r1.sideTabs || '(无)', '| 笔记:', r1.notesTa);
 
-  // 2. 右栏章列表 → 切第2章
-  await page.evaluate(() => { document.querySelectorAll('.bk-toc-item')[1].click(); });
+  // 2. 目录抽屉右栏切第2章（原右栏「章列表」tab 已删，切章统一走抽屉）
+  await page.evaluate(() => { document.querySelectorAll('#navDrawer .dw-cols .dw-col:nth-child(2) .dw-item')[1].click(); });
   await new Promise((r) => setTimeout(r, 1500));
   const r2 = await page.evaluate(() => ({
     crumb: document.querySelector('#chapterLabel').textContent.slice(0, 22),
-    tocActive: document.querySelector('.bk-toc-item.active')?.textContent.slice(0, 14),
+    drawerCur: document.querySelector('#navDrawer .dw-cols .dw-col:nth-child(2) .dw-item.cur')?.textContent.slice(0, 14),
   }));
-  console.log('2. 切章:', r2.crumb.includes('第2章') && r2.tocActive ? '✓' : '✗', '|', r2.crumb, '| active:', r2.tocActive);
+  console.log('2. 抽屉切章:', r2.crumb.includes('第2章') && r2.drawerCur ? '✓' : '✗', '|', r2.crumb, '| cur:', r2.drawerCur);
 
   // 3. 停靠列切书(第2本)：点左栏书=刷新右栏，点右栏第1章才跳转
   await page.evaluate(() => { document.querySelectorAll('#navDrawer .dw-col .dw-item[data-l]')[1].click(); });

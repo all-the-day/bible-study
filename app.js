@@ -74,7 +74,6 @@ const state = {
   bookVolume: null,      // 当前辑（1-3）
   bookBook: null,        // 当前书（辑内序号 0 基）
   bookChapter: null,     // 当前章（书内序号 0 基）
-  bookSideTab: 'toc',    // 书报右栏 tab：'toc' | 'notes'
   bookNotes: load(LS_BOOK_NOTES, {}),
   // 晨兴阅读器
   morningIndex: null,        // data/morning/index.json（懒加载）
@@ -3234,40 +3233,15 @@ async function renderBookMain() {
   main.appendChild(content);
 }
 
-// 右栏：章列表 | 笔记
+// 右栏：本章笔记（章级笔记 + 划线汇总）。章切换统一走目录抽屉——
+// 原「章列表」tab 与抽屉右栏完全重复（同为当前书全部章），已删（方案 A）
 function renderBookSide() {
   const side = $('bookSide');
   side.innerHTML = '';
-  const tabs = document.createElement('div');
-  tabs.className = 'lr-side-tabs';
-  [['toc', '章列表'], ['notes', '笔记']].forEach(([v, label]) => {
-    const b = document.createElement('button');
-    b.className = 'lr-side-tab' + (state.bookSideTab === v ? ' active' : '');
-    b.textContent = label;
-    b.addEventListener('click', () => { state.bookSideTab = v; renderBookSide(); });
-    tabs.appendChild(b);
-  });
   const body = document.createElement('div');
   body.className = 'lr-side-body';
-  if (state.bookSideTab === 'toc') renderBookToc(body);
-  else renderBookNotes(body);
-  side.appendChild(tabs);
+  renderBookNotes(body);
   side.appendChild(body);
-}
-
-// 右栏章列表：当前书全部章，点击切章
-function renderBookToc(body) {
-  const vol = state.bookVolumes[state.bookSeries] && state.bookVolumes[state.bookSeries][state.bookVolume];
-  const book = vol && vol.books[state.bookBook];
-  const chapters = (book && book.chapters) || [];
-  if (!chapters.length) { body.innerHTML = '<div class="empty-hint">本书无章节</div>'; return; }
-  chapters.forEach((ch, i) => {
-    const item = document.createElement('button');
-    item.className = 'bk-toc-item' + (i === state.bookChapter ? ' active' : '');
-    item.textContent = ch.title;
-    item.addEventListener('click', () => selectBookChapter(state.bookVolume, state.bookBook, i));
-    body.appendChild(item);
-  });
 }
 
 // 右栏笔记：章级笔记 + 本章标注汇总

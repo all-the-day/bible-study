@@ -1138,13 +1138,6 @@ body.home .mobile-nav { display: none; }
 .bk-main { padding: 16px 20px; }
 .bk-title { font-size: calc(17px * var(--reading-scale)); font-weight: 700; color: var(--heading); margin-bottom: 12px; }
 .bk-para { font-size: calc(15px * var(--reading-scale)); line-height: var(--reading-lh); color: var(--text); margin-bottom: 6px; }
-.bk-toc-item {
-  display: block; width: 100%; text-align: left; padding: 7px 10px;
-  border: none; background: transparent; border-bottom: 1px solid var(--border);
-  cursor: pointer; font-size: 13px; color: var(--text); line-height: 1.5;
-}
-.bk-toc-item:hover { background: var(--surface-alt); }
-.bk-toc-item.active { background: rgba(102,126,234,.1); color: var(--brand); font-weight: 600; }
 
 /* 晨兴阅读器：主区 + 右栏 */
 .morning-main { padding: 16px 20px; }
