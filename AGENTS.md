@@ -208,7 +208,7 @@ cd scripts && python export-verses.py    # 精选经节（依赖 export.py 产�
 npx wrangler pages deploy "D:/coder/aiWorkSpace/.cf-bible-study" --project-name bible-study --branch main --commit-dirty=true
 ```
 
-- **staging 目录在仓库外**：`D:/coder/aiWorkSpace/.cf-bible-study`（避免污染 git；**不认 `.vercelignore`**，需手工维护）。内容 = 运行时文件（`index.html`/`style.css`/`app.js`/`sync.js`/`update.js`/`sw.js`/`manifest.json`/`icons/`/`data/`），排除 `scripts/`、`case/`、`node_modules`、`.git`、`.github/`、`config/`、`resources/`。**改完代码后必须先把改动文件覆盖进 staging 再 deploy**（wrangler 只传有差异的文件，staging 旧文件不会自己更新）
+- **staging 目录在仓库外**：`D:/coder/aiWorkSpace/.cf-bible-study`（避免污染 git；**不认 `.vercelignore`**，需手工维护）。内容 = 运行时文件（`index.html`/`style.css`/`app.js`/`sync.js`/`update.js`/`sw.js`/`manifest.json`/`icons/`/`data/`），排除 `scripts/`、`node_modules`、`.git`、`.github/`、`config/`、`resources/`、`docs/`。**改完代码后必须先把改动文件覆盖进 staging 再 deploy**（wrangler 只传有差异的文件，staging 旧文件不会自己更新）
 - 限制：单文件 ≤25MB、单项目 ≤2 万文件（当前 90 文件 / 最大 9.3MB，余量充足）；上传约 4 分钟
 - 域名：**`study.duoban.xyz` 已绑定并生效**（2026-09-29：阿里云 CNAME → `bible-study-7rb.pages.dev`，CF 控制台 Custom domains 已认领，实测直连 200/1.4s）。**SW 缓存按域名隔离**——换指向或换域名后首次访问需重建数据缓存（约 8 秒，之后秒开）。`duoban.xyz` 主域与 `www` **必须继续指向阿里云 ECS**（101.132.34.193）保 ICP 备案——官方规则：主域名留在阿里云内地节点 + 有真实访问，子域指向境外不影响备案
 - **SPA fallback 坑（2026-10-08 复核发现，实测确认）**：本项目无 404.html，CF Pages 对**所有缺失路径回 200 + text/html（index.html）**——任何「看 http_code 判断文件是否存在」的逻辑在 CF 上全部失效（`curl -f` 也拦不住 200；Vercel 静态项目缺失路径是 404，迁移前守卫有效）。`build-apk.yml` 下载数据因此改为按**内容是否合法 JSON** 校验：大文件/books/morning 硬失败（`check_json` 助手报 `::error::`），lifereading 缺卷沿用宽容语义 rm 跳过（部分书卷本无生命读经）——staging 漏同步某文件时 APK 构建会明确报错而非静默打包坏数据
@@ -255,6 +255,7 @@ puppeteer 脚本是确定性回归质量门，**不替代**；需要「看画面
 - 标注/笔记存储结构改前先看 `app.js` 的 localStorage 键定义
 - 颜色语义（c1-c5）是产品约定，改色不改义
 - 云同步改动改 `sync.js` + `app.js` 的 `save()`/`syncFromRemote()`；KV key 约定见「云同步」节
+- **agent 产出的图片（UI 原型图、对比图、截图等）统一放 `generated-images/`**（已 gitignore），不得散落在项目根或其他目录（2026-10-10 清理 case/ 时立的规矩，防杂项再堆积）
 
 ## 文档同步协议（强制）
 

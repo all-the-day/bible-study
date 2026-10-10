@@ -39,10 +39,11 @@ builds/
 
 # 反馈收件箱本地快照（pull 生成，不入库）
 scripts/feedback/inbox.md
-case/
 
-# 本地自测产物（截图/浏览器快照/AI 生成图片，不入库）
+# agent 产出图片统一放此目录（原型图/截图/AI 生成图），不入库
+generated-images/
+
+# 本地自测产物（截图/浏览器快照）
 .shots/
 .playwright-cli/
-generated-images/
 .tmp-shots/
