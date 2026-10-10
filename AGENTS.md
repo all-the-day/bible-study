@@ -37,6 +37,7 @@
 | `scripts/export-spiritual.py` | 从 `../bible/data/raw/spiritual_food/` 导出书报 → `data/books/`（系列索引 + 元数据 + 按辑懒加载） |
 | `scripts/export-verses.py` | 从 export.py 产物 `data/bible-text.json` 派生精选经节 → `data/verses.json`（首屏 splash 随机经节数据源，~190 节几 KB） |
 | `start.bat` / `icons/` | 本地预览服务器（python http.server 8765）/ PWA 图标（icon-192/512，`resources/icon.png` 为 APK 图标源） |
+| `docs/FEATURES.md` | 功能全景文档（基于代码梳理的用户可见行为，2026-10-10 新增；与 AGENTS.md 分工：本表管工程约定，它管功能全景；同步约束见「文档同步协议」节） |
 | **PageSpy 远程调试**（`PAGE_SPY_API = pagespy.duoban.xyz`，SDK 由该服务自托管，无本地文件）。**调试模式默认关闭**：设置弹窗底部版本号 3 秒内连点 5 次切换（`toggleDebugMode`，LS_VCONSOLE 键持久化、重启自动恢复），开启后数据远传 PC 面板（Network/Console/Storage 可复制）。PageSpy 服务端：aliyun-rike `pm2:pagespy`（127.0.0.1:6752，Caddy 反代 pagespy.duoban.xyz，面板 basic_auth、/api/ 与 /page-spy/ 放行供 SDK 连接），凭据存 server-ops。Storage 面板含同步令牌等敏感信息，用完关闭 |
 | `scripts/patch-android.mjs` | CI 帮手：注入原生插件 + AndroidManifest 权限/FileProvider（幂等） |
 | `scripts/*-test.js` | puppeteer 端到端测试（e2e / 标注 / 复制出处 / 生命读经标注 / 生命读经模块内标注）；`copy-citation-test.js` 复制出处专项（`selectionCitation` 跨模块出处文案：读经/生命读经/书报/听抄 各自正确 + 半节后缀；「复制」payload = 正文 + 换行 + `—— 出处`；「引用到笔记」括号式同源）；`download-sim-test.js` 验证 WebView fetch 下载被 CORS 拦截（根因留档），`update-logic-test.js` mock 原生插件验证 download() fallback/进度/监听清理，`lr-heading-test.js` 纲目标题提取，`home-test.js` / `home-test-mobile.js` 首页+合集链路冒烟（含 splash 经节断言；`home-test.js` 末尾含首页「最近阅读」：5 条上限/在合集块下方/点击跳原文并置顶/「全部 ›」开抽屉历史段/空历史整块隐藏），`lr-reader-test.js` 生命读经阅读器专项，`lr-module-annotation-test.js` 生命读经模块内划线回归（rerenderAnn 主区重渲染 + 跨卷 book 字段），`book-reader-test.js` 书报阅读器专项，`morning-reader-test.js` 听抄阅读器专项（直进/切期/切篇/层级标题渲染/笔记/划线/全局笔记跳转/恢复）；`typography-test.js` 排版面板专项（默认 1.0x 与改造前逐项一致/字号与行距滑杆即时生效/正文内部层级与研读列跟随而 UI 不跟随/跨模块基准（经文18·生命读经17·书报15）/上下限与脏数据钳制/刷新持久化/2.0x 无横向溢出/标注数据不受排版影响/移动端底部 sheet）；`sync2-test.js` sync.js 条目级同步（v2 协议）node 单测，mock 与 server.py 同契约的服务端（无浏览器；播种 import-if-absent/outbox 编辑推送/幂等重放/conflict 裁决双向（服务端胜覆盖本地+败者备份、本地胜换 base 重推）/push 不推进拉取游标+flush 后补拉/pull 跳过在途条目/删除墓碑/笔记 dict 同构/forcePush+forcePull/lastError-lastSuccess 状态记录）；`notes-module-test.js` 笔记管理模块专项（直进/分类树/来源tab/颜色过滤/搜索/排序/选中进面板/编辑笔记/改色/删除单条/大段笔记编辑删除/批量删除/偏好恢复）；`drawer-test.js` 统一导航抽屉专项（桌面停靠列常驻/☰ 收起展开/四模块双栏渲染/高亮同步/旧约新约与辑切换/右栏跳转/模块级搜索/阅读历史记录去重跳转清空空态/notes 停靠隐藏/移动端浮层视口）；`ref-link-test.js` 经文引用识别专项（相对引用/上下文/误判防护/章越界过滤/别名切分回退/章…节至…节范围/列举式范围（、和与、节只在末尾、不跨章吞并）/相对章节式与跨章范围/书卷归属回退/简称补漏/串珠前缀格式/听抄正文跨行上下文（carry 段首相对引用，反馈 #20）/篇63 DOM 渲染）；`run-all-tests.sh` 全量运行器（确保 8765 服务器 → 顺序跑全部测试 → 按输出解析判定，失败=非零退出或含 ✗/FAIL/JS 错误；`SKIP="home-test …"` 可跳过） |
@@ -262,6 +263,8 @@ puppeteer 脚本是确定性回归质量门，**不替代**；需要「看画面
 1. 阅读根目录 `AGENTS.md`。
 2. 检查 `git status --short` 和真实代码，不得仅凭文档推断当前状态。
 3. 任务清单最后一项必须是：`检查并同步 AGENTS.md`。
+
+本协议同样约束 `docs/FEATURES.md`（功能全景文档，基于代码梳理）：凡用户可见的功能行为变化（模块交互、标注/笔记能力、导航抽屉等）须同步该文档对应小节；纯内部重构不用。
 
 ### 必须更新 AGENTS.md 的情况
 
