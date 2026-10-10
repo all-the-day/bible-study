@@ -1423,9 +1423,11 @@ body.home .mobile-nav { display: none; }
   .home-block-icon { font-size: 30px; }
   .home-block-title { font-size: 14px; }
 
-  /* 生命读经全屏：隐藏纲目侧栏，正文占满 */
+  /* 生命读经全屏：隐藏纲目侧栏，正文占满
+     （须限定 .lr-full-wrap 内：生命读经模块右栏纲目面板容器同名 .lr-outline，
+     裸选择器会把移动端研读模式的纲目一并隐藏——用户反馈纲目空白） */
   .lr-full-wrap { grid-template-columns: 1fr !important; }
-  .lr-outline { display: none !important; }
+  .lr-full-wrap .lr-outline { display: none !important; }
 
   /* 划线工具条移动端紧凑化（5色+按钮单行放不下会 flex 收缩挤压文字）：
      圆点/按钮不收缩，放不下时整体换行（不挤压文字） */
