@@ -7,16 +7,33 @@
   <title>读经</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icons/icon-192.png">
+  <!-- splash 关键样式内联：style.css 经跨境链路可能慢数秒，内联保证 HTML 一到 splash 即带动画渲染
+       （字面色值与 style.css 的 --brand/#splash 规则一致，style.css 加载后同规则覆盖、观感不变） -->
+  <style>
+    #splash{position:fixed;inset:0;z-index:100;background:linear-gradient(160deg,#5B67D4,#667eea);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:24px;text-align:center}
+    #splash.hidden{display:none}
+    .splash-logo{font-size:40px;font-weight:700;color:#fff;letter-spacing:2px}
+    .splash-verse{margin:0;max-width:560px;font-size:17px;line-height:2;color:rgba(255,255,255,.95);font-style:normal}
+    .splash-source{font-size:13px;color:rgba(255,255,255,.7)}
+    .splash-spinner{width:34px;height:34px;margin-top:6px;border:3px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:bs-spin .9s linear infinite}
+    .splash-progress{width:min(240px,60vw);height:4px;margin-top:8px;border-radius:2px;background:rgba(255,255,255,.25);overflow:hidden}
+    .splash-progress-fill{height:100%;width:0;border-radius:2px;background:#fff;transition:width .3s ease}
+    .splash-progress-text{font-size:12px;color:rgba(255,255,255,.75)}
+    @keyframes bs-spin{to{transform:rotate(360deg)}}
+  </style>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <!-- 首屏 splash：纯静态（app.js 未加载也能显示），JS 拉取 data/verses.json 后替换随机经节，首页就绪后隐藏 -->
+  <!-- 首屏 splash：纯静态（app.js 未加载也能显示），JS 拉取 data/verses.json 后替换随机经节；
+       2026-10-10：启动数据（经文四件套+生命读经卷）改为首屏可见加载——进度条显示字节级进度，全部就绪才隐藏 -->
   <!-- 2026-09-28：听抄 2026-04 夏季训练以 epub 全文重导上线（数据随本部署打包） -->
   <div id="splash">
     <div class="splash-logo">📖 读经</div>
     <blockquote class="splash-verse" id="splashVerse">愿耶和华赐福与你，保护你；愿耶和华使祂的面光照你，赐恩给你。</blockquote>
     <div class="splash-source" id="splashVerseRef">民 6:24-25</div>
     <div class="splash-spinner"></div>
+    <div class="splash-progress" id="splashProgress"><div class="splash-progress-fill" id="splashProgressFill"></div></div>
+    <div class="splash-progress-text" id="splashProgressText">正在准备数据…</div>
   </div>
   <header class="topbar">
     <button id="homeBtn" class="icon-btn" aria-label="首页">⌂</button>

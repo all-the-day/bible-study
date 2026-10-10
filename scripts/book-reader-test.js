@@ -149,6 +149,23 @@ async function main() {
   }));
   console.log('7. 回首页再进恢复:', r7.volMeta === '第二辑' && r7.crumb.includes('复刊基督徒报') && r7.crumb.includes('第1章') ? '✓' : '✗', '|', r7.crumb);
 
+  // 8. ensureBookVolume 在途去重：加载进行中重复调用只发一次请求（慢网重复下载回归，2026-10-10）
+  {
+    const reqs = [];
+    const onReq = (r) => { if (r.url().includes('data/books/ni-2.json')) reqs.push(r.url()); };
+    page.on('request', onReq);
+    const r8 = await page.evaluate(async () => {
+      state.bookSeries = 'ni';
+      state.bookVolumes.ni = {};          // 清缓存强制重新加载
+      const [a, b] = await Promise.all([ensureBookVolume(2), ensureBookVolume(2)]);
+      return { same: a === b, cached: !!state.bookVolumes.ni[2], bookCount: a?.books?.length };
+    });
+    await new Promise((r) => setTimeout(r, 800));
+    page.off('request', onReq);
+    console.log('8. 在途去重(并发双调单请求):', r8.same && r8.cached && reqs.length === 1 ? '✓' : '✗',
+      '| 请求次数:', reqs.length, '| 同一Promise:', r8.same, '| 缓存写入:', r8.cached, '| 书数:', r8.bookCount);
+  }
+
   console.log('\nJS 错误:', errors.length ? errors : '无');
   await browser.close();
   server.kill();

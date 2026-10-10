@@ -47,3 +47,7 @@ generated-images/
 .shots/
 .playwright-cli/
 .tmp-shots/
+
+# 调试产物与工具本地配置
+docs/*.har
+.zcodeignore

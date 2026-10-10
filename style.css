@@ -58,6 +58,16 @@ body {
   border: 3px solid rgba(255,255,255,.25); border-top-color: #fff;
   border-radius: 50%; animation: spin .9s linear infinite;
 }
+/* 启动数据进度条（2026-10-10 首屏可见加载；关键样式已在 index.html 内联兜底跨境慢网下 style.css 到达前的渲染，两处保持一致） */
+.splash-progress {
+  width: min(240px, 60vw); height: 4px; margin-top: 8px;
+  border-radius: 2px; background: rgba(255,255,255,.25); overflow: hidden;
+}
+.splash-progress-fill {
+  height: 100%; width: 0; border-radius: 2px; background: #fff;
+  transition: width .3s ease;
+}
+.splash-progress-text { font-size: 12px; color: rgba(255,255,255,.75); }
 /* 启动关键数据加载失败：splash 上的错误提示 + 重试 */
 .splash-error {
   margin-top: 18px; display: flex; flex-direction: column; align-items: center; gap: 12px;
