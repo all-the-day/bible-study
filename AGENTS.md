@@ -133,11 +133,13 @@
 | 同步范围 | **只同步用户数据**（annotations / chapterNotes / lrNotes / bookNotes / morningNotes 5 个 kind）；布局偏好（viewMode / hideMarks / studyWidth 等）保持设备本地 |
 | 可见性 | 同步状态行显示 outbox 待推数/最近成功时间/最近错误；「数据对比」逐模块计数（本机 vs 云端，经 getServerStats 走 v2 changes?since=0）；「立即同步」手动触发+toast 报冲突备份数。服务器每日备份在 `/var/www/bible-reader/backups/`（30 天） |
 
-**账号与授权（RFC 8628 简化版）**：
+**账号与授权（RFC 8628 简化版 + 账密登录 2026-10-11）**：
 - 同步是**运行时可选功能**：localStorage `bible-study.account`（`{uid, token}`，null=未启用纯本地）；`syncActive()`（app.js）门控；⚙️ 设置弹窗「云同步」行打开启用/管理弹窗
-- 启用流程 = 输入授权码 → `POST /api/account/claim` 兑换 `{uid, token}`；管理员用 `npm run account:code`（`--uid u1` 绑定已有账号 / 缺省新账号码）生成，码 10 分钟有效、一次性、每 IP claim 限流
+- **两种启用入口（客户端弹窗双轨）**：① **账号密码登录**（主）——`POST /api/account/login` `{username, password}` → `{uid, token}`，与 claim 同路径建设备（每次登录生成新设备令牌，可吊销）；`loginAndEnable`（app.js），密码框回车即提交，错误分类提示（`invalid_credentials`/`rate_limited`）。② **授权码兑换**（保留）——`POST /api/account/claim`，弹窗内 `<details>` 折叠为次入口，给发码场景向后兼容
+- **服务端账密**（`../server-ops/files/bible-reader/server.py`）：`accounts` 表增 `username`（唯一，`USERNAME_RE` 2-32 位字母数字_-，login 时 lower 归一）/`password_hash`（`scrypt$N$r$p$salthex$hashhex`，`hashlib.scrypt` 标准库，`secrets.compare_digest` 恒时比较）；幂等迁移 ALTER TABLE 补列。`POST /api/admin/accounts/{uid}/password`（管理员）设置/重置凭证，**账号不存在时自动创建**，校验 `username_taken`/`invalid_password`（≥6 位）；u1 初始凭证 `abu`/`duoban` 由启动迁移幂等写入（仅当无密码时，`OWNER_USERNAME`/`OWNER_INITIAL_PASSWORD` 常量——上线后可在面板改强密码）。登录限流 `LOGIN_RATE_LIMIT`（每 IP 每小时 10 次，与 claim 同桶机制）
+- 管理员用 `npm run account:code`（`--uid u1` 绑定已有账号 / 缺省新账号码）生成授权码，码 10 分钟有效、一次性、每 IP claim 限流
 - **权限**：`/api/sync/*` 与 `u{n}:bible-study:*` 命名空间读写必须带设备令牌（`Authorization: Bearer`），服务端按令牌解析 uid（跨账号隔离）；bible-reader 命名空间暂未纳入（`SECURED_PROJECTS` 可扩展）
-- owner 账号 `u1` 预置；新账号从 u2 起
+- owner 账号 `u1` 预置（登录名 abu）；新账号从 u2 起
 - **管理面板**：`https://duoban.xyz/bible-api/admin` — 账号列表/详情（设备吊销、**设备活跃识别：最后活跃时间/空闲天数/僵尸标记（≥60 天，阈值常量 `ZOMBIE_DAYS`）、设备标签（UA 解析，含机型）/KV 查看/删除、清空账号数据**）、授权码撤销、网页生成授权码、**备份管理（2026-10-05 新增：备份列表/下载/立即备份/恢复演练，演练对备份副本跑 integrity_check 并与生产库逐表行数比对，`match:false` 表示备份比当前数据旧，属正常）**。设备活跃由服务端在设备令牌鉴权成功时记录（1 小时节流、旁路失败不影响业务），**领码前的历史设备显示「无记录」、不算僵尸**，下次同步后自动补上；Chrome/WebView ≥110 的 UA 精简会把机型位变占位符，这类设备标签显示「（机型未提供）」。登录用管理员令牌（`BIBLE_ADMIN_TOKEN` = 服务器 `FEEDBACK_ADMIN_TOKEN`）或服务器 `admin_password.txt` 密码（两者存于 server-ops，见 `../server-ops/docs/servers/aliyun-rike.md`）；服务器代码与页面版本化源头在 `../server-ops/files/bible-reader/`，更新走 server-ops upload + `pm2 restart bible-kv`
 
 - 同步失败静默降级为纯本地，不阻塞应用；`window.BIBLE_OFFLINE=true` 可跳过远程（测试用）

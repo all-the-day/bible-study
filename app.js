@@ -539,15 +539,29 @@ function openSyncModal() {
       </div>
     </div>`
     : `
-    <div class="fb-hint">输入授权码启用本设备同步（向管理员申请）。</div>
-    <input id="syncCode" class="fb-input" placeholder="8 位授权码" autocomplete="off" spellcheck="false">
+    <div class="fb-hint">输入账号密码启用本设备同步（账号由管理员开通）。</div>
+    <input id="syncUser" class="fb-input" placeholder="账号名" autocomplete="username" spellcheck="false">
+    <input id="syncPass" class="fb-input" type="password" placeholder="密码" autocomplete="current-password">
     <div class="fb-actions">
       <span id="fbMsg" class="fb-msg"></span>
-      <button class="popup-btn primary" id="syncEnable">启用同步</button>
-    </div>`}
+      <button class="popup-btn primary" id="syncLogin">登录并启用</button>
+    </div>
+    <details style="margin-top:10px"><summary class="fb-hint" style="cursor:pointer">没有账号？用授权码启用 ›</summary>
+      <div class="fb-hint" style="margin-top:6px">输入授权码启用本设备同步（向管理员申请）。</div>
+      <input id="syncCode" class="fb-input" placeholder="8 位授权码" autocomplete="off" spellcheck="false">
+      <div class="fb-actions">
+        <span id="fbMsgCode" class="fb-msg"></span>
+        <button class="popup-btn" id="syncEnable">授权码启用</button>
+      </div>
+    </details>`}
   `);
   const en = $('syncEnable');
   if (en) en.addEventListener('click', claimAndEnable);
+  const lg = $('syncLogin');
+  if (lg) lg.addEventListener('click', loginAndEnable);
+  // 密码框回车直接登录
+  const sp = $('syncPass');
+  if (sp) sp.addEventListener('keydown', (e) => { if (e.key === 'Enter') loginAndEnable(); });
   const dis = $('syncDisable');
   if (dis) dis.addEventListener('click', () => {
     state.account = null;
@@ -578,10 +592,46 @@ function openSyncModal() {
   });
 }
 
+// 账密登录（2026-10-11）：POST /api/account/login → {uid, token}；与 claim 同路径建设备
+async function loginAndEnable() {
+  const btn = $('syncLogin');
+  const msg = $('fbMsg');
+  const username = ($('syncUser').value || '').trim().toLowerCase();
+  const password = $('syncPass').value || '';
+  if (!username || !password) { msg.textContent = '请输入账号名与密码'; return; }
+  btn.disabled = true;
+  msg.textContent = '登录中…';
+  try {
+    const res = await fetch(`${FEEDBACK_API}/api/account/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      const err = data && data.error;
+      msg.textContent = err === 'invalid_credentials' ? '账号名或密码不正确'
+        : err === 'rate_limited' ? '尝试太频繁，请稍后再试'
+        : '登录失败，请稍后再试';
+      btn.disabled = false;
+      return;
+    }
+    const data = await res.json();
+    state.account = { uid: data.account.uid, token: data.device.token };
+    save(LS_ACCOUNT, state.account);
+    closePopupAll();
+    updateSyncStatus();
+    syncFromRemote();  // 启用后立即拉取云端数据
+  } catch {
+    msg.textContent = '网络错误，请稍后再试';
+    btn.disabled = false;
+  }
+}
+
 // 授权码兑换（RFC 8628 简化版）：POST /api/account/claim → {uid, token}
 async function claimAndEnable() {
   const btn = $('syncEnable');
-  const msg = $('fbMsg');
+  const msg = $('fbMsgCode') || $('fbMsg');
   const code = ($('syncCode').value || '').trim().toUpperCase();
   if (!code) { msg.textContent = '请输入授权码'; return; }
   btn.disabled = true;
