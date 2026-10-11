@@ -43,10 +43,18 @@ public class ApkInstallerPlugin extends Plugin {
             pluginCall.reject("下载地址不能为空");
             return;
         }
+        // 文件名可由 JS 按目标版本指定（bible-study-v{version}.apk）：旧版本下载残留
+        // 与新文件物理隔离——杜绝「旧版本残留文件被当作新包交给安装器」（2026-10-11 手机安装 1.0.40 事故）
+        String fileName = pluginCall.getString("fileName");
+        if (fileName == null || fileName.isEmpty()) fileName = FILE_NAME;
+        if (!fileName.matches("[A-Za-z0-9._-]+")) {
+            pluginCall.reject("非法文件名");
+            return;
+        }
         // 后台线程下载，避免阻塞 WebView 主线程
         new Thread(() -> {
             try {
-                File out = downloadToFile(url);
+                File out = downloadToFile(url, fileName);
                 JSObject ret = new JSObject();
                 ret.put("uri", out.getAbsolutePath());
                 pluginCall.resolve(ret);
@@ -56,7 +64,7 @@ public class ApkInstallerPlugin extends Plugin {
         }).start();
     }
 
-    private File downloadToFile(String urlStr) throws IOException {
+    private File downloadToFile(String urlStr, String fileName) throws IOException {
         HttpURLConnection conn = null;
         InputStream in = null;
         FileOutputStream out = null;
@@ -79,7 +87,7 @@ public class ApkInstallerPlugin extends Plugin {
             if (!dir.exists() && !dir.mkdirs()) {
                 throw new IOException("无法创建下载目录");
             }
-            File file = new File(dir, FILE_NAME);
+            File file = new File(dir, fileName);
             out = new FileOutputStream(file);
             in = conn.getInputStream();
 
@@ -102,8 +110,20 @@ public class ApkInstallerPlugin extends Plugin {
             out = null;
             in.close();
             in = null;
+            // 完整性校验：镜像可能中途截断（实测 ghproxy.net 对 31MB 资产只回 2.5MB），
+            // 无校验时截断包会被当作下载成功交给安装器
+            if (total > 0 && received != total) {
+                file.delete();
+                throw new IOException("下载不完整: " + received + "/" + total);
+            }
             reportProgress(1.0);
             return file;
+        } catch (IOException e) {
+            // 失败删残留：防止半截/旧文件留存后被误装
+            File dir = new File(getContext().getCacheDir(), "downloads");
+            File leftover = new File(dir, fileName);
+            if (leftover.exists()) leftover.delete();
+            throw e;
         } finally {
             try {
                 if (out != null) out.close();

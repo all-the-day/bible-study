@@ -5882,7 +5882,7 @@ function startUpdateDownload() {
 
   action.disabled = true;
   progress.hidden = false;
-  status.textContent = '正在下载 APK…';
+  status.textContent = latest.version ? `正在下载 bible-study-v${latest.version}.apk…` : '正在下载 APK…';
   body.innerHTML = '';
 
   window.BibleStudyUpdate.download(latest, (frac) => {

@@ -179,6 +179,11 @@
     if (!isNative() || !plugin || !plugin.download) {
       return Promise.reject(new Error("当前环境不支持原生下载"));
     }
+    // 按目标版本命名下载文件：与旧版本残留物理隔离，杜绝「旧包残留被交给安装器」
+    // （2026-10-11 手机装到 1.0.40 旧文件的根因；旧版插件无 fileName 参数会忽略它，向后兼容）
+    _downloadFileName = latest && latest.version
+      ? ("bible-study-v" + latest.version + ".apk")
+      : APK_FILE;
     _progressCb = onProgress || null;
     return downloadWithFallback(candidates, plugin)
       .then(({ uri }) => plugin.install({ filePath: uri }).then(
@@ -195,14 +200,16 @@
       .catch((err) => ({ ok: false, msg: friendlyError(err) || (err && err.message ? err.message : "下载失败") }));
   }
 
-  /* 清理历史 APK（不删当前要装的） */
+  let _downloadFileName = APK_FILE;
+  /* 清理历史 APK（不删当前要装的：版本化文件名或旧版固定名兜底） */
   function cleanupOldApks() {
     if (!isNative() || !Capacitor.Filesystem) return;
+    const keep = _downloadFileName || APK_FILE;
     ["CACHE", "DATA"].forEach((directory) => {
       Capacitor.Filesystem.readdir({ directory, path: "downloads" })
         .then(({ files }) => {
           (files || []).forEach((f) => {
-            if (f.name !== APK_FILE && /\.apk$/i.test(f.name || "")) {
+            if (f.name !== keep && f.name !== APK_FILE && /\.apk$/i.test(f.name || "")) {
               Capacitor.Filesystem.deleteFile({ directory, path: "downloads/" + f.name }).catch(() => {});
             }
           });

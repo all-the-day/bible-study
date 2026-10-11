@@ -160,7 +160,9 @@ APK 端检查 GitHub Releases 新版本 → 下载 APK → 触发系统安装（
 | 下载源 | 直连 GitHub + 公共镜像依次尝试（`github.com` → `gh-proxy.com` → `ghproxy.net`），失败切换下一个；候选源按域名去重（API 的 downloadUrl 即 github.com 直连）。**APK 资产名带版本号** `bible-study-v${VERSION}.apk`（2026-09-09 起：每版 URL 唯一，防镜像按 URL 缓存串版——曾导致设备下载到旧版缓存包）；update.js 按 `.apk` 后缀匹配资产，镜像候选用同一 URL 换 host 生成，静态 `bible-study.apk` 路径仅作 API 无资产时的兜底 |
 | 下载方式 | **原生 `HttpURLConnection`**（`ApkInstallerPlugin.download`，不受 WebView CORS 限制）→ cacheDir `downloads/`；进度经插件 `progress` 事件（fraction 0..1，原生节流 500ms）转发 JS 进度条 |
 | 安装 | `Capacitor.Plugins.ApkInstaller.install({filePath})`（原生插件）→ FileProvider → 系统 `ACTION_VIEW` 安装器 |
-| 清理 | 成功后清理 CACHE/DATA `downloads/` 目录历史 `*.apk` |
+| 清理 | 成功后清理 CACHE/DATA `downloads/` 目录历史 `*.apk`（保留当前版本化文件与旧版固定名兜底） |
+| **下载文件名** | **按目标版本命名 `bible-study-v{version}.apk`**（2026-10-11）：JS 传 `fileName` 给插件，旧版本残留与新文件物理隔离——此前固定名 `bible-study-update.apk` 跨版本复用，清理逻辑又刻意保留当前文件，导致上一版残留包在下次更新失败时被误交给安装器（手机实装到旧版的真实事故） |
+| **下载完整性** | 插件下载完成校验 `received == Content-Length`，不符删文件并 reject（镜像截断实测：ghproxy.net 对 31MB 资产曾只回 2.5MB；无校验时截断包会按「成功」交给安装器）；下载失败同步删残留文件 |
 
 - **触发**：启动后 ~3s 静默 `check()`（10s 超时，失败静默）→ 发现新版给 `#settingsBtn` 加 `.update-dot` 红点角标 + 设置弹窗「检查更新」行显示状态；设置行点击开 `#updateModal`（独立 modal，非弹窗栈，下载过程不被关闭打断）。**启动静默检查在本地浏览器上自动跳过**（`update.js` `isLocalDev()`：非原生 + hostname `localhost`/`127.0.0.1`/`[::1]`——Capacitor 原生 WebView origin 也是 `https://localhost`，故先排除 `isNative()`；手动「检查更新」不受影响，`check()` 函数本身不设门）。**`window.BIBLE_SKIP_UPDATE=true` 仍可显式跳过**（e2e 测试均已设置，双保险）：避免消耗 GitHub API 匿名配额 60 次/小时/IP
 - **平台分支**：原生（`Capacitor.isNativePlatform()`）→ `download()`（update.js）依次调插件 `download({url})`，失败（超时/HTTP 错误）切下一源 → 成功后 `install`；PWA/浏览器 → 只提示跳转 Releases 页（网页内容走 SW 自动更新）
