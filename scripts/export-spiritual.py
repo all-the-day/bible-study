@@ -1,32 +1,34 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""倪柝声文集导出：bible 项目灵粮 → data/books/
+"""书报系列导出：bible 项目灵粮 → data/books/（多系列）
 
-输入（只读）：
-  ../bible/data/raw/spiritual_food/倪柝声文集/
-    倪柝声文集目录索引.json      → volumes → books_list（含每章标题）
-    {辑}/                          → {目录}/NNN{标题}.md 章节正文
-
-输出：
-  data/books/index.json         → 系列清单 {series: [{id, name, volumes}]}（前端左栏系列条）
+通用输出契约（前端零改动 discovers）：
+  data/books/index.json         → 系列清单 {series: [{id, name, volumes}]}
   data/books/{id}.json          → 元数据（轻量，不含正文）{name, volumes: [{title, books: [{title, chapters: [标题]}]}]}
   data/books/{id}-{辑号}.json   → 按辑内容 {volume, books: [{title, chapters: [{title, content}]}]}
-                                  （1325 章体积大，按辑懒加载）
+
+结构约定：volumes = 辑；books = 书级分组——无书级系列（如十二篮，辑→篇两级）
+每辑折成一个 books 条目（title=辑名、chapters=篇标题列表），前端渲染与标注分组无需感知差异。
+
+系列注册表 SERIES：每项声明源目录、id、导出器（ni=目录索引+books_list 三级；slat=辑目录+编号 md 两级）。
 
 用法：
-  python export-spiritual.py                # 导出倪柝声文集（当前唯一系列）
-  后续新系列：脚本扩展 series 清单后同构导出
+  python export-spiritual.py                # 导出全部注册系列
+  python export-spiritual.py ni slat        # 只导指定系列
 """
 import json
 import os
 import re
 import sys
 
-SRC = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "bible", "data", "raw", "spiritual_food", "倪柝声文集"))
+BASE = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "bible", "data", "raw", "spiritual_food"))
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "books")
 
 TITLE_RE = re.compile(r"^\s*#\s+(.*?)\s*$")
 VOL_NO = {"第一辑": "1", "第二辑": "2", "第三辑": "3"}
+CN_NUM = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10,
+          "十一": 11, "十二": 12, "十三": 13, "十四": 14, "十五": 15, "十六": 16, "十七": 17, "十八": 18,
+          "十九": 19, "二十": 20}
 
 
 def read_md(path):
@@ -49,29 +51,51 @@ def read_md(path):
     return title, "\n".join(body)
 
 
-def export():
-    os.makedirs(OUT, exist_ok=True)
-    with open(os.path.join(SRC, "倪柝声文集目录索引.json"), encoding="utf-8") as f:
+def cn_vol_no(vol_key):
+    """「第一辑/第十二辑/十二篮(第一辑)」→「1/12/1」；已是数字直接返回"""
+    if vol_key.isdigit():
+        return vol_key
+    m = re.search(r"第(.+?)辑", vol_key)
+    if m and m.group(1) in CN_NUM:
+        return str(CN_NUM[m.group(1)])
+    return vol_key
+
+
+def write_volume_files(series_id, meta_light, volumes_content):
+    """写 {id}.json 元数据 + {id}-{n}.json 按辑内容；返回 (辑数, 本数, 章数)"""
+    with open(os.path.join(OUT, f"{series_id}.json"), "w", encoding="utf-8") as f:
+        json.dump(meta_light, f, ensure_ascii=False, separators=(",", ":"))
+    total_books = total_chapters = 0
+    for i, vol in enumerate(volumes_content, 1):
+        with open(os.path.join(OUT, f"{series_id}-{i}.json"), "w", encoding="utf-8") as f:
+            json.dump({"volume": vol["volume"], "books": vol["books"]}, f, ensure_ascii=False, separators=(",", ":"))
+        total_books += len(vol["books"])
+        total_chapters += sum(len(b["chapters"]) for b in vol["books"])
+        print(f"[OK] {series_id} {vol['volume']}：{len(vol['books'])} 本 / {sum(len(b['chapters']) for b in vol['books'])} 章")
+    return len(volumes_content), total_books, total_chapters
+
+
+def export_ni():
+    """倪柝声文集：目录索引.json（volumes → books_list 含每章标题）+ {辑}/{书目录}/NNN{标题}.md"""
+    src_dir = os.path.join(BASE, "倪柝声文集")
+    with open(os.path.join(src_dir, "倪柝声文集目录索引.json"), encoding="utf-8") as f:
         idx = json.load(f)
 
     meta = {"name": idx.get("title", "倪柝声文集"), "volumes": []}
-    total_books = total_chapters = 0
-
+    volumes_content = []
     for vol_key, vol in (idx.get("volumes") or {}).items():
         vol_title = vol.get("title") or vol_key
         vol_dir = vol.get("directory")
-        vol_no = VOL_NO.get(vol_key, vol_key)
         books = []
         for b in (vol.get("books_list") or []):
-            bdir = os.path.join(SRC, vol_dir, b["directory"])
+            bdir = os.path.join(src_dir, vol_dir, b["directory"])
             if not os.path.isdir(bdir):
                 print(f"  [WARN] 目录缺失：{bdir}")
                 continue
-            # 文件按数字前缀排序（001、002…），与索引 chapters_list 按序配对
             files = sorted([fn for fn in os.listdir(bdir) if fn.endswith(".md")])
             expected = b.get("chapters_list") or []
             chapters = []
-            for i, fn in enumerate(files):
+            for fn in files:
                 title, content = read_md(os.path.join(bdir, fn))
                 if not title:
                     title = re.sub(r"^\d+\s*", "", fn[:-3])  # 文件名去数字前缀兜底
@@ -79,37 +103,82 @@ def export():
             if len(chapters) < len(expected):
                 print(f"  [WARN] {b.get('title','')}：文件 {len(chapters)} 章 < 索引 {len(expected)} 章")
             books.append({"title": b.get("title", ""), "chapters": chapters})
-            total_books += 1
-            total_chapters += len(chapters)
-
         meta["volumes"].append({"title": vol_title, "books": books})
-        with open(os.path.join(OUT, f"ni-{vol_no}.json"), "w", encoding="utf-8") as f:
-            json.dump({"volume": vol_title, "books": books}, f, ensure_ascii=False, separators=(",", ":"))
-        print(f"[OK] {vol_title}：{len(books)} 本 / {sum(len(x['chapters']) for x in books)} 章")
+        volumes_content.append({"volume": vol_title, "books": books})
+    return meta, volumes_content
 
-    # 元数据：只留标题（正文在 {id}-{n}.json，避免 24MB 单文件）
-    meta_light = {
-        "name": meta["name"],
-        "volumes": [{"title": v["title"], "books": [{"title": b["title"], "chapters": [c["title"] for c in b["chapters"]]} for b in v["books"]]} for v in meta["volumes"]],
-    }
-    with open(os.path.join(OUT, "ni.json"), "w", encoding="utf-8") as f:
-        json.dump(meta_light, f, ensure_ascii=False, separators=(",", ":"))
 
-    # 系列索引（前端左栏系列条；后续新系列同构追加）
-    series_index_path = os.path.join(OUT, "index.json")
-    series_index = {"series": []}
-    if os.path.exists(series_index_path):
-        with open(series_index_path, encoding="utf-8") as f:
-            series_index = json.load(f)
-    entry = {"id": "ni", "name": meta_light["name"], "volumes": len(meta_light["volumes"])}
-    series_index["series"] = [s for s in series_index.get("series", []) if s.get("id") != "ni"]
-    series_index["series"].append(entry)
+def export_slat():
+    """十二篮等两级系列：{系列}目录索引.json（items 扁平，local_rel 含辑目录）+ {辑}/NNN{标题}.md
+
+    无书级分组：每辑折成一个 books 条目（title=辑名、chapters=篇列表），复用通用输出契约。
+    """
+    src_dir = os.path.join(BASE, "十二篮")
+    with open(os.path.join(src_dir, "十二篮目录索引.json"), encoding="utf-8") as f:
+        idx = json.load(f)
+
+    by_vol = {}
+    for it in (idx.get("items") or []):
+        rel = it.get("local_rel") or ""
+        parts = rel.split("/")
+        if len(parts) < 2:
+            print(f"  [WARN] local_rel 异常：{rel}")
+            continue
+        vol_dir, fn = parts[0], parts[-1]
+        path = os.path.join(src_dir, vol_dir, fn)
+        if not os.path.isfile(path):
+            print(f"  [WARN] 文件缺失：{path}")
+            continue
+        title, content = read_md(path)
+        if not title:
+            title = it.get("title") or re.sub(r"^\d+\s*", "", fn[:-3])
+        by_vol.setdefault(vol_dir, []).append({"title": title, "content": content})
+
+    name = idx.get("series", "十二篮")
+    meta = {"name": name, "volumes": []}
+    volumes_content = []
+    for vol_dir in sorted(by_vol, key=lambda d: int(cn_vol_no(d))):
+        vol_no = cn_vol_no(vol_dir)
+        vol_title = f"第{next((k for k, v in CN_NUM.items() if v == int(vol_no)), vol_no)}辑"
+        chapters = sorted(by_vol[vol_dir], key=lambda c: 0)  # 保留索引顺序（items 已按编号）
+        meta["volumes"].append({"title": vol_title, "books": [{"title": vol_title, "chapters": chapters}]})
+        volumes_content.append({"volume": vol_title, "books": [{"title": vol_title, "chapters": chapters}]})
+    return meta, volumes_content
+
+
+SERIES = {
+    "ni": export_ni,
+    "slat": export_slat,   # 十二篮（slat = 十二篮英译通称 Twelve Baskets 的篮）
+}
+
+
+def export(only=None):
+    os.makedirs(OUT, exist_ok=True)
+    ids = only or list(SERIES)
+    with open(os.path.join(OUT, "index.json"), encoding="utf-8") as f:
+        series_index = json.load(f)
+    for sid in ids:
+        if sid not in SERIES:
+            print(f"[SKIP] 未知系列 id：{sid}")
+            continue
+        meta, volumes_content = SERIES[sid]()
+        meta_light = {
+            "name": meta["name"],
+            "volumes": [{"title": v["title"], "books": [{"title": b["title"], "chapters": [c["title"] for c in b["chapters"]]} for b in v["books"]]} for v in meta["volumes"]],
+        }
+        n_vol, n_book, n_ch = write_volume_files(sid, meta_light, volumes_content)
+        entry = {"id": sid, "name": meta_light["name"], "volumes": n_vol}
+        series_index["series"] = [s for s in series_index.get("series", []) if s.get("id") != sid]
+        series_index["series"].append(entry)
+        print(f"[DONE] {sid}：{n_vol} 辑 / {n_book} 本 / {n_ch} 章")
     series_index["series"].sort(key=lambda s: s["id"])
-    with open(series_index_path, "w", encoding="utf-8") as f:
+    with open(os.path.join(OUT, "index.json"), "w", encoding="utf-8") as f:
         json.dump(series_index, f, ensure_ascii=False, separators=(",", ":"))
+    print("")
+    print(f"系列清单 -> {os.path.join(OUT, 'index.json')}（{len(series_index['series'])} 个系列）")
 
-    print(f"\n完成：{len(meta['volumes'])} 辑 / {total_books} 本 / {total_chapters} 章 -> {os.path.normpath(OUT)}")
 
-
+if __name__ == "__main__":
+    sys.exit(export(sys.argv[1:] or None))
 if __name__ == "__main__":
     sys.exit(export())

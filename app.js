@@ -596,6 +596,7 @@ function openSyncModal() {
 async function loginAndEnable() {
   const btn = $('syncLogin');
   const msg = $('fbMsg');
+  if (btn.disabled) return;   // 在途防重入：密码框回车监听不受按钮 disabled 保护，连按会并发打请求消耗限流配额
   const username = ($('syncUser').value || '').trim().toLowerCase();
   const password = $('syncPass').value || '';
   if (!username || !password) { msg.textContent = '请输入账号名与密码'; return; }
@@ -1876,9 +1877,10 @@ function annGroupLabel(a) {
   if (a.type === 'verse') return `${bookName(a.book)} · 第${a.chapter}章`;
   if (a.type === 'lr') return `${bookName(a.book)} · 生命读经`;
   if (a.type === 'book') {
-    const metaVol = (a.series === 'ni' && state.bookMeta) ? state.bookMeta.volumes[a.volume - 1] : null;
+    const meta = seriesMeta(a.series);
+    const metaVol = meta ? meta.volumes[a.volume - 1] : null;
     const metaBook = metaVol && metaVol.books[a.book];
-    return metaBook ? `${(state.bookMeta && state.bookMeta.name) || a.series} · ${metaVol.title} · ${metaBook.title}`
+    return metaBook ? `${(meta && meta.name) || a.series} · ${metaVol.title} · ${metaBook.title}`
       : `${a.series} · 卷${a.volume} · 书${a.book + 1}`;
   }
   if (a.type === 'morning') {
@@ -1953,9 +1955,10 @@ function groupHl(list) {
     books.forEach(a => { const k = `${a.series}:${a.volume}:${a.book}`; (byKey[k] = byKey[k] || []).push(a); });
     Object.keys(byKey).sort().forEach(k => {
       const [series, volume, book] = k.split(':');
-      const metaVol = (series === 'ni' && state.bookMeta) ? state.bookMeta.volumes[+volume - 1] : null;
+      const meta = seriesMeta(series);
+      const metaVol = meta ? meta.volumes[+volume - 1] : null;
       const metaBook = metaVol && metaVol.books[+book];
-      const label = metaBook ? `${(state.bookMeta && state.bookMeta.name) || series} · ${metaVol.title} · ${metaBook.title}` : `${series} · 卷${volume} · 书${+book + 1}`;
+      const label = metaBook ? `${(meta && meta.name) || series} · ${metaVol.title} · ${metaBook.title}` : `${series} · 卷${volume} · 书${+book + 1}`;
       groups.push({ label, items: byKey[k].sort((x, y) => (x.chapter - y.chapter) || (x.start - y.start)) });
     });
   }
@@ -2288,7 +2291,8 @@ function buildNotesTreeChildren(sourceId, anns, bigNotes) {
     Object.keys(byKey).sort().forEach(k => {
       const kAnns = byKey[k];
       const [series, volume, book] = k.split(':');
-      const metaVol = (series === 'ni' && state.bookMeta) ? state.bookMeta.volumes[+volume - 1] : null;
+      const meta = seriesMeta(series);
+      const metaVol = meta ? meta.volumes[+volume - 1] : null;
       const metaBook = metaVol && metaVol.books[+book];
       const label = metaBook ? metaBook.title : `${series} 卷${volume}书${+book + 1}`;
       const nodeId = `book:${k}`;
@@ -2372,9 +2376,10 @@ function notesGroupLabel(g) {
   if (g.type === 'verse') return bookName(g.book) + (g.chapter != null ? ` · 第${g.chapter}章` : '');
   if (g.type === 'lr') return bookName(g.book) + ' · 生命读经' + (g.articleId != null ? ` 第${g.articleId}篇` : '');
   if (g.type === 'book') {
-    const v = state.bookMeta && state.bookMeta.volumes[g.volume - 1];
+    const meta = seriesMeta(g.series || state.bookSeries);
+    const v = meta && meta.volumes[g.volume - 1];
     const b = v && v.books && v.books[g.book];
-    return `${(state.bookMeta && state.bookMeta.name) || '书报'} · ${v ? v.title : '卷' + g.volume} · ${b ? b.title : '书' + (g.book + 1)}`;
+    return `${(meta && meta.name) || '书报'} · ${v ? v.title : '卷' + g.volume} · ${b ? b.title : '书' + (g.book + 1)}`;
   }
   if (g.type === 'morning') {
     const t = state.morningIndex && state.morningIndex.trainings.find(x => x.id === g.period);
@@ -2940,7 +2945,8 @@ function hlLocText(a) {
     return `${nm.name || '生命读经'} 第${a.articleId}篇`;
   }
   if (a.type === 'book') {
-    const metaVol = (a.series === 'ni' && state.bookMeta) ? state.bookMeta.volumes[a.volume - 1] : null;
+    const meta = seriesMeta(a.series);
+    const metaVol = meta ? meta.volumes[a.volume - 1] : null;
     const metaBook = metaVol && metaVol.books[a.book];
     return metaBook ? `${metaBook.title} · 第${a.chapter + 1}章` : `书报 卷${a.volume}书${a.book + 1} 第${a.chapter + 1}章`;
   }
@@ -3345,13 +3351,53 @@ async function openLrArticle(bookIndex, art) {
 /* ============ 书报阅读器模块（多系列：倪柝声文集，后续系列同构扩展） ============ */
 async function ensureBookSeriesIndex() {
   if (state.bookSeriesIndex) return state.bookSeriesIndex;
-  try { state.bookSeriesIndex = await fetchJSON('data/books/index.json'); return state.bookSeriesIndex; }
-  catch (e) { state.bookSeriesIndex = { series: [] }; return state.bookSeriesIndex; }
+  try { state.bookSeriesIndex = await fetchJSON('data/books/index.json'); } 
+  catch (e) { state.bookSeriesIndex = { series: [] }; }
+  // 预取全部系列元数据进 seriesMetaCache（标注分组/笔记树按标注 series 取，轻量文件后台并发）
+  (state.bookSeriesIndex.series || []).forEach(s => prefetchSeriesMeta(s.id).then(() => {
+    // 预取完成时若用户正停在笔记管理视图，兜底文案（卷N书N）重渲染为真名
+    if (state.activeModule === 'notes') { renderNotesTree(); renderNotesList(); }
+  }));
+  return state.bookSeriesIndex;
 }
 async function ensureBookMeta() {
-  if (state.bookMeta) return state.bookMeta;
-  try { state.bookMeta = await fetchJSON(`data/books/${state.bookSeries}.json`); return state.bookMeta; }
+  if (state.bookMeta && state.bookMetaSeries === state.bookSeries) return state.bookMeta;
+  try { state.bookMeta = await fetchJSON(`data/books/${state.bookSeries}.json`); state.bookMetaSeries = state.bookSeries; return state.bookMeta; }
   catch (e) { return null; }
+}
+
+// 系列元数据缓存（标注分组/笔记树按标注自己的 series 取，与当前浏览系列无关）。
+// 同步读缓存——元数据由 prefetchSeriesMeta（异步）在启动与进书报模块时预取；
+// 缓存未命中返回 null，调用方走“卷N书N”兜底，下次预取完成后重渲染即恢复。
+// 结构约定：{name, volumes: [{title, books: [{title, chapters: [标题]}]}]}——十二篮等
+// 无书级系列的 books 每辑一个条目（title=辑名、chapters=篇标题列表），复用同一结构
+function seriesMeta(series) {
+  if (!series) return null;
+  if (state.bookMeta && state.bookMetaSeries === series) return state.bookMeta;
+  return (state.seriesMetaCache && state.seriesMetaCache[series]) || null;
+}
+
+// 异步预取系列元数据进缓存（fire-and-forget；完成后由调用方决定是否重渲染）
+async function prefetchSeriesMeta(series) {
+  if (!series || (state.seriesMetaCache && state.seriesMetaCache[series])) return;
+  if (state.bookMeta && state.bookMetaSeries === series) return;
+  state.seriesMetaCache = state.seriesMetaCache || {};
+  try {
+    state.seriesMetaCache[series] = await fetchJSONStall(`data/books/${series}.json`);
+  } catch (e) { /* 数据缺失保持无缓存，调用方走兜底 */ }
+}
+
+// 书报标注的组标签：按标注 series 取对应系列元数据（ni 硬编码已通用化）
+async function bookAnnLabel(series, volume, book, chapterSuffix) {
+  const meta = await seriesMeta(series);
+  const metaVol = meta ? meta.volumes[+volume - 1] : null;
+  const metaBook = metaVol && metaVol.books[+book];
+  if (metaBook) {
+    const head = `${(meta && meta.name) || series} · ${metaVol.title} · ${metaBook.title}`;
+    return chapterSuffix ? `${head}${chapterSuffix}` : head;
+  }
+  const fallback = `${series} · 卷${volume} · 书${+book + 1}`;
+  return chapterSuffix ? `${fallback}${chapterSuffix}` : fallback;
 }
 async function ensureBookVolume(volume) {
   const key = state.bookSeries;
@@ -3936,6 +3982,23 @@ async function renderDrawerBrowse(mod) {
     if (!dwState.vol || dwState.vol > vols.length) dwState.vol = 1;
     const metaVol = vols[dwState.vol - 1];
     const books = (metaVol && metaVol.books) || [];
+    // 扁平系列（十二篮等：每辑 books 只有 1 个条目，辑=书级分组）——左栏列全部辑、右栏列当前辑篇章
+    const flat = vols.length > 1 && vols.every(v => (v.books || []).length === 1);
+    if (flat) {
+      if (dwState.vol !== state.bookVolume) dwState.vol = state.bookVolume;
+      const fv = vols[dwState.vol - 1];
+      const fbook = (fv && fv.books[0]) || { chapters: [] };
+      body.innerHTML = `<div class="dw-cols">
+        <div class="dw-col">${vols.map((v, i) =>
+          `<div class="dw-item${i + 1 === dwState.vol ? ' cur' : ''}" data-vol="${i + 1}"><span class="num">${i + 1}</span><span class="t" title="${escapeHtml(v.title)}">${escapeHtml(v.title)}</span><span class="sub">${(v.books[0] && v.books[0].chapters.length) || 0}篇</span></div>`).join('')}
+        </div>
+        <div class="dw-col">${fbook.chapters.map((t, ci) =>
+          `<div class="dw-item${dwState.vol === state.bookVolume && ci === state.bookChapter ? ' cur' : ''}" data-r="${ci}"><span class="t" title="${escapeHtml(t)}">${escapeHtml(t)}</span></div>`).join('')}
+        </div>
+      </div>`;
+      scrollDrawerCur();
+      return;
+    }
     let cur = dwState.left;
     if (cur == null || cur >= books.length) cur = dwState.left = 0;
     const book = books[cur];
@@ -4113,6 +4176,16 @@ async function jumpDrawerBrowse(mod, r) {
     const art = v && (v.articles || []).find(a => a.id === +r);
     if (art) await openLrArticle(left, art);
   } else if (mod === 'books') {
+    // 扁平系列（十二篮等：每辑 1 个 books 条目）——vol=辑、r=篇索引，book 恒 0
+    const meta = state.bookMeta;
+    const flat = meta && meta.volumes.length > 1 && meta.volumes.every(v => (v.books || []).length === 1);
+    if (flat) {
+      if (vol !== state.bookVolume) await selectBookVolume(vol);
+      if (0 !== state.bookBook || +r !== state.bookChapter) {
+        await selectBookChapter(vol, 0, +r);
+      }
+      return;
+    }
     // 跨辑时先切辑（selectBookVolume 重渲染停靠列，同 openBookResult 模式），再切章
     if (vol !== state.bookVolume) await selectBookVolume(vol);
     if (left !== state.bookBook || +r !== state.bookChapter) {
@@ -4169,6 +4242,12 @@ function bindDrawerEvents() {
     }
     const h = e.target.closest('.dw-hist-item');
     if (h) { jumpHistory(load(LS_HISTORY, [])[+h.dataset.h]); return; }
+    const fv = e.target.closest('.dw-item[data-vol]');
+    if (fv && state.activeModule === 'books') {
+      dwState.vol = +fv.dataset.vol;
+      renderDrawerBrowse(state.activeModule);
+      return;
+    }
     const l = e.target.closest('.dw-item[data-l]');
     if (l) {
       if (state.activeModule === 'morning') dwState.vol = l.dataset.l;
