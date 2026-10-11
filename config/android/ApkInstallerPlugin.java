@@ -45,8 +45,9 @@ public class ApkInstallerPlugin extends Plugin {
         }
         // 文件名可由 JS 按目标版本指定（bible-study-v{version}.apk）：旧版本下载残留
         // 与新文件物理隔离——杜绝「旧版本残留文件被当作新包交给安装器」（2026-10-11 手机安装 1.0.40 事故）
-        String fileName = pluginCall.getString("fileName");
-        if (fileName == null || fileName.isEmpty()) fileName = FILE_NAME;
+        String requested = pluginCall.getString("fileName");
+        // lambda 内引用须 effectively final：兜底赋值放到 final 变量
+        final String fileName = (requested == null || requested.isEmpty()) ? FILE_NAME : requested;
         if (!fileName.matches("[A-Za-z0-9._-]+")) {
             pluginCall.reject("非法文件名");
             return;
