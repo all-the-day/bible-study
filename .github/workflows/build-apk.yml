@@ -95,7 +95,7 @@ jobs:
             python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$1" || {
               echo "::error::$1 非法 JSON（疑似 CF Pages SPA fallback 回的 HTML 页面，检查 staging 是否漏同步该文件）"; exit 1; }
           }
-          for f in books.json bible-text.json bible-notes.json bible-xrefs.json bible-outlines.json lr-titles.json; do
+          for f in books.json bible-text.json bible-notes.json bible-xrefs.json bible-outlines.json lr-titles.json persons.json; do
             $CURL "$BASE/$f" -o "www/data/$f"
             check_json "www/data/$f"
           done

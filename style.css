@@ -17,6 +17,9 @@
   --shadow-md: 0 6px 16px rgba(0,0,0,.08);
   --fn-ref: #c07818;
   --fn-ref-hover: #e08000;
+  /* 人物链接（正文人名 → 人物小传弹窗，原型阶段仅十二篮） */
+  --person: #0f7b6c;
+  --person-dark: #0a5c51;
   /* 5 色标注语义（沿用 bible-reader） */
   --c1: #FFEB3B;  /* 黄：重要的句子 */
   --c2: #4CAF50;  /* 绿：耶和华我的神等 */
@@ -425,6 +428,23 @@ sup.xref-ref:hover { color: var(--brand-dark); }
   border-bottom: 1px dashed var(--brand);
 }
 .ref-link:hover { color: var(--brand-dark); }
+
+/* 正文中的人物链接（原型：十二篮正文人名 → 人物小传弹窗；与经文引用的紫色虚线区分，用青绿点线） */
+.person-link {
+  color: var(--person); cursor: pointer;
+  border-bottom: 1px dotted var(--person);
+}
+.person-link:hover { color: var(--person-dark); }
+
+/* 人物小传弹窗 */
+.person-pop-desc { font-size: 15px; font-weight: 600; color: var(--heading); margin-bottom: 2px; }
+.person-pop-meta { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; }
+.person-pop-excerpt {
+  font-size: 14px; line-height: 1.9; color: var(--text-soft);
+  background: var(--surface-alt); border-radius: var(--radius-sm); padding: 10px 12px;
+}
+.person-pop-loc { font-size: 12px; color: var(--text-muted); margin-top: 10px; }
+.person-pop .fb-actions { margin-top: 12px; }
 
 /* ── 研读列 ── */
 .study-col {

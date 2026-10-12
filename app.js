@@ -93,6 +93,9 @@ const state = {
   drawerDocked: load(LS_DRAWER_DOCKED, true),  // 桌面导航抽屉停靠展开（可收起）
   typography: normalizeTypo(load(LS_TYPO, null)),  // {scale, lh} 阅读排版（Aa 面板可调，本机保存）
   lrTitleIndex: null,    // 生命读经全卷篇目标题索引缓存（data/lr-titles.json）
+  personsData: null,     // data/persons.json 人物词典（原型：仅十二篮正文启用人物链接）
+  personEntries: null,   // 由 personsData 编译的匹配表（别名+复合词保护，按长度降序，最长优先）
+  personsPending: null,  // 在途去重
   notesGroup: null,           // 左栏树选中的叶子分组（过滤主区）
   notesSelectedItem: null,    // 右栏编辑目标：{kind:'ann',id} | {kind:'note',dict,key}
   notesListScroll: 0,         // 移动端：打开全屏编辑面板前的列表滚动位置（返回时恢复）
@@ -3485,6 +3488,67 @@ async function prefetchSeriesMeta(series) {
   } catch (e) { /* 数据缺失保持无缓存，调用方走兜底 */ }
 }
 
+/* ---- 人物词典（原型：十二篮正文人名可点 → 弹人物小传） ----
+   数据 data/persons.json 由 scripts/export-persons.py 派生（人物名/别名/生卒/简介/小传摘录 +
+   小传出处定位）。scope 收敛启用范围（原型阶段仅 ['slat']），前端按 series 判定，扩范围只改数据。 */
+async function ensurePersonsData() {
+  if (state.personsData) return state.personsData;
+  if (state.personsPending) return state.personsPending;
+  state.personsPending = (async () => {
+    try {
+      state.personsData = await fetchJSON('data/persons.json');
+    } catch (e) {
+      // 失败置空表（本会话不再重试，页面无人物链接，不影响其它功能）
+      state.personsData = { scope: [], blockWords: [], persons: [] };
+    } finally {
+      state.personsPending = null;
+    }
+    return state.personsData;
+  })();
+  return state.personsPending;
+}
+
+// 编译匹配表：人物别名 + 复合词保护，按长度降序（最长优先，故「路德马丁」先于「加尔文」类短名命中）
+function personMatchEntries() {
+  if (state.personEntries) return state.personEntries;
+  const d = state.personsData || {};
+  const entries = [];
+  for (const p of d.persons || []) for (const a of (p.aliases || [])) entries.push({ text: a, pid: p.id });
+  for (const b of d.blockWords || []) entries.push({ text: b, pid: null });
+  entries.sort((a, b) => b.text.length - a.text.length);
+  state.personEntries = entries;
+  return entries;
+}
+
+// 当前系列是否启用人物链接（scope 为空数组=全模块启用）
+function personScopeOn(series) {
+  const d = state.personsData;
+  if (!d) return false;
+  const scope = d.scope || [];
+  return !scope.length || scope.indexOf(series) >= 0;
+}
+
+// 单行内的人名匹配：[{start, end, pid}]；复合词（加尔文主义等）整体跳过不链接
+function detectPersons(text) {
+  const entries = personMatchEntries();
+  if (!entries.length || !text) return [];
+  const out = [];
+  let i = 0;
+  while (i < text.length) {
+    let hit = null;
+    for (const e of entries) {
+      if (text.startsWith(e.text, i)) { hit = e; break; }
+    }
+    if (hit) {
+      if (hit.pid) out.push({ start: i, end: i + hit.text.length, pid: hit.pid });
+      i += hit.text.length;
+    } else {
+      i++;
+    }
+  }
+  return out;
+}
+
 // 书报标注的组标签：按标注 series 取对应系列元数据（ni 硬编码已通用化）
 async function bookAnnLabel(series, volume, book, chapterSuffix) {
   const meta = await seriesMeta(series);
@@ -3544,7 +3608,9 @@ function renderBookContent(parent, content, annotations, chapterTitle, bookTitle
     const heading = detectLrHeading(line);
     div.className = heading ? `bk-head lr-h${heading.level}` : 'bk-para';
     div.dataset.base = offset;
-    renderLrLine(div, line, offset, annotations);   // 复用：ref-link 引用高亮 + 标注叠加
+    // 人物链接（原型：仅 scope 内系列，目前=十二篮）——与经文引用同一渲染通道，重叠时经文引用优先
+    const persons = personScopeOn(state.bookSeries) ? detectPersons(line) : null;
+    renderLrLine(div, line, offset, annotations, null, null, persons);
     parent.appendChild(div);
     offset += line.length + 1;
   }
@@ -3552,6 +3618,8 @@ function renderBookContent(parent, content, annotations, chapterTitle, bookTitle
 
 async function renderBookMain() {
   const vol = await ensureBookVolume(state.bookVolume);
+  // 人物词典按需加载（28KB，仅书报模块；scope 判定要数据到手，故先加载再渲染）
+  if (!state.personsData) await ensurePersonsData();
   const book = vol && vol.books[state.bookBook];
   const ch = book && book.chapters[state.bookChapter];
   if (!ch) return;
@@ -4547,6 +4615,12 @@ function onContentClick(e) {
     showRefsPopup('引用经文', ref.dataset.refs);
     return;
   }
+  const per = e.target.closest('span.person-link');
+  if (per) {
+    e.stopPropagation();
+    showPersonPopup(per.dataset.person);
+    return;
+  }
   const mark = e.target.closest('mark[data-ann-id]');
   if (mark) {
     e.stopPropagation();
@@ -5327,6 +5401,32 @@ function showXrefPopup(letter, key) {
   showRefsPopup(`串珠 ${letter}`, raw);
 }
 
+// 人物小传弹窗（正文人名点开）：简介 + 生卒 + 小传摘录 + 出处，可跳转完整小传（书报·名人传记）
+function showPersonPopup(pid) {
+  const p = ((state.personsData || {}).persons || []).find(x => x.id === pid);
+  if (!p) { openPopup('人物', '<div class="empty-hint">未找到该人物小传</div>'); return; }
+  const meta = [p.en, p.years].filter(Boolean).join(' · ');
+  openPopup(`人物 · ${p.name}`, `
+    <div class="person-pop">
+      ${p.desc ? `<div class="person-pop-desc">${escapeHtml(p.desc)}</div>` : ''}
+      ${meta ? `<div class="person-pop-meta">${escapeHtml(meta)}</div>` : ''}
+      <div class="person-pop-excerpt">${escapeHtml(p.excerpt || '')}</div>
+      ${p.locLabel ? `<div class="person-pop-loc">${escapeHtml(p.locLabel)}</div>` : ''}
+      <div class="fb-actions"><button class="popup-btn primary" id="personGo">查看完整小传 ›</button></div>
+    </div>
+  `);
+  const go = $('personGo');
+  if (go) go.addEventListener('click', () => {
+    const l = p.loc || {};
+    // 定位不全（数据异常/词典扩写失误）时不跳转：openBookChapter 收到 undefined 会被当成
+    // 「章不同」而写坏 LS_BOOK_LAST，故四个字段齐全才放行；保留弹窗让用户看到提示
+    const ok = l.series && typeof l.volume === 'number' && typeof l.book === 'number' && typeof l.chapter === 'number';
+    if (!ok) { showToast('该人物暂无小传出处'); return; }
+    closePopupAll();
+    openBookChapter(l.volume, l.book, l.chapter, l.series);
+  });
+}
+
 /* ============ 引用解析（简化版） ============ */
 const BOOK_ALIASES = {
   '创世记':'创','出埃及记':'出','利未记':'利','民数记':'民','申命记':'申','约书亚记':'书','士师记':'士','路得记':'得',
@@ -5823,21 +5923,31 @@ function detectLrHeading(line) {
 }
 
 // 渲染单行：经文引用包 ref-link，叠加标注 mark（baseOffset 为该行在全文中的偏移）
-function renderLrLine(parent, text, baseOffset, annotations, defaultAcronym, carry) {
+// persons 可选：人物链接片段 [{start,end,pid}]，与经文引用重叠时以经文引用为准（不套两层链接）
+function renderLrLine(parent, text, baseOffset, annotations, defaultAcronym, carry, persons) {
   const refs = detectRefs(text || '', defaultAcronym, carry);
+  let segs = refs;
+  if (persons && persons.length) {
+    segs = refs.map(r => ({ start: r.start, end: r.end, refText: r.refText }));
+    for (const p of persons) {
+      if (segs.some(s => p.start < s.end && s.start < p.end)) continue;
+      segs.push(p);
+    }
+    segs.sort((a, b) => a.start - b.start);
+  }
   let cursor = 0;
   const appendText = (t, base) => {
     if (!annotations.length) parent.appendChild(document.createTextNode(t));
     else renderTextWithMarks(parent, t, base, annotations);
   };
-  for (const r of refs) {
-    if (r.start > cursor) appendText(text.slice(cursor, r.start), baseOffset + cursor);
+  for (const s of segs) {
+    if (s.start > cursor) appendText(text.slice(cursor, s.start), baseOffset + cursor);
     const span = document.createElement('span');
-    span.className = 'ref-link';
-    span.textContent = text.slice(r.start, r.end);
-    span.dataset.refs = r.refText;
+    if (s.refText !== undefined) { span.className = 'ref-link'; span.dataset.refs = s.refText; }
+    else { span.className = 'person-link'; span.dataset.person = s.pid; }
+    span.textContent = text.slice(s.start, s.end);
     parent.appendChild(span);
-    cursor = r.end;
+    cursor = s.end;
   }
   if (cursor < text.length) appendText(text.slice(cursor), baseOffset + cursor);
 }
