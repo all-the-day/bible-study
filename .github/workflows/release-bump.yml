@@ -46,4 +46,6 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add package.json manifest.json
           git commit -m "release: bump version to $VERSION"
+          # main 若在此期间前进，直接 push 会被拒丢提交——先 rebase（同 build-apk.yml 的回写步骤）
+          git pull --rebase origin main
           git push
