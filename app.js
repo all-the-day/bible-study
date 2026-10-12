@@ -4021,7 +4021,9 @@ function renderDrawer(sync = true) {
     </div>`;
   } else if (mod === 'books') {
     const vols = (state.bookMeta && state.bookMeta.volumes) || [];
-    foot.innerHTML = vols.length > 1 ? `<div class="dw-foot-seg">
+    // 扁平系列（十二篮等）左栏已就是全套辑列表，底部再放辑切换既冗余、辑多时又挤成一团 → 不渲染
+    const flat = vols.length > 1 && vols.every(v => (v.books || []).length === 1);
+    foot.innerHTML = (vols.length > 1 && !flat) ? `<div class="dw-foot-seg">
       ${vols.map((v, i) => `<div data-vol="${i + 1}"${dwState.vol === i + 1 ? ' class="sel"' : ''}>${escapeHtml(v.title)}</div>`).join('')}
     </div>` : '';
   } else {
@@ -4083,15 +4085,16 @@ async function renderDrawerBrowse(mod) {
     // 扁平系列（十二篮等：每辑 books 只有 1 个条目，辑=书级分组）——左栏列全部辑、右栏列当前辑篇章
     const flat = vols.length > 1 && vols.every(v => (v.books || []).length === 1);
     if (flat) {
-      if (dwState.vol !== state.bookVolume) dwState.vol = state.bookVolume;
+      // 只钳制越界值，不回弹到当前阅读辑——否则左栏点辑/底部切换刚设的值会被立刻抹掉
+      if (dwState.vol == null || dwState.vol < 1 || dwState.vol > vols.length) dwState.vol = state.bookVolume || 1;
       const fv = vols[dwState.vol - 1];
       const fbook = (fv && fv.books[0]) || { chapters: [] };
       body.innerHTML = `<div class="dw-cols">
         <div class="dw-col">${vols.map((v, i) =>
-          `<div class="dw-item${i + 1 === dwState.vol ? ' cur' : ''}" data-vol="${i + 1}"><span class="num">${i + 1}</span><span class="t" title="${escapeHtml(v.title)}">${escapeHtml(v.title)}</span><span class="sub">${(v.books[0] && v.books[0].chapters.length) || 0}篇</span></div>`).join('')}
+          `<div class="dw-item${i + 1 === dwState.vol ? ' cur' : ''}" data-vol="${i + 1}"><span class="t" title="${escapeHtml(v.title)}">${escapeHtml(v.title)}</span></div>`).join('')}
         </div>
         <div class="dw-col">${fbook.chapters.map((t, ci) =>
-          `<div class="dw-item${dwState.vol === state.bookVolume && ci === state.bookChapter ? ' cur' : ''}" data-r="${ci}"><span class="t" title="${escapeHtml(t)}">${escapeHtml(t)}</span></div>`).join('')}
+          `<div class="dw-item${dwState.vol === state.bookVolume && ci === state.bookChapter ? ' cur' : ''}" data-r="${ci}"><span class="t" title="${escapeHtml(t)}">${escapeHtml(dwChapterLabel(t))}</span></div>`).join('')}
         </div>
       </div>`;
       scrollDrawerCur();
@@ -4102,10 +4105,10 @@ async function renderDrawerBrowse(mod) {
     const book = books[cur];
     body.innerHTML = `<div class="dw-cols">
       <div class="dw-col">${books.map((b, i) =>
-        `<div class="dw-item${i === cur ? ' cur' : ''}" data-l="${i}"><span class="num">${i + 1}</span><span class="t" title="${escapeHtml(b.title)}">${escapeHtml(b.title)}</span><span class="sub">${b.chapters.length}章</span></div>`).join('')}
+        `<div class="dw-item${i === cur ? ' cur' : ''}" data-l="${i}"><span class="t" title="${escapeHtml(b.title)}">${escapeHtml(b.title)}</span></div>`).join('')}
       </div>
       <div class="dw-col">${book ? book.chapters.map((t, ci) =>
-        `<div class="dw-item${dwState.vol === state.bookVolume && cur === state.bookBook && ci === state.bookChapter ? ' cur' : ''}" data-r="${ci}"><span class="t" title="${escapeHtml(t)}">${escapeHtml(t)}</span></div>`).join('') : ''}
+        `<div class="dw-item${dwState.vol === state.bookVolume && cur === state.bookBook && ci === state.bookChapter ? ' cur' : ''}" data-r="${ci}"><span class="t" title="${escapeHtml(t)}">${escapeHtml(dwChapterLabel(t))}</span></div>`).join('') : ''}
       </div>
     </div>`;
     scrollDrawerCur();
@@ -4137,6 +4140,17 @@ async function renderDrawerBrowse(mod) {
 // 篇目标题展示：剥掉数据源的「002」编号前缀（保留「第二篇 …」语义部分，列表更干净）
 function dwArtLabel(title) {
   return (title || '').replace(/^0+\d+\s*/, '');
+}
+
+// 书报篇/章标题展示：剥掉与正文标题重复的开头序号——「第N篇/章/段/部」「一/壹…」「（一）」
+// 目录右栏窄，序号在正文标题里已有；剥后仍有内容才剥（纯序号标题如「第一篇」原样保留）
+// 需带分隔符才剥，防误伤（「一个见证人」「十个童女」不匹配）
+function dwChapterLabel(title) {
+  const t = String(title == null ? '' : title);
+  const m = t.match(/^第[0-9〇零一二三四五六七八九十百千壹贰叁肆伍陆柒捌玖拾两]+[篇章节段部][、,，.．:：\s]+(\S[\s\S]*)$/)
+    || t.match(/^[〇零一二三四五六七八九十百千壹贰叁肆伍陆柒捌玖拾两]+[、,，.．:：\s]+(\S[\s\S]*)$/)
+    || t.match(/^[（(][0-9〇零一二三四五六七八九十百千壹贰叁肆伍陆柒捌玖拾两]+[)）]\s*(\S[\s\S]*)$/);
+  return m ? m[1] : t;
 }
 
 // 当前项滚入可视区居中（左栏+右栏各自就近滚动容器）

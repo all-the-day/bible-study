@@ -42,23 +42,60 @@ async function main() {
   console.log('2. 直进十二篮:', r2.modBooks && r2.series === 'slat' && r2.bookName === '十二篮' && r2.paras > 0 ? '✓' : '✗',
     '|', r2.bookName, '|', r2.crumb, '| 段落:', r2.paras);
 
-  // 3. 抽屉双栏：左=辑（12 个，title=第N辑）、右=篇列表
+  // 3. 抽屉双栏：左=辑（12 个，title=第N辑）、右=篇列表；
+  //    扁平系列无底部辑切换条、辑项无「N篇」副标、篇标题剥掉与正文重复的「第N篇」前缀
   await page.evaluate(() => { openNavDrawer(); });
   await new Promise((r) => setTimeout(r, 800));
   const r3 = await page.evaluate(() => {
     const cols = document.querySelectorAll('#dwBody .dw-col');
     const left = [...cols[0].querySelectorAll('.dw-item .t')].map(x => x.title || x.textContent.trim());
     const right = [...cols[1].querySelectorAll('.dw-item')].length;
-    return { leftCount: left.length, firstLeft: left[0], right };
+    return {
+      leftCount: left.length, firstLeft: left[0], right,
+      rightFirst: cols[1].querySelector('.dw-item .t')?.textContent,
+      footEmpty: document.querySelector('#dwFoot').innerHTML.trim() === '',
+      hasSub: !!cols[0].querySelector('.sub'),
+      hasNum: !!cols[0].querySelector('.num'),
+    };
   });
-  console.log('3. 抽屉双栏:', r3.leftCount === 12 && r3.right === 12 ? '✓' : '✗',
-    '| 左栏:', r3.leftCount, '辑 | 首项:', r3.firstLeft, '| 右栏篇数:', r3.right);
+  console.log('3. 抽屉双栏:', r3.leftCount === 12 && r3.right === 12 && r3.footEmpty && !r3.hasSub && !r3.hasNum ? '✓' : '✗',
+    '| 左栏:', r3.leftCount, '辑 | 首项:', r3.firstLeft, '| 右栏篇数:', r3.right,
+    '| 底部条空:', r3.footEmpty, '| 无N篇副标:', !r3.hasSub, '| 无序号:', !r3.hasNum, '| 右栏首篇:', r3.rightFirst);
+  console.log('3c. 篇标题剥编号:', r3.rightFirst === '两种的认识主耶稣' ? '✓' : '✗', '| 右栏首篇:', r3.rightFirst);
+
+  // 3d. 标题剥序号覆盖三种写法（第N篇 / 一·壹 / （一）），纯序号标题与含数字词标题保留
+  const r3d = await page.evaluate(() => [
+    dwChapterLabel('第一篇、两种的认识主耶稣'), dwChapterLabel('一 雅各'), dwChapterLabel('壹 亚当与儿子的名分'),
+    dwChapterLabel('（一）引语'), dwChapterLabel('第一篇'), dwChapterLabel('一个见证人的故事'), dwChapterLabel('序'),
+  ]);
+  console.log('3d. 标题剥序号:', r3d[0] === '两种的认识主耶稣' && r3d[1] === '雅各' && r3d[2] === '亚当与儿子的名分'
+    && r3d[3] === '引语' && r3d[4] === '第一篇' && r3d[5] === '一个见证人的故事' && r3d[6] === '序' ? '✓' : '✗',
+    '|', JSON.stringify(r3d));
+
+  // 3b. 左栏点「第二辑」→ 抽屉切到第二辑（不反弹回当前阅读辑），右栏随之刷新
+  await page.evaluate(() => {
+    const cols = document.querySelectorAll('#dwBody .dw-col');
+    [...cols[0].querySelectorAll('.dw-item')].find(e => e.dataset.vol === '2').click();
+  });
+  await new Promise((r) => setTimeout(r, 700));
+  const r3b = await page.evaluate(() => {
+    const cols = document.querySelectorAll('#dwBody .dw-col');
+    return {
+      dwVol: dwState.vol,
+      curLeft: cols[0].querySelector('.dw-item.cur')?.dataset.vol,
+      rightFirst: cols[1].querySelector('.dw-item .t')?.textContent,
+    };
+  });
+  console.log('3b. 抽屉内切辑:', r3b.dwVol === 2 && r3b.curLeft === '2' && r3b.rightFirst !== r3.rightFirst ? '✓' : '✗',
+    '| vol:', r3b.dwVol, '| 高亮:', r3b.curLeft, '| 右栏首篇:', r3b.rightFirst);
 
   // 4. 划线标注 → 笔记树分组显示「十二篮 第N辑」（seriesMeta 通用化验证点）
   await page.evaluate(() => { closeNavDrawer ? closeNavDrawer() : null; });
   await new Promise((r) => setTimeout(r, 500));
   await page.evaluate(() => {
-    const p = document.querySelector('#bookMain .bk-para');
+    // 取首个正文段落（首节点为文本且够长）——首段「读经：」仅 3 字，setEnd(4) 会越界
+    const p = [...document.querySelectorAll('#bookMain .bk-para')]
+      .find(el => el.firstChild && el.firstChild.nodeType === 3 && el.firstChild.textContent.length >= 4);
     const range = document.createRange();
     range.setStart(p.firstChild, 0);
     range.setEnd(p.firstChild, 4);
