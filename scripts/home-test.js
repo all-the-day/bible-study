@@ -1,5 +1,5 @@
 /* 首页 + 合集块冒烟测试（阅读器直进版）：启动进首页 → 三个块直进阅读器 → ⌂ 回首页 → 搜索
-   末尾含「首页最近阅读」（反馈 #16）：最多 5 条 / 位于合集块下方 / 点击跳原文并置顶 / 全部›开抽屉历史段 / 空历史整块隐藏 */
+   末尾含「首页最近阅读」（反馈 #16）：最多 5 条 / 位于合集块下方 / 点击跳原文并置顶 / 全部›首页历史弹窗（就地浏览）/ 空历史整块隐藏 */
 const { spawn } = require('child_process');
 const ROOT = require('path').resolve(__dirname, '..');
 const PORT = 8765;
@@ -202,15 +202,27 @@ async function main() {
     h11[0] === '约翰福音 7章' && h11.length === 5;
   console.log('11. 最近阅读点击跳转+置顶:', h11ok ? '✓' : '✗', '|', r11.book, r11.ch, '| 置顶:', h11[0], '| 条数:', h11.length);
 
-  // 12. 「全部 ›」→ 抽屉历史段（全量 6 条 + 清空按钮）；历史清空后首页整块隐藏（不留空态）
+  // 12. 「全部 ›」→ 首页弹窗展示全部历史（不离开首页）；点条目跳原文；历史清空后整块隐藏
   await page.click('#homeHist [data-hist-all]');
   await new Promise((r) => setTimeout(r, 600));
   const r12 = await page.evaluate(() => ({
     home: document.body.classList.contains('home'),
-    segSel: (document.querySelector('#dwSeg [data-seg="history"]') || {}).className,
-    rows: document.querySelectorAll('#navDrawer .dw-hist-item').length,
-    clearBtn: !!document.querySelector('#navDrawer .dw-clear-btn'),
+    popupShown: !document.querySelector('#popup').hidden,
+    popupTitle: document.querySelector('#popupTitle').textContent,
+    rows: document.querySelectorAll('#popupBody .hist-pop-item').length,
+    firstRow: document.querySelector('#popupBody .hist-pop-item .t')?.textContent,
   }));
+  // 弹窗内点首条 → 关弹窗跳原文
+  await page.evaluate(() => document.querySelector('#popupBody .hist-pop-item').click());
+  await new Promise((r) => setTimeout(r, 1800));
+  const r12c = await page.evaluate(() => ({
+    home: document.body.classList.contains('home'),
+    popupHidden: document.querySelector('#popup').hidden,
+    ch: document.querySelector('#chapterLabel').textContent,
+  }));
+  await page.evaluate(() => closePopupAll());
+  await page.click('#homeBtn');
+  await new Promise((r) => setTimeout(r, 300));
   await page.evaluate(() => localStorage.setItem('bible-study.history', '[]'));
   await page.evaluate(() => showHome());
   await new Promise((r) => setTimeout(r, 300));
@@ -218,10 +230,11 @@ async function main() {
     html: document.querySelector('#homeHist').innerHTML,
     blocks: document.querySelectorAll('#homeGrid .home-block').length,
   }));
-  const r12ok = !r12.home && r12.segSel === 'sel' && r12.rows === 6 && r12.clearBtn &&
+  const r12ok = r12.home && r12.popupShown && r12.popupTitle === '阅读历史' && r12.rows === 6 && r12.firstRow &&
+    r12c.popupHidden && !r12c.home && r12c.ch &&
     r12b.html === '' && r12b.blocks === 6;
-  console.log('12. 全部›开抽屉历史段+空历史隐藏:', r12ok ? '✓' : '✗',
-    '| 抽屉历史行:', r12.rows, '| 段选中:', r12.segSel, '| 清空按钮:', r12.clearBtn, '| 清空后首页块:', r12b.blocks, 'HTML空:', r12b.html === '');
+  console.log('12. 全部›历史弹窗(就地浏览)+空历史隐藏:', r12ok ? '✓' : '✗',
+    '| 留在首页:', r12.home, '| 弹窗行数:', r12.rows, '| 首行:', r12.firstRow, '| 点条目跳转:', r12c.ch, '| 清空后首页块:', r12b.blocks, 'HTML空:', r12b.html === '');
 
   console.log('\nJS 错误:', errors.length ? errors : '无');
   await browser.close();

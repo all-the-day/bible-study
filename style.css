@@ -1092,6 +1092,20 @@ body.bookhub #menuBtn { display: none; }               /* 合集层是层级选�
 .home-hist-item .sub { flex: none; font-size: 12px; color: var(--text-muted); white-space: nowrap; }
 .home-hist-item:hover .t { color: var(--brand); }
 
+/* 首页「全部 ›」历史弹窗（popup 内列表，2026-10-12 用户定稿：就地浏览不跳工作区） */
+.hist-pop-list { margin: -4px 0; }
+.hist-pop-item {
+  padding: 10px 2px; cursor: pointer; border-bottom: 1px solid var(--border);
+}
+.hist-pop-item:last-child { border-bottom: none; }
+.hist-pop-item .t {
+  font-size: 14px; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.hist-pop-item .sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.hist-pop-item:hover .t, .hist-pop-item:active .t { color: var(--brand); }
+.hist-pop-empty { text-align: center; color: var(--text-muted); font-size: 14px; padding: 24px 0; }
+
 /* 我的笔记：本章|全部 范围切换 */
 .note-scope { display: flex; gap: 8px; margin: 2px 0 10px; }
 .note-scope-btn {

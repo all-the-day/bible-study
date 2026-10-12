@@ -4259,17 +4259,23 @@ async function jumpHistory(h) {
   }
 }
 
-// 首页「全部 ›」：进工作区并打开抽屉「历史」段（历史不按模块过滤，四模块共用一份）。
-// notes 模块的抽屉不承载历史段（走分类树），故目标模块取最近一条所属模块。
-async function openHomeHistoryAll() {
-  const first = load(LS_HISTORY, [])[0];
-  const target = state.activeModule === 'notes' && first ? first.module : state.activeModule;
-  if (target !== state.activeModule) await enterModule(target);
-  else enterWork();
-  dwState.seg = 'history';
-  dwState._lastMod = target;        // 防 renderDrawer 判「模块切换」把段重置回浏览
-  openNavDrawer();
-  if (isDocked()) renderDrawer();   // 已停靠时 openNavDrawer 提前 return，需补一次渲染
+// 首页「全部 ›」：弹窗展示全部阅读历史（不离开首页——用户反馈 #27：点「全部」的意图是
+// 浏览历史本身，不该被甩进工作区开抽屉）。点条目复用 jumpHistory 跳原文（关弹窗后跳）。
+function openHomeHistoryAll() {
+  const list = load(LS_HISTORY, []);
+  if (!list.length) return;
+  const html = list.map((h, i) => `
+    <div class="hist-pop-item" data-h="${i}" role="button" tabindex="0">
+      <div class="t">${escapeHtml(h.title || '')}</div>
+      <div class="sub">${HISTORY_LABELS[h.module] || ''} · ${relTime(h.t)}</div>
+    </div>`).join('') || '<div class="hist-pop-empty">暂无阅读历史</div>';
+  openPopup('阅读历史', `<div class="hist-pop-list">${html}</div>`);
+  $('popupBody').querySelectorAll('.hist-pop-item').forEach(el => {
+    el.addEventListener('click', () => {
+      closePopupAll();
+      jumpHistory(load(LS_HISTORY, [])[+el.dataset.h]);
+    });
+  });
 }
 
 // 右栏项点击（浏览段）：关抽屉 → 走各模块统一入口
