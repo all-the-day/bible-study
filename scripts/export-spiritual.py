@@ -31,14 +31,20 @@ CN_NUM = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, 
           "十九": 19, "二十": 20}
 
 
-def read_md(path):
-    """md 文件 → (标题, 正文)。首行 # 标题；正文去掉标题行，保留段落"""
+def read_md(path, extra_skip=()):
+    """md 文件 → (标题, 正文)。首行 # 标题；正文去掉标题行，保留段落。
+    extra_skip：开头连续出现的额外剥离行正则（如十二篮的目录名残留「十二篮(第一辑)」）"""
     with open(path, encoding="utf-8") as f:
         lines = f.read().split("\n")
     title = ""
     if lines and TITLE_RE.match(lines[0]):
         title = TITLE_RE.match(lines[0]).group(1).strip()
     body = [ln.strip() for ln in lines[1:] if ln.strip()]
+    # 剥开头连续的「标题重复行/目录名残留行」：两类交替出现（标题→目录名→标题），
+    # 循环剥到第一个既非标题也命中 extra_skip 的行为止
+    norm = lambda s: re.sub(r"\s+", "", s or "")
+    while body and title and (norm(body[0]) == norm(title) or any(re.match(p, body[0]) for p in extra_skip)):
+        body.pop(0)
     # 剥离尾部爬取元数据：`---` 分隔线 + `**来源**/**URL**/**获取时间**` 行（不属正文）
     META_RE = re.compile(r"^\*\*(来源|URL|获取时间)\*\*")
     while body and (body[-1] == "---" or META_RE.match(body[-1])):
@@ -129,9 +135,15 @@ def export_slat():
         if not os.path.isfile(path):
             print(f"  [WARN] 文件缺失：{path}")
             continue
-        title, content = read_md(path)
+        title, content = read_md(path, extra_skip=(r"^十二篮\(", r"^名人传记$"))
         if not title:
             title = it.get("title") or re.sub(r"^\d+\s*", "", fn[:-3])
+        # 剥开头标题重复行（正文首行与标题相同，渲染时与 .bk-title 重复）
+        clines = content.split("\n")
+        norm = lambda s: re.sub(r"\s+", "", s or "")
+        while clines and norm(clines[0]) == norm(title):
+            clines.pop(0)
+        content = "\n".join(clines)
         by_vol.setdefault(vol_dir, []).append({"title": title, "content": content})
 
     name = idx.get("series", "十二篮")
@@ -166,7 +178,7 @@ def export_bio():
         if not os.path.isfile(path):
             print(f"  [WARN] 文件缺失：{path}")
             continue
-        title, content = read_md(path)
+        title, content = read_md(path, extra_skip=(r"^名人传记$",))
         if not title:
             title = it.get("title") or re.sub(r"^\d+\s*", "", parts[-1][:-3])
         # 分组键：一级「子集/文件」→子集；「王明道文库精选/第N册…/文件」→册级

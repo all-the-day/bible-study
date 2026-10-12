@@ -1028,6 +1028,18 @@ body.home .mobile-nav { display: none; }
   position: fixed; inset: 52px 0 0; z-index: 20;       /* 顶栏 z30 之上、popup z60 之下 */
   background: var(--page-bg); overflow-y: auto; padding: 24px 16px 40px;
 }
+/* ── 书报二级合集层（2026-10-12）：与 home 同款正交规则 ── */
+body.bookhub .layout { display: none; }
+body.bookhub .crumb { display: none; }
+body.bookhub .topbar-actions { margin-left: auto; }
+body.bookhub #viewModeBtn, body.bookhub #hideMarksBtn,
+body.bookhub #studyFullBtn { display: none !important; }
+body.bookhub .mobile-nav { display: none; }
+body.bookhub #modePill { display: none; }              /* 合集层非阅读视图，隐藏读经|研读 pill */
+#bookHubView {
+  position: fixed; inset: 52px 0 0; z-index: 20;
+  background: var(--page-bg); overflow-y: auto; padding: 24px 16px 40px;
+}
 .home-wrap { max-width: 640px; margin: 0 auto; }
 .home-search { position: relative; }
 .home-search input {

@@ -1032,6 +1032,8 @@ function openBookHub() {
   closePopupAll();
   closeNavDrawer();
   applyDrawerDock();
+  const grid = $('bookHubGrid');
+  if (grid) grid.dataset.epoch = String(Number(grid.dataset.epoch || '0') + 1);   // 使旧补渲染失效
   renderBookHub();
 }
 
@@ -1050,12 +1052,20 @@ function renderBookHub() {
       </div>`).join('');
   };
   grid.innerHTML = '<div class="loading-hint"><span class="loading-spin"></span>合集加载中…</div>';
+  let renderEpoch = (grid.dataset.epoch = (grid.dataset.epoch || '0'));
+  const stale = () => grid.dataset.epoch !== renderEpoch;   // 用户已离开/重开合集层，丢弃过期渲染
   ensureBookSeriesIndex().then((idx) => {
     // 只渲染非 ni 系列（倪文集是独立首页块）；图标映射表缺省用 📄
     const list = (idx.series || []).filter(s => s.id !== 'ni').map(s => ({ ...s, icon: BOOK_HUB_ICONS[s.id] }));
     render(list);
     grid.dataset.loaded = '1';
-    list.forEach(s => prefetchSeriesMeta(s.id));   // 搜索依赖 seriesMeta 缓存
+    // 旧系列清单缓存（SW stale-while-revalidate 首帧回旧值/HTTP 启发式缓存）会导致
+    // 首开空块（如只有 ni 则全部被排除）——预取每个系列元数据，成功一个重渲染一次，
+    // 新系列清单到位后自动补齐（对齐笔记视图的预取补渲染模式）
+    list.forEach(s => prefetchSeriesMeta(s.id).then((m) => {
+      if (!m || stale()) return;
+      render(list);
+    }));
   });
 }
 
