@@ -105,7 +105,8 @@ const COLLECTIONS = [
   { id: 'lifereading', title: '生命读经', icon: '📗', entry: () => enterModule('lifereading') },
   { id: 'notes', title: '我的笔记', icon: '📝', entry: () => enterModule('notes') },
   { id: 'morning', title: '听抄', icon: '🌅', entry: () => enterModule('morning') },
-  { id: 'books', title: '书报', icon: '📚', entry: () => enterModule('books') },
+  { id: 'ni', title: '倪文集', icon: '📚', entry: () => enterModule('books', { series: 'ni' }) },
+  { id: 'bookhub', title: '书报', icon: '🗂️', entry: () => openBookHub() },
 ];
 
 function load(key, fallback) {
@@ -1007,6 +1008,7 @@ function showHome() {
   state.screen = 'home';
   document.body.classList.add('home');
   document.body.classList.remove('mobile-study');
+  closeBookHub();
   // 清除模块残留类：body-mod-* 会隐藏顶栏按钮（如 #feedbackBtn），不清会导致回首页后顶栏与首次进入不一致
   [...document.body.classList].filter(c => c.startsWith('body-mod-')).forEach(c => document.body.classList.remove(c));
   closePopupAll();
@@ -1019,10 +1021,51 @@ function showHome() {
   if (res) res.innerHTML = '';
 }
 
+/* ============ 书报二级合集层（2026-10-12） ============ */
+// 书报首页块进入：展示小书报合集块网格（数据驱动自 books 系列清单，排除倪文集）。
+// 点合集块 enterModule('books', {series}) 直进该系列阅读器；⌂/搜索跳转照常。
+function openBookHub() {
+  state.screen = 'bookhub';
+  document.body.classList.add('bookhub');
+  document.body.classList.remove('home', 'mobile-study');
+  [...document.body.classList].filter(c => c.startsWith('body-mod-')).forEach(c => document.body.classList.remove(c));
+  closePopupAll();
+  closeNavDrawer();
+  applyDrawerDock();
+  renderBookHub();
+}
+
+function closeBookHub() {
+  document.body.classList.remove('bookhub');
+}
+
+function renderBookHub() {
+  const grid = $('bookHubGrid');
+  if (!grid) return;
+  const render = (list) => {
+    grid.innerHTML = list.map(s => `
+      <div class="home-block" data-series="${s.id}" role="button" tabindex="0">
+        <div class="home-block-icon">${s.icon || '📄'}</div>
+        <div class="home-block-title">${escapeHtml(s.name)}</div>
+      </div>`).join('');
+  };
+  grid.innerHTML = '<div class="loading-hint"><span class="loading-spin"></span>合集加载中…</div>';
+  ensureBookSeriesIndex().then((idx) => {
+    // 只渲染非 ni 系列（倪文集是独立首页块）；图标映射表缺省用 📄
+    const list = (idx.series || []).filter(s => s.id !== 'ni').map(s => ({ ...s, icon: BOOK_HUB_ICONS[s.id] }));
+    render(list);
+    grid.dataset.loaded = '1';
+    list.forEach(s => prefetchSeriesMeta(s.id));   // 搜索依赖 seriesMeta 缓存
+  });
+}
+
+const BOOK_HUB_ICONS = { slat: '🧺', bio: '👤' };
+
 // 进工作区：移除 body.home，.layout 恢复显示。幂等，任何工作区入口调用
 function enterWork() {
   state.screen = 'work';
   document.body.classList.remove('home');
+  document.body.classList.remove('bookhub');
   // 恢复模块类（showHome 会清除，防止 body-mod-* 残留影响首页顶栏样式）
   applyModuleBodyClass(state.activeModule);
   syncModePill();   // pill 高亮与实际视图对齐（跨模块进入时防残留，见 syncModePill 注释）
@@ -1240,6 +1283,51 @@ function bindHomeEvents() {
     const c = COLLECTIONS.find(x => x.id === tile.dataset.entry);
     if (c && c.entry) c.entry();
   });
+  // 书报合集层：块点击 → series 直进阅读器；搜索 → 跨合集检索（篇目标题，数据来自各系列元数据缓存）
+  $('bookHubGrid').addEventListener('click', (e) => {
+    const tile = e.target.closest('.home-block');
+    if (!tile) return;
+    // 同模块重入（activeModule 已是 books）时 enterModule 幂等跳过 enter——
+    // 必须走 openBookChapter 显式切系列/辑/章（内部处理 selectBookSeries）
+    openBookChapter(1, 0, 0, tile.dataset.series);
+  });
+  const hubInput = $('bookHubSearch');
+  const hubResults = $('bookHubSearchResults');
+  if (hubInput) {
+    hubInput.addEventListener('input', () => {
+      const q = hubInput.value.trim().toLowerCase();
+      if (!q) { hubResults.innerHTML = ''; return; }
+      const hits = [];
+      (state.bookSeriesIndex ? state.bookSeriesIndex.series : []).forEach(s => {
+        if (s.id === 'ni') return;
+        const meta = seriesMeta(s.id);
+        if (meta && (meta.name || '').toLowerCase().includes(q)) {
+          hits.push({ key: 'series:' + s.id, loc: '合集', text: meta.name, series: s.id });
+        }
+        if (meta) meta.volumes.forEach((v, vi) => (v.books || []).forEach((b, bi) => {
+          (b.chapters || []).forEach((t, ci) => {
+            if (String(t).toLowerCase().includes(q) && hits.length < 20) {
+              hits.push({ key: `ch:${s.id}:${vi}:${bi}:${ci}`, loc: `${meta.name} · ${v.title} · ${b.title}`, text: String(t), series: s.id, volume: vi + 1, book: bi, chapter: ci });
+            }
+          });
+        }));
+      });
+      hubResults.innerHTML = hits.map(h => `
+        <div class="home-sr-item" data-k="${h.key}">
+          <span class="sr-loc">${escapeHtml(h.loc)}</span>${escapeHtml(h.text)}
+        </div>`).join('') || '<div class="home-sr-item">无匹配结果</div>';
+      hubResults.onclick = (e) => {
+        const item = e.target.closest('.home-sr-item');
+        if (!item || !item.dataset.k) return;
+        const hit = hits.find(x => x.key === item.dataset.k);
+        hubResults.innerHTML = '';
+        hubInput.value = '';
+        if (!hit) return;
+        if (hit.volume != null) openBookChapter(hit.volume, hit.book, hit.chapter, hit.series);
+        else enterModule('books', { series: hit.series });
+      };
+    });
+  }
   // 首页「最近阅读」点击委托：条目=跳回原文（复用 jumpHistory），「全部 ›」=开抽屉历史段
   $('homeHist').addEventListener('click', (e) => {
     if (e.target.closest('[data-hist-all]')) { openHomeHistoryAll(); return; }

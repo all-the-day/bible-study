@@ -219,7 +219,7 @@ async function main() {
     blocks: document.querySelectorAll('#homeGrid .home-block').length,
   }));
   const r12ok = !r12.home && r12.segSel === 'sel' && r12.rows === 6 && r12.clearBtn &&
-    r12b.html === '' && r12b.blocks === 5;
+    r12b.html === '' && r12b.blocks === 6;
   console.log('12. 全部›开抽屉历史段+空历史隐藏:', r12ok ? '✓' : '✗',
     '| 抽屉历史行:', r12.rows, '| 段选中:', r12.segSel, '| 清空按钮:', r12.clearBtn, '| 清空后首页块:', r12b.blocks, 'HTML空:', r12b.html === '');
 

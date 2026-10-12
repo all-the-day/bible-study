@@ -178,7 +178,8 @@ async function main() {
       `| 同位条数:${dupCount} 顶部:${h1[0] && h1[0].title}`);
 
     // 8. 书报模块：停靠辑切换（底部）+ 双栏 + 点章跳转
-    await page.evaluate(() => enterModule('books'));
+    //    显式进 ni 系列（LS_BOOK_LAST 可能残留 bio/slat——bio 单辑无辑切换条）
+    await page.evaluate(() => enterModule('books', { series: 'ni' }));
     await wait(2500);
     const r8a = await page.evaluate(() => ({
       docked: document.body.classList.contains('drawer-docked'),

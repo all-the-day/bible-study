@@ -1014,6 +1014,7 @@ body.scroll-locked { overflow: hidden; }
 
 /* ── 首页（合集块）── 启动默认视图，与工作区正交：body.home 时隐藏 .layout */
 body:not(.home) #homeView { display: none; }   /* 工作区时隐藏首页 */
+body:not(.bookhub) #bookHubView { display: none; }   /* 非书报合集层时隐藏 */
 body.home .layout { display: none; }
 body.home .crumb { display: none; }                    /* 首页不显示章节 crumb */
 body.home #homeBtn { display: none; }                  /* 首页无需「回首页」按钮 */

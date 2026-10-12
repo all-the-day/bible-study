@@ -24,7 +24,7 @@ async function main() {
   await new Promise((r) => setTimeout(r, 1500));
 
   // 1. 点书报块 → 直进第1辑第1本第1章
-  await page.click('#homeGrid .home-block[data-entry="books"]');
+  await page.click('#homeGrid .home-block[data-entry="ni"]');
   await new Promise((r) => setTimeout(r, 3500));
   const r1 = await page.evaluate(() => ({
     modBooks: document.body.classList.contains('body-mod-books'),
@@ -141,7 +141,7 @@ async function main() {
   // 7. ⌂ 回首页再进书报 → 恢复上次位置
   await page.click('#homeBtn');
   await new Promise((r) => setTimeout(r, 300));
-  await page.click('#homeGrid .home-block[data-entry="books"]');
+  await page.click('#homeGrid .home-block[data-entry="ni"]');
   await new Promise((r) => setTimeout(r, 2500));
   const r7 = await page.evaluate(() => ({
     crumb: document.querySelector('#chapterLabel').textContent.slice(0, 22),

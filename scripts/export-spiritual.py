@@ -146,9 +146,51 @@ def export_slat():
     return meta, volumes_content
 
 
+def export_bio():
+    """名人传记：{系列}目录索引.json（items 扁平，local_rel=「子集[/册目录]/NNN标题.md」）
+    + 子集目录/NNN标题.md。子集 = books 条目（title=子集名、chapters=篇列表）；
+    王明道文库精选的「册」目录折叠为册级 books 条目（「王明道文库精选·第一册」）。
+    """
+    src_dir = os.path.join(BASE, "名人传记")
+    with open(os.path.join(src_dir, "名人传记目录索引.json"), encoding="utf-8") as f:
+        idx = json.load(f)
+
+    by_group = {}
+    for it in (idx.get("items") or []):
+        rel = it.get("local_rel") or ""
+        parts = [p for p in rel.split("/") if p]
+        if len(parts) < 2:
+            print(f"  [WARN] local_rel 异常：{rel}")
+            continue
+        path = os.path.join(src_dir, *parts)
+        if not os.path.isfile(path):
+            print(f"  [WARN] 文件缺失：{path}")
+            continue
+        title, content = read_md(path)
+        if not title:
+            title = it.get("title") or re.sub(r"^\d+\s*", "", parts[-1][:-3])
+        # 分组键：一级「子集/文件」→子集；「王明道文库精选/第N册…/文件」→册级
+        if parts[0] == "王明道文库精选" and len(parts) >= 3:
+            m_vol = re.search(r"第([一二三四五六七八九十]+)册", parts[1])
+            group = "王明道文库精选·" + (m_vol.group(0) if m_vol else parts[1].replace("　", " ").strip())
+        else:
+            group = parts[0]
+        by_group.setdefault(group, []).append({"title": title, "content": content})
+
+    name = idx.get("series", "名人传记")
+    meta = {"name": name, "volumes": []}
+    volumes_content = []
+    # 单一 volume（名人传记无辑级），所有子集作为 books 条目
+    books = [{"title": g, "chapters": by_group[g]} for g in by_group]
+    meta["volumes"].append({"title": name, "books": books})
+    volumes_content.append({"volume": name, "books": books})
+    return meta, volumes_content
+
+
 SERIES = {
     "ni": export_ni,
     "slat": export_slat,   # 十二篮（slat = 十二篮英译通称 Twelve Baskets 的篮）
+    "bio": export_bio,     # 名人传记（16 个子集各成 books 条目，单一 volume）
 }
 
 
