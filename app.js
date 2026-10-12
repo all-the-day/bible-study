@@ -3940,7 +3940,7 @@ function toggleDrawerDock() {
 }
 
 function openNavDrawer() {
-  if (state.screen === 'home') return;
+  if (state.screen === 'home' || state.screen === 'bookhub') return;   // 首页/合集层无阅读位置，不承载导航抽屉
   if (window.innerWidth > 900) {
     // 桌面：notes 用左栏 #navCol 树（不参与停靠抽屉），其余模块停靠展开
     if (state.activeModule === 'notes') return;
@@ -4044,7 +4044,7 @@ async function renderDrawerBrowse(mod) {
     const book = state.books.find(b => b.index === cur);
     body.innerHTML = `<div class="dw-cols">
       <div class="dw-col">${state.books.filter(b => b.index >= a && b.index <= z).map(b =>
-        `<div class="dw-item${b.index === cur ? ' cur' : ''}" data-l="${b.index}"><span class="num">${b.index}</span><span class="t" title="${escapeHtml(b.name)}">${escapeHtml(b.name)}</span></div>`).join('')}
+        `<div class="dw-item${b.index === cur ? ' cur' : ''}" data-l="${b.index}"><span class="t" title="${escapeHtml(b.name)}">${escapeHtml(b.name)}</span></div>`).join('')}
       </div>
       <div class="dw-col">${Array.from({ length: (book && book.chapters) || 0 }, (_, k) => {
         const c = k + 1;
@@ -4059,7 +4059,7 @@ async function renderDrawerBrowse(mod) {
     const cur = dwState.left;
     body.innerHTML = `<div class="dw-cols">
       <div class="dw-col">${state.books.map(b =>
-        `<div class="dw-item${b.index === cur ? ' cur' : ''}" data-l="${b.index}"><span class="num">${b.index}</span><span class="t" title="${escapeHtml(b.name)}">${escapeHtml(b.name)}</span></div>`).join('')}
+        `<div class="dw-item${b.index === cur ? ' cur' : ''}" data-l="${b.index}"><span class="t" title="${escapeHtml(b.name)}">${escapeHtml(b.name)}</span></div>`).join('')}
       </div>
       <div class="dw-col"><div class="dw-hint">篇目加载中…</div></div>
     </div>`;
@@ -4388,7 +4388,7 @@ function bindEvents() {  // 首页：合集块点击 + 顶部搜索 + ⌂ 回首
   });
   // 菜单 ☰：桌面=停靠列收起/展开（全模块统一）；移动端=浮层导航抽屉
   $('menuBtn').addEventListener('click', () => {
-    if (state.screen === 'home') return;   // 首页隐藏 ☰（CSS 双保险）
+    if (state.screen === 'home' || state.screen === 'bookhub') return;   // 首页/合集层隐藏 ☰（CSS 双保险）
     if (window.innerWidth > 900) {
       const mod = READER_MODULES[state.activeModule];
       if (mod && mod.onMenu) mod.onMenu();

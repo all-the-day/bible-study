@@ -899,13 +899,10 @@ body.scroll-locked { overflow: hidden; }
   flex: 1; min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.5;
 }
-.dw-item .num { min-width: 20px; color: var(--text-muted); font-size: 12px; flex-shrink: 0; }
-.dw-item .sub { font-size: 12px; color: var(--text-muted); margin-left: auto; flex-shrink: 0; white-space: nowrap; }
 .dw-item .nav-result-loc { color: var(--brand); opacity: .75; }
 .dw-item.cur {
   background: rgba(102,126,234,.12); color: var(--brand); font-weight: 600;
 }
-.dw-item.cur .num, .dw-item.cur .sub { color: var(--brand); opacity: .75; }
 .dw-empty {
   flex: 1; display: flex; align-items: center; justify-content: center;
   color: var(--text-muted); font-size: 14px; padding: 24px;
@@ -1036,6 +1033,7 @@ body.bookhub #viewModeBtn, body.bookhub #hideMarksBtn,
 body.bookhub #studyFullBtn { display: none !important; }
 body.bookhub .mobile-nav { display: none; }
 body.bookhub #modePill { display: none; }              /* 合集层非阅读视图，隐藏读经|研读 pill */
+body.bookhub #menuBtn { display: none; }               /* 合集层是层级选择页，无阅读位置 → 不需要目录抽屉按钮 */
 #bookHubView {
   position: fixed; inset: 52px 0 0; z-index: 20;
   background: var(--page-bg); overflow-y: auto; padding: 24px 16px 40px;
@@ -1132,6 +1130,9 @@ body.bookhub #modePill { display: none; }              /* 合集层非阅读视�
 .body-mod-notes #notesSide { display: flex; flex-direction: column; min-height: 0; }
 .body-mod-notes #viewModeBtn, .body-mod-notes #hideMarksBtn, .body-mod-notes #studyFullBtn { display: none !important; }
 .body-mod-notes .crumb-nav { display: none; }
+/* 桌面 notes：分类树常驻左栏、停靠抽屉不参与（isDocked 排除 notes）→ ☰ 是死键，隐藏；
+   移动端保留（分类树整体渲染进统一抽屉，靠 ☰ 唤出，见 notesTreeTarget） */
+@media (min-width: 901px) { body.body-mod-notes #menuBtn { display: none; } }
 
 /* 生命读经阅读器：右栏（纲目|笔记） */
 .lr-side-tabs { display: flex; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--border); flex: none; }
