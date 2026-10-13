@@ -30,6 +30,10 @@ CN_NUM = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, 
           "十一": 11, "十二": 12, "十三": 13, "十四": 14, "十五": 15, "十六": 16, "十七": 17, "十八": 18,
           "十九": 19, "二十": 20}
 
+# ezoe 书报合辑首批接入分类（按索引顺序）：五类合计源 md 约 34MB、产物约 35MB，
+# 单文件均在 CF Pages 25MB 限内；造就类（40MB）与教会与事奉类（19MB）后续补入
+EZOE_CATS_FIRST = ["福音类", "读经类", "传记、文集类", "代售与期刊类", "其他"]
+
 
 def read_md(path, extra_skip=()):
     """md 文件 → (标题, 正文)。首行 # 标题；正文去掉标题行，保留段落。
@@ -65,6 +69,33 @@ def cn_vol_no(vol_key):
     if m and m.group(1) in CN_NUM:
         return str(CN_NUM[m.group(1)])
     return vol_key
+
+
+EZOE_MD_HEAD = re.compile(r"^(#{1,6})\s+(.*)$")
+EZOE_META_RE = re.compile(r"^\*\*(来源|URL|获取时间|说明)\*\*")
+EZOE_INLINE_BOLD = re.compile(r"\*\*(.+?)\*\*")
+
+
+def read_ezoe_md(path):
+    """ezoe 篇目 md → 正文。源格式规整（实测 7394/7394 篇）：首行 # 书名、次行 ## 篇名。
+    书名/篇名信息由 chunk 标题与 crumb 承载，剥掉防正文头部重复渲染；
+    正文行首 markdown 标题记号（##/###/####）与行内 **加粗** 无对应渲染通道，剥记号保留文本。"""
+    with open(path, encoding="utf-8") as f:
+        body = [ln.strip() for ln in f.read().split("\n") if ln.strip()]
+    # 剥尾部爬取元数据：`---` 分隔线 + `**来源**/**URL**/**获取时间**` 行（手工补全篇另有 `**说明**`）
+    while body and (body[-1] == "---" or EZOE_META_RE.match(body[-1])):
+        body.pop()
+    # 剥开头二行：书名行 + 篇名行（任一行不是标题形态时保留，防非规整源文件）
+    if body and body[0].startswith("#"):
+        body.pop(0)
+    if body and EZOE_MD_HEAD.match(body[0]):
+        body.pop(0)
+    out = []
+    for ln in body:
+        m = EZOE_MD_HEAD.match(ln)
+        text = m.group(2).strip() if m else ln
+        out.append(EZOE_INLINE_BOLD.sub(r"\1", text))
+    return "\n".join(out)
 
 
 def write_volume_files(series_id, meta_light, volumes_content):
@@ -199,10 +230,68 @@ def export_bio():
     return meta, volumes_content
 
 
+def export_ezoe(cats=EZOE_CATS_FIRST):
+    """ezoe 书报合辑：目录索引.json（categories → books → chapters 含 part/num/title/local_rel/status）
+    + {分类}/{书目录}/NN{篇名}.md。
+
+    结构映射：分类 = volume（辑）；书 = books 条目；篇 = chapter。
+    多「部」书（源站 part 分组，如《正常的基督徒信仰》分四部）按 part 折叠成多个
+    books 条目「书名·部」；单部书的 part 是「目录/前言」式源站分组名，忽略。
+
+    篇目 md 是规整的二行式开头（首行 # 书名、次行 ## 篇名），正文带 markdown 标题
+    层级（##/###/####）与行内 **加粗**，尾部 --- + **来源/URL/获取时间/说明** 元数据。
+    书名/篇名由 chunk 标题与 crumb 承载故剥掉；markdown 记号本项目无对应渲染通道，
+    剥记号保留文本（detectLrHeading 按裸编号/短行兜底识别层级）。
+
+    cats：接入的分类清单——首批只导五个体积小的分类；造就类/教会与事奉类
+    单辑产物超 CF Pages 25MB 单文件限制，待拆分方案确定后补入。
+    """
+    src_dir = os.path.join(BASE, "ezoe书报合辑")
+    with open(os.path.join(src_dir, "目录索引.json"), encoding="utf-8") as f:
+        idx = json.load(f)
+
+    meta = {"name": idx.get("series", "ezoe书报合辑"), "volumes": []}
+    volumes_content = []
+    for cat in (idx.get("categories") or []):
+        if cat["name"] not in cats:
+            continue
+        books = []
+        for b in (cat.get("books") or []):
+            chs = [ch for ch in (b.get("chapters") or [])
+                   if ch.get("status") == "saved" and ch.get("local_rel")]
+            parts = []
+            for ch in chs:
+                p = ch.get("part") or ""
+                if p and p not in parts:
+                    parts.append(p)
+            multi = len(parts) > 1  # 仅多部书按 part 折叠
+            groups = {}
+            for ch in chs:
+                key = (ch.get("part") or "") if multi else ""
+                groups.setdefault(key, []).append(ch)
+            for key, gchs in groups.items():
+                title = f"{b.get('title', '')}·{key}" if key else b.get("title", "")
+                chapters = []
+                for ch in gchs:
+                    path = os.path.join(src_dir, ch["local_rel"])
+                    if not os.path.isfile(path):
+                        print(f"  [WARN] 文件缺失：{path}")
+                        continue
+                    content = read_ezoe_md(path)
+                    ctitle = ch.get("title") or re.sub(r"^\d+\s*", "", os.path.basename(path)[:-3])
+                    chapters.append({"title": ctitle, "content": content})
+                if chapters:
+                    books.append({"title": title, "chapters": chapters})
+        meta["volumes"].append({"title": cat["name"], "books": books})
+        volumes_content.append({"volume": cat["name"], "books": books})
+    return meta, volumes_content
+
+
 SERIES = {
     "ni": export_ni,
     "slat": export_slat,   # 十二篮（slat = 十二篮英译通称 Twelve Baskets 的篮）
     "bio": export_bio,     # 名人传记（16 个子集各成 books 条目，单一 volume）
+    "ezoe": export_ezoe,   # ezoe 书报合辑（首批五分类；造就类/教会与事奉类体积大后续）
 }
 
 
@@ -234,5 +323,3 @@ def export(only=None):
 
 if __name__ == "__main__":
     sys.exit(export(sys.argv[1:] or None))
-if __name__ == "__main__":
-    sys.exit(export())

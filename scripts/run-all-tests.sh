@@ -22,7 +22,7 @@ cd scripts || exit 1
 TESTS="e2e-test annotation-test copy-citation-test lr-annotation-test lr-module-annotation-test \
 ref-link-test notes-module-test drawer-test home-test home-test-mobile lr-reader-test \
 book-reader-test morning-reader-test lr-heading-test update-logic-test sync2-test \
-typography-test slat-reader-test bookhub-test person-link-test"
+typography-test slat-reader-test ezoe-reader-test bookhub-test person-link-test"
 
 FAIL=0
 for t in $TESTS; do

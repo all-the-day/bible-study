@@ -67,7 +67,8 @@ async function main() {
     console.log('4. 十二篮直进:', ok4 ? '✓' : '✗', '|', r4.series, '|', r4.crumb);
     if (!ok4) fail = 1;
 
-    // 5. 回合集层搜索「两种的认识」→ 命中十二篮篇目
+    // 5. 回合集层搜索「两种的认识」→ 跨合集命中：ezoe 篇目与十二篮篇目同列
+    //    （series 按 id 排序，ezoe 首条），点击第一条直进 ezoe 该篇
     await page.click('#homeBtn');
     await new Promise((r) => setTimeout(r, 400));
     await page.click('#homeGrid .home-block[data-entry="bookhub"]');
@@ -75,12 +76,30 @@ async function main() {
     await page.type('#bookHubSearch', '两种的认识');
     await new Promise((r) => setTimeout(r, 600));
     const r5 = await page.evaluate(() => {
-      const first = document.querySelector('#bookHubSearchResults .home-sr-item');
-      return { text: first?.textContent || '', hasLoc: !!first?.querySelector('.sr-loc') };
+      const items = [...document.querySelectorAll('#bookHubSearchResults .home-sr-item')];
+      return {
+        first: items[0]?.textContent || '',
+        hasLoc: !!items[0]?.querySelector('.sr-loc'),
+        hasSlat: items.some(x => x.textContent.includes('两种的认识主耶稣') && x.textContent.includes('十二篮')),
+        hasEzoe: items.some(x => x.textContent.includes('ezoe书报合辑')),
+      };
     });
-    const ok5 = r5.text.includes('两种的认识主耶稣') && r5.text.includes('十二篮');
-    console.log('5. 合集层搜索:', ok5 ? '✓' : '✗', '|', r5.text.slice(0, 40));
+    const ok5 = r5.first.includes('两种的认识') && r5.hasLoc && r5.hasSlat && r5.hasEzoe;
+    console.log('5. 合集层搜索:', ok5 ? '✓' : '✗', '|', r5.first.slice(0, 40));
     if (!ok5) fail = 1;
+
+    // 5b. 点击第一条搜索结果 → 直进 ezoe 该篇（合集层搜索跳转链路）
+    await page.click('#bookHubSearchResults .home-sr-item');
+    await new Promise((r) => setTimeout(r, 1500));
+    const r5b = await page.evaluate(() => ({
+      work: state.screen === 'work',
+      series: state.bookSeries,
+      hubGone: !document.body.classList.contains('bookhub'),
+      bkTitle: document.querySelector('.bk-title')?.textContent.slice(0, 20) || '',
+    }));
+    const ok5b = r5b.work && r5b.series === 'ezoe' && r5b.hubGone;
+    console.log('5b. 搜索点击直进:', ok5b ? '✓' : '✗', '|', r5b.series, '|', r5b.bkTitle);
+    if (!ok5b) fail = 1;
 
     console.log('\nJS 错误:', errors.length ? errors : '无');
     if (errors.length) fail = 1;
