@@ -50,7 +50,8 @@ async function main() {
       home: document.body.classList.contains('home'),
       blocks: [...document.querySelectorAll('#bookHubGrid .home-block')].map(b => b.dataset.series),
     }));
-    const ok3 = r3.bookhub && !r3.home && r3.blocks.includes('slat') && r3.blocks.includes('bio') && !r3.blocks.includes('ni');
+    const ok3 = r3.bookhub && !r3.home && r3.blocks.includes('slat') && r3.blocks.includes('bio')
+      && r3.blocks.includes('gospel') && r3.blocks.includes('misc') && !r3.blocks.includes('ni');
     console.log('3. 合集层:', ok3 ? '✓' : '✗', '| bookhub 态:', r3.bookhub, '| 块:', r3.blocks.join(','));
     if (!ok3) fail = 1;
 
@@ -67,8 +68,8 @@ async function main() {
     console.log('4. 十二篮直进:', ok4 ? '✓' : '✗', '|', r4.series, '|', r4.crumb);
     if (!ok4) fail = 1;
 
-    // 5. 回合集层搜索「两种的认识」→ 跨合集命中：ezoe 篇目与十二篮篇目同列
-    //    （series 按 id 排序，ezoe 首条），点击第一条直进 ezoe 该篇
+    // 5. 回合集层搜索「两种的认识」→ 跨合集命中：ezoe 分类系列（misc）篇目与十二篮篇目同列
+    //    （series 按 id 排序，misc 首条），点击第一条直进 misc 该篇
     await page.click('#homeBtn');
     await new Promise((r) => setTimeout(r, 400));
     await page.click('#homeGrid .home-block[data-entry="bookhub"]');
@@ -81,14 +82,14 @@ async function main() {
         first: items[0]?.textContent || '',
         hasLoc: !!items[0]?.querySelector('.sr-loc'),
         hasSlat: items.some(x => x.textContent.includes('两种的认识主耶稣') && x.textContent.includes('十二篮')),
-        hasEzoe: items.some(x => x.textContent.includes('ezoe书报合辑')),
+        hasMisc: items.some(x => x.textContent.includes('其他')),
       };
     });
-    const ok5 = r5.first.includes('两种的认识') && r5.hasLoc && r5.hasSlat && r5.hasEzoe;
+    const ok5 = r5.first.includes('两种的认识') && r5.hasLoc && r5.hasSlat && r5.hasMisc;
     console.log('5. 合集层搜索:', ok5 ? '✓' : '✗', '|', r5.first.slice(0, 40));
     if (!ok5) fail = 1;
 
-    // 5b. 点击第一条搜索结果 → 直进 ezoe 该篇（合集层搜索跳转链路）
+    // 5b. 点击第一条搜索结果 → 直进 misc 该篇（合集层搜索跳转链路）
     await page.click('#bookHubSearchResults .home-sr-item');
     await new Promise((r) => setTimeout(r, 1500));
     const r5b = await page.evaluate(() => ({
@@ -97,7 +98,7 @@ async function main() {
       hubGone: !document.body.classList.contains('bookhub'),
       bkTitle: document.querySelector('.bk-title')?.textContent.slice(0, 20) || '',
     }));
-    const ok5b = r5b.work && r5b.series === 'ezoe' && r5b.hubGone;
+    const ok5b = r5b.work && r5b.series === 'misc' && r5b.hubGone;
     console.log('5b. 搜索点击直进:', ok5b ? '✓' : '✗', '|', r5b.series, '|', r5b.bkTitle);
     if (!ok5b) fail = 1;
 

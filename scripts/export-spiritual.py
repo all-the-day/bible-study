@@ -16,6 +16,7 @@
   python export-spiritual.py                # 导出全部注册系列
   python export-spiritual.py ni slat        # 只导指定系列
 """
+import functools
 import json
 import os
 import re
@@ -30,9 +31,21 @@ CN_NUM = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, 
           "十一": 11, "十二": 12, "十三": 13, "十四": 14, "十五": 15, "十六": 16, "十七": 17, "十八": 18,
           "十九": 19, "二十": 20}
 
-# ezoe 书报合辑首批接入分类（按索引顺序）：五类合计源 md 约 34MB、产物约 35MB，
-# 单文件均在 CF Pages 25MB 限内；造就类（40MB）与教会与事奉类（19MB）后续补入
-EZOE_CATS_FIRST = ["福音类", "读经类", "传记、文集类", "代售与期刊类", "其他"]
+# ezoe 书报合辑分类注册表（bible 项目 2026-10-12 入库，源 ezoe.work）：每个分类 =
+# 独立系列平级进书报合集层（同十二篮/名人传记各占一块）。id 取分类英文短名，
+# name 即分类名（系列名=辑名=分类名，单 volume 多 books，同 bio 形态）。
+# EZOE_FIRST 为首批接入的五类（合计产物约 35MB、单文件均在 CF 25MB 限内）；
+# edification（40MB）与 church（19MB）单辑超限，待拆分方案确定后移出该集合即可补入
+EZOE_CATS = [
+    ("gospel", "福音类"),
+    ("edification", "造就类"),
+    ("church", "教会与事奉类"),
+    ("reading", "读经类"),
+    ("writings", "传记、文集类"),
+    ("periodicals", "代售与期刊类"),
+    ("misc", "其他"),
+]
+EZOE_FIRST = {"gospel", "reading", "writings", "periodicals", "misc"}
 
 
 def read_md(path, extra_skip=()):
@@ -230,11 +243,15 @@ def export_bio():
     return meta, volumes_content
 
 
-def export_ezoe(cats=EZOE_CATS_FIRST):
-    """ezoe 书报合辑：目录索引.json（categories → books → chapters 含 part/num/title/local_rel/status）
+def export_ezoe_cat(cat_id, cat_name):
+    """ezoe 书报合辑单个分类 → 独立系列（name=分类名，单 volume 多 books，同 bio 形态）。
+
+    源：`../bible/data/raw/spiritual_food/ezoe书报合辑/` 的 目录索引.json
+    （categories → books → chapters 含 part/num/title/local_rel/status）
     + {分类}/{书目录}/NN{篇名}.md。
 
-    结构映射：分类 = volume（辑）；书 = books 条目；篇 = chapter。
+    结构映射：分类 = 系列（本函数一次导一个分类，平级进书报合集层）；
+    书 = books 条目；篇 = chapter。
     多「部」书（源站 part 分组，如《正常的基督徒信仰》分四部）按 part 折叠成多个
     books 条目「书名·部」；单部书的 part 是「目录/前言」式源站分组名，忽略。
 
@@ -242,48 +259,44 @@ def export_ezoe(cats=EZOE_CATS_FIRST):
     层级（##/###/####）与行内 **加粗**，尾部 --- + **来源/URL/获取时间/说明** 元数据。
     书名/篇名由 chunk 标题与 crumb 承载故剥掉；markdown 记号本项目无对应渲染通道，
     剥记号保留文本（detectLrHeading 按裸编号/短行兜底识别层级）。
-
-    cats：接入的分类清单——首批只导五个体积小的分类；造就类/教会与事奉类
-    单辑产物超 CF Pages 25MB 单文件限制，待拆分方案确定后补入。
     """
     src_dir = os.path.join(BASE, "ezoe书报合辑")
     with open(os.path.join(src_dir, "目录索引.json"), encoding="utf-8") as f:
         idx = json.load(f)
+    cat = next((c for c in (idx.get("categories") or []) if c.get("name") == cat_name), None)
+    if not cat:
+        print(f"  [WARN] ezoe 分类不存在：{cat_name}")
+        return {"name": cat_name, "volumes": [{"title": cat_name, "books": []}]}, []
 
-    meta = {"name": idx.get("series", "ezoe书报合辑"), "volumes": []}
-    volumes_content = []
-    for cat in (idx.get("categories") or []):
-        if cat["name"] not in cats:
-            continue
-        books = []
-        for b in (cat.get("books") or []):
-            chs = [ch for ch in (b.get("chapters") or [])
-                   if ch.get("status") == "saved" and ch.get("local_rel")]
-            parts = []
-            for ch in chs:
-                p = ch.get("part") or ""
-                if p and p not in parts:
-                    parts.append(p)
-            multi = len(parts) > 1  # 仅多部书按 part 折叠
-            groups = {}
-            for ch in chs:
-                key = (ch.get("part") or "") if multi else ""
-                groups.setdefault(key, []).append(ch)
-            for key, gchs in groups.items():
-                title = f"{b.get('title', '')}·{key}" if key else b.get("title", "")
-                chapters = []
-                for ch in gchs:
-                    path = os.path.join(src_dir, ch["local_rel"])
-                    if not os.path.isfile(path):
-                        print(f"  [WARN] 文件缺失：{path}")
-                        continue
-                    content = read_ezoe_md(path)
-                    ctitle = ch.get("title") or re.sub(r"^\d+\s*", "", os.path.basename(path)[:-3])
-                    chapters.append({"title": ctitle, "content": content})
-                if chapters:
-                    books.append({"title": title, "chapters": chapters})
-        meta["volumes"].append({"title": cat["name"], "books": books})
-        volumes_content.append({"volume": cat["name"], "books": books})
+    books = []
+    for b in (cat.get("books") or []):
+        chs = [ch for ch in (b.get("chapters") or [])
+               if ch.get("status") == "saved" and ch.get("local_rel")]
+        parts = []
+        for ch in chs:
+            p = ch.get("part") or ""
+            if p and p not in parts:
+                parts.append(p)
+        multi = len(parts) > 1  # 仅多部书按 part 折叠
+        groups = {}
+        for ch in chs:
+            key = (ch.get("part") or "") if multi else ""
+            groups.setdefault(key, []).append(ch)
+        for key, gchs in groups.items():
+            title = f"{b.get('title', '')}·{key}" if key else b.get("title", "")
+            chapters = []
+            for ch in gchs:
+                path = os.path.join(src_dir, ch["local_rel"])
+                if not os.path.isfile(path):
+                    print(f"  [WARN] 文件缺失：{path}")
+                    continue
+                content = read_ezoe_md(path)
+                ctitle = ch.get("title") or re.sub(r"^\d+\s*", "", os.path.basename(path)[:-3])
+                chapters.append({"title": ctitle, "content": content})
+            if chapters:
+                books.append({"title": title, "chapters": chapters})
+    meta = {"name": cat_name, "volumes": [{"title": cat_name, "books": books}]}
+    volumes_content = [{"volume": cat_name, "books": books}]
     return meta, volumes_content
 
 
@@ -291,8 +304,13 @@ SERIES = {
     "ni": export_ni,
     "slat": export_slat,   # 十二篮（slat = 十二篮英译通称 Twelve Baskets 的篮）
     "bio": export_bio,     # 名人传记（16 个子集各成 books 条目，单一 volume）
-    "ezoe": export_ezoe,   # ezoe 书报合辑（首批五分类；造就类/教会与事奉类体积大后续）
 }
+# ezoe 书报合辑（bible 项目 2026-10-12 入库）：每个分类 = 独立系列，平级进书报合集层
+# （用户 2026-10-13 定稿：类别即系列，不再裹成「ezoe书报合辑」大系列切辑）。
+# EZOE_FIRST 为首批接入；edification/church 单辑产物超 CF 25MB 限，待拆分方案后补入
+for _cid, _cname in EZOE_CATS:
+    if _cid in EZOE_FIRST:
+        SERIES[_cid] = functools.partial(export_ezoe_cat, _cid, _cname)
 
 
 def export(only=None):
