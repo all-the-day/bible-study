@@ -1,5 +1,5 @@
 /* ezoe 书报合辑专项（2026-10-13/14）：分类 = 独立系列平级进书报合集层（用户定稿，
-   不裹「ezoe书报合辑」大系列切辑）。首批 gospel/reading/writings/periodicals/misc 五类。
+   不裹「ezoe书报合辑」大系列切辑）。首批 gospel/reading/periodicals/misc 四类（writings 已并入 bio）。
    验证：系列清单 → 直进福音类 → 正文 markdown 剥离渲染 → 抽屉双栏（单辑无底部条、
    左=书列表含「书·部」折叠、点左栏刷新右栏）→ 多部书条目直进 → 划线与系列归属 → 恢复位置 */
 const { spawn } = require('child_process');

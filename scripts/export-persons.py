@@ -4,8 +4,8 @@
 
 用途：书报正文里出现的人物名可点，弹出该人物小传（原型阶段仅在「十二篮」正文启用）。
 数据派生自 export-spiritual.py 的产物（唯一事实源仍是 ../bible 的 spiritual_food 原始 md）：
-  - data/books/bio.json   名人传记系列元数据（卷/书/章标题）
-  - data/books/bio-1.json 名人传记正文（摘录小传开头做弹窗摘要）
+  - data/books/bio.json   传记与文集系列元数据（卷/书/章标题）
+  - data/books/bio-1.json 传记与文集正文（摘录小传开头做弹窗摘要）
 不重新解析原始 md，与 export-verses.py 从 bible-text.json 派生的做法一致。
 
 收录范围（原型：先小范围验证）：
@@ -24,7 +24,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, 'data', 'persons.json')
 BIO = 'bio'
 BIO_VOLUME = 1            # data/books/bio-1.json
-BIO_HAGIOGRAPHY = 0       # 名人传记 vol0 book0 = 《基督教历史人物小传》
+BIO_HAGIOGRAPHY = 0       # 传记与文集 vol0 book0 = 《基督教历史人物小传》
 # 章节 index 区间（闭区间）：「十七 坡旅甲」→「四十七 王载」。
 # 之前的 0-17 是前言与使徒时代人物（雅各/约翰/彼得/马太/路加/腓力…），
 # 之后 49 是慕勒见证（与「三十九 穆勒」重复），一并排除。
@@ -181,7 +181,7 @@ def main():
     for name, (book_title, ch_idx) in BOOK_PERSONS.items():
         titles = [b['title'] for b in vol_meta['books']]
         if book_title not in titles:
-            print(f'  警告：{book_title} 不在名人传记系列，跳过 {name}')
+            print(f'  警告：{book_title} 不在传记与文集系列，跳过 {name}')
             continue
         if name in seen_names:
             continue

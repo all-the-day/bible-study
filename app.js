@@ -5407,7 +5407,7 @@ function showXrefPopup(letter, key) {
   showRefsPopup(`串珠 ${letter}`, raw);
 }
 
-// 人物小传弹窗（正文人名点开）：简介 + 生卒 + 小传摘录 + 出处，可跳转完整小传（书报·名人传记）
+// 人物小传弹窗（正文人名点开）：简介 + 生卒 + 小传摘录 + 出处，可跳转完整小传（书报·传记与文集）
 function showPersonPopup(pid) {
   const p = ((state.personsData || {}).persons || []).find(x => x.id === pid);
   if (!p) { openPopup('人物', '<div class="empty-hint">未找到该人物小传</div>'); return; }
