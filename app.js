@@ -3463,8 +3463,14 @@ async function ensureBookSeriesIndex() {
 }
 async function ensureBookMeta() {
   if (state.bookMeta && state.bookMetaSeries === state.bookSeries) return state.bookMeta;
-  try { state.bookMeta = await fetchJSON(`data/books/${state.bookSeries}.json`); state.bookMetaSeries = state.bookSeries; return state.bookMeta; }
-  catch (e) { return null; }
+  const series = state.bookSeries;   // 调用瞬间的系列：await 期间用户可能已切走
+  try {
+    const meta = await fetchJSON(`data/books/${series}.json`);
+    // 仅当仍停在本系列才写缓存：并发场景（切系列瞬间抽屉刷新/启动链也在拉元数据）
+    // 下别系列的数据不得顶替当前系列缓存——否则 crumb/分组标签显示错系列且污染持续
+    if (state.bookSeries === series) { state.bookMeta = meta; state.bookMetaSeries = series; }
+    return meta;
+  } catch (e) { return null; }
 }
 
 // 系列元数据缓存（标注分组/笔记树按标注自己的 series 取，与当前浏览系列无关）。
