@@ -48,7 +48,9 @@ async function main() {
 
   // 1. 直进笔记模块
   await page.click('#homeGrid .home-block[data-entry="notes"]');
-  await wait(1500);
+  // 轮询等列表渲染就绪（固定等待在全量高负载下曾不足：条目 0、tab 找不到误报失败）
+  await page.waitForSelector('.notes-item', { timeout: 10000 }).catch(() => {});
+  await wait(300);
   const r1 = await page.evaluate(() => ({
     mod: document.body.classList.contains('body-mod-notes'),
     nav: document.querySelector('#notesNav') && getComputedStyle(document.querySelector('#notesNav')).display !== 'none',

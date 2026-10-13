@@ -6,14 +6,14 @@
 cd "$(dirname "$0")/.." || exit 1
 
 STARTED=0
-if ! curl -s -o /dev/null --max-time 2 http://localhost:8765/; then
+if ! curl -s -o /dev/null --max-time 2 http://127.0.0.1:8765/; then
   echo "[run-all-tests] 启动临时服务器 :8765"
-  python -m http.server 8765 >/dev/null 2>&1 &
+  python -m http.server 8765 --bind 127.0.0.1 >/dev/null 2>&1 &
   SERVER_PID=$!
   STARTED=1
   trap 'kill $SERVER_PID 2>/dev/null' EXIT
   for _ in $(seq 1 20); do
-    curl -s -o /dev/null --max-time 1 http://localhost:8765/ && break
+    curl -s -o /dev/null --max-time 1 http://127.0.0.1:8765/ && break
     sleep 0.5
   done
 fi

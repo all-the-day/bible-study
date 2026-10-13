@@ -12,7 +12,7 @@ const puppeteer = require('D:/coder/aiWorkSpace/bible-reader/node_modules/puppet
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
   await page.evaluateOnNewDocument(() => { window.BIBLE_SKIP_UPDATE = true; });   // 跳过启动静默更新检查（省 GitHub API 配额）
 
-  await page.goto('http://localhost:8765/', { waitUntil: 'networkidle0', timeout: 30000 });
+  await page.goto('http://127.0.0.1:8765/', { waitUntil: 'networkidle0', timeout: 30000 });
   await page.waitForSelector('.verse .vtext', { timeout: 15000 });
   await page.evaluate(() => enterWork());   // 启动先进首页（body.home 隐藏工作区），测试需先切回工作区
 
