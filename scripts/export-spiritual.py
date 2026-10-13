@@ -34,8 +34,9 @@ CN_NUM = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, 
 # ezoe 书报合辑分类注册表（bible 项目 2026-10-12 入库，源 ezoe.work）：每个分类 =
 # 独立系列平级进书报合集层（同十二篮/名人传记各占一块）。id 取分类英文短名，
 # name 即分类名（系列名=辑名=分类名，单 volume 多 books，同 bio 形态）。
-# EZOE_FIRST 为首批接入的五类（合计产物约 35MB、单文件均在 CF 25MB 限内）；
-# edification（40MB）与 church（19MB）单辑超限，待拆分方案确定后移出该集合即可补入
+# EZOE_FIRST 为首批接入的四类（单文件均在 CF 25MB 限内）；edification（40MB）与
+# church（19MB）单辑超限，待拆分方案确定后移出该集合即可补入；
+# writings 传记、文集类已按用户定稿（2026-10-14 同类别整合）并入 bio，不单列
 EZOE_CATS = [
     ("gospel", "福音类"),
     ("edification", "造就类"),
@@ -45,7 +46,11 @@ EZOE_CATS = [
     ("periodicals", "代售与期刊类"),
     ("misc", "其他"),
 ]
-EZOE_FIRST = {"gospel", "reading", "writings", "periodicals", "misc"}
+EZOE_FIRST = {"gospel", "reading", "periodicals", "misc"}
+
+# bio 合并 ezoe 传记、文集类时跳过的重复书（保留 bio 旧版——可能已带标注；
+# ezoe 版《今时代神圣启示的先见》16 万字/33 章与 bio 版 5 万字/16 章同书异录）
+BIO_DEDUP_KEYWORDS = ["先见"]
 
 
 def read_md(path, extra_skip=()):
@@ -203,9 +208,14 @@ def export_slat():
 
 
 def export_bio():
-    """名人传记：{系列}目录索引.json（items 扁平，local_rel=「子集[/册目录]/NNN标题.md」）
+    """名人传记 → 「传记与文集」：{系列}目录索引.json（items 扁平，local_rel=「子集[/册目录]/NNN标题.md」）
     + 子集目录/NNN标题.md。子集 = books 条目（title=子集名、chapters=篇列表）；
     王明道文库精选的「册」目录折叠为册级 books 条目（「王明道文库精选·第一册」）。
+
+    合并 ezoe「传记、文集类」（用户 2026-10-14 定稿：同类别整合，与 bio 并成合集层一块，
+    系列名随之改「传记与文集」）。**追加在既有子集之后**——bio 原有 books 索引不动，
+    旧标注按 (volume,book,chapter) 定位才不错位；与 bio 重复的书（BIO_DEDUP_KEYWORDS）
+    保留 bio 版不上传 ezoe 版（旧数据可能已带标注，且 ezoe 版章目拆分更细、索引不一致）。
     """
     src_dir = os.path.join(BASE, "名人传记")
     with open(os.path.join(src_dir, "名人传记目录索引.json"), encoding="utf-8") as f:
@@ -233,27 +243,34 @@ def export_bio():
             group = parts[0]
         by_group.setdefault(group, []).append({"title": title, "content": content})
 
-    name = idx.get("series", "名人传记")
-    meta = {"name": name, "volumes": []}
-    volumes_content = []
-    # 单一 volume（名人传记无辑级），所有子集作为 books 条目
+    # 单一 volume（无辑级），所有子集作为 books 条目
     books = [{"title": g, "chapters": by_group[g]} for g in by_group]
-    meta["volumes"].append({"title": name, "books": books})
-    volumes_content.append({"volume": name, "books": books})
+    # 合并 ezoe 传记、文集类（追加在后保索引稳定；重复书保留 bio 版）
+    skipped = []
+    for b in ezoe_category_books("传记、文集类"):
+        if any(k in b["title"] for k in BIO_DEDUP_KEYWORDS):
+            skipped.append(b["title"])
+            continue
+        books.append(b)
+    if skipped:
+        print(f"  [WARN] bio 合并跳过重复书（保留 bio 版）：{skipped}")
+
+    name = "传记与文集"   # 合并后含传记与文集（神圣启示的高峰等），系列名随之调整
+    meta = {"name": name, "volumes": [{"title": name, "books": books}]}
+    volumes_content = [{"volume": name, "books": books}]
     return meta, volumes_content
 
 
-def export_ezoe_cat(cat_id, cat_name):
-    """ezoe 书报合辑单个分类 → 独立系列（name=分类名，单 volume 多 books，同 bio 形态）。
+def ezoe_category_books(cat_name):
+    """ezoe 单个分类 → books 条目列表（供独立系列导出与合并进 bio 共用）。
 
     源：`../bible/data/raw/spiritual_food/ezoe书报合辑/` 的 目录索引.json
     （categories → books → chapters 含 part/num/title/local_rel/status）
     + {分类}/{书目录}/NN{篇名}.md。
 
-    结构映射：分类 = 系列（本函数一次导一个分类，平级进书报合集层）；
-    书 = books 条目；篇 = chapter。
-    多「部」书（源站 part 分组，如《正常的基督徒信仰》分四部）按 part 折叠成多个
-    books 条目「书名·部」；单部书的 part 是「目录/前言」式源站分组名，忽略。
+    书 = books 条目；篇 = chapter。多「部」书（源站 part 分组，如《正常的基督徒信仰》
+    分四部）按 part 折叠成多个 books 条目「书名·部」；单部书的 part 是「目录/前言」
+    式源站分组名，忽略。
 
     篇目 md 是规整的二行式开头（首行 # 书名、次行 ## 篇名），正文带 markdown 标题
     层级（##/###/####）与行内 **加粗**，尾部 --- + **来源/URL/获取时间/说明** 元数据。
@@ -266,7 +283,7 @@ def export_ezoe_cat(cat_id, cat_name):
     cat = next((c for c in (idx.get("categories") or []) if c.get("name") == cat_name), None)
     if not cat:
         print(f"  [WARN] ezoe 分类不存在：{cat_name}")
-        return {"name": cat_name, "volumes": [{"title": cat_name, "books": []}]}, []
+        return []
 
     books = []
     for b in (cat.get("books") or []):
@@ -295,6 +312,13 @@ def export_ezoe_cat(cat_id, cat_name):
                 chapters.append({"title": ctitle, "content": content})
             if chapters:
                 books.append({"title": title, "chapters": chapters})
+    return books
+
+
+def export_ezoe_cat(cat_id, cat_name):
+    """ezoe 单个分类 → 独立系列（name=分类名，单 volume 多 books，同 bio 形态）。
+    书/篇构建见 ezoe_category_books。"""
+    books = ezoe_category_books(cat_name)
     meta = {"name": cat_name, "volumes": [{"title": cat_name, "books": books}]}
     volumes_content = [{"volume": cat_name, "books": books}]
     return meta, volumes_content
@@ -303,7 +327,7 @@ def export_ezoe_cat(cat_id, cat_name):
 SERIES = {
     "ni": export_ni,
     "slat": export_slat,   # 十二篮（slat = 十二篮英译通称 Twelve Baskets 的篮）
-    "bio": export_bio,     # 名人传记（16 个子集各成 books 条目，单一 volume）
+    "bio": export_bio,     # 传记与文集（bio 原子集 + ezoe 传记、文集类合并，单一 volume）
 }
 # ezoe 书报合辑（bible 项目 2026-10-12 入库）：每个分类 = 独立系列，平级进书报合集层
 # （用户 2026-10-13 定稿：类别即系列，不再裹成「ezoe书报合辑」大系列切辑）。

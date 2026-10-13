@@ -24,14 +24,15 @@ async function main() {
   await page.waitForSelector('#homeGrid .home-block', { timeout: 15000 });
   await new Promise((r) => setTimeout(r, 1000));
 
-  // 1. 系列清单：ezoe 五分类各为独立系列（各 1 辑），与 bio/ni/slat 平级
+  // 1. 系列清单：ezoe 四分类各为独立系列（各 1 辑），与 bio/ni/slat 平级；
+  //    writings 传记、文集类已并入 bio（同类别整合，用户 2026-10-14 定稿）
   const r1 = await page.evaluate(async () => {
     const idx = await ensureBookSeriesIndex();
     const s = (idx.series || []).find(x => x.id === 'gospel');
     return { ids: (idx.series || []).map(x => x.id), vols: s && s.volumes, name: s && s.name };
   });
-  const ezoeIds = ['gospel', 'reading', 'writings', 'periodicals', 'misc'];
-  console.log('1. 系列清单:', ezoeIds.every(id => r1.ids.includes(id)) && r1.vols === 1 ? '✓' : '✗',
+  const ezoeIds = ['gospel', 'reading', 'periodicals', 'misc'];
+  console.log('1. 系列清单:', ezoeIds.every(id => r1.ids.includes(id)) && r1.vols === 1 && !r1.ids.includes('writings') ? '✓' : '✗',
     '|', r1.ids.join(','), '| gospel:', r1.name, r1.vols, '辑');
 
   // 2. 直进福音类第 1 本第 1 章
@@ -182,6 +183,25 @@ async function main() {
   });
   console.log('7. 笔记树分组:', r7.bookName && r7.noFallback && r7.fullLabel ? '✓' : '✗',
     '| 树含书名:', r7.bookName, '| 无兜底:', r7.noFallback, '| 列表完整label:', r7.fullLabel);
+
+  // 8. bio 合并验证（用户 2026-10-14 定稿：同类别整合）：系列名=传记与文集；
+  //    bio 原子集仍在原位（book 0=基督教历史人物小传，旧标注 book/chapter 索引不错位）；
+  //    ezoe 传记、文集类书已并入（神圣启示的高峰）；重复书只保留 bio 一份
+  const r8 = await page.evaluate(() => {
+    const meta = seriesMeta('bio');
+    const books = meta ? meta.volumes[0].books : [];
+    return {
+      name: meta && meta.name,
+      count: books.length,
+      first: books[0] && books[0].title,
+      hasPeak: books.some(b => b.title.indexOf('神圣启示的高峰') === 0),
+      dupXianjian: books.filter(b => b.title.indexOf('先见') >= 0).length,
+    };
+  });
+  const ok8 = r8.name === '传记与文集' && r8.count === 41 && r8.first === '《基督教历史人物小传》'
+    && r8.hasPeak && r8.dupXianjian === 1;
+  console.log('8. bio 合并传记文集:', ok8 ? '✓' : '✗',
+    '|', r8.name, '|', r8.count, '本 | book 0:', r8.first, '| 含高峰文集:', r8.hasPeak, '| 先见书:', r8.dupXianjian, '份');
 
   console.log('\nJS 错误:', errors.length ? errors : '无');
   await browser.close();

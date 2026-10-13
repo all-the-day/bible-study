@@ -121,7 +121,7 @@ async function main() {
     go: !!document.querySelector('#personGo'),
   }));
   console.log('5. 人物弹窗:', r5.open && r5.title.includes('慕迪') && r5.desc && r5.meta.includes('Moody')
-    && r5.excerpt.length > 40 && r5.loc.includes('名人传记') && r5.go ? '✓' : '✗',
+    && r5.excerpt.length > 40 && r5.loc.includes('传记与文集') && r5.go ? '✓' : '✗',
     '|', r5.title, '|', r5.desc, '|', r5.meta, '| 摘录', r5.excerpt.length, '字 |', (r5.loc || '').slice(0, 32));
 
   if (process.env.SHOT) {
@@ -132,7 +132,7 @@ async function main() {
     console.log('   （截图 → generated-images/person-link.png）');
   }
 
-  // 6. 跳「查看完整小传」→ 书报·名人传记对应章
+  // 6. 跳「查看完整小传」→ 书报·传记与文集对应章
   await page.evaluate(() => document.querySelector('#personGo').click());
   await new Promise((r) => setTimeout(r, 3000));
   const r6 = await page.evaluate(() => ({
