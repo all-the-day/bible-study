@@ -21,6 +21,7 @@ import json
 import os
 import re
 import sys
+from difflib import SequenceMatcher
 
 BASE = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "bible", "data", "raw", "spiritual_food"))
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "books")
@@ -114,6 +115,102 @@ def read_ezoe_md(path):
         text = m.group(2).strip() if m else ln
         out.append(EZOE_INLINE_BOLD.sub(r"\1", text))
     return "\n".join(out)
+
+
+# 篇级重复判定阈值（difflib 全文相似度）。ezoe 源站把同一篇既收进合集又拆出单本
+# （福音讲台总集四部 vs 25 个单篇独立书，实测 ratio 1.000），书内也有同篇两录
+EZOE_DUP_RATIO = 0.98
+
+
+def _ezoe_similar(a, b):
+    """全文相似度（quick_ratio 预筛砍掉明显不同的对）"""
+    if SequenceMatcher(None, a, b).quick_ratio() < EZOE_DUP_RATIO:
+        return False
+    return SequenceMatcher(None, a, b).ratio() >= EZOE_DUP_RATIO
+
+
+def ezoe_dedup(books):
+    """重复篇**墓碑化**去重（用户 2026-10-14 定稿「整理整理」：同一篇在多处出现、
+    出处混乱）。保留 books/chapters 条目与顺序不变——旧标注按 (volume,book,chapter)
+    索引定位，删条目会让后续索引前移、标注错位丢失；墓碑只把正文换成一句指引，
+    索引稳定、笔记不丢、用户点进去知道去哪读真内容。
+
+    两类处理：
+    - 整书被另一书完全覆盖（福音讲台总集拆出的单篇独立书；互覆时保留 part 折叠
+      合集书）→ 该书每篇正文换指引
+    - 书内重复篇（同篇两录）→ 保留每组首篇，其余换指引
+    跨书部分重叠（节选与原文的关系，如初信喂养365题摘编《生命的意义》）属正常
+    编排，不动。返回 (墓碑篇数, 墓碑书数)。
+    """
+    n = lambda s: re.sub(r"\s+", "", s or "")
+    # 各篇归一化正文 + 书名/篇名归一化
+    texts = [[n(c["content"]) for c in b["chapters"]] for b in books]
+    btitles = [n(b["title"]) for b in books]
+    ctitles = [[n(c["title"]) for c in b["chapters"]] for b in books]
+
+    tomb_ch = {}   # (book_idx, ch_idx) -> 覆盖方（书名, 篇名）指引文案
+    covered_books = set()
+
+    # 1) 跨书：候选书对 = 书名↔对方篇名相同（福音讲台总集拆书场景），或任两篇标题相同
+    cand = set()
+    for i in range(len(books)):
+        for j in range(len(books)):
+            if i == j:
+                continue
+            if btitles[i] and btitles[i] in ctitles[j]:
+                cand.add((i, j))
+            elif set(t for t in ctitles[i] if t) & set(t for t in ctitles[j] if t):
+                cand.add((i, j))
+    for i, j in cand:
+        bi, bj = books[i], books[j]
+        if not bi["chapters"] or not bj["chapters"]:
+            continue
+        # i 被 j 完全覆盖？j 被 i 完全覆盖？还是互覆
+        i_in_j = all(any(_ezoe_similar(texts[i][ci], tj) for tj in texts[j]) for ci in range(len(texts[i])))
+        j_in_i = all(any(_ezoe_similar(texts[j][cj], ti) for ti in texts[i]) for cj in range(len(texts[j])))
+        if not (i_in_j or j_in_i):
+            continue
+        # 保留方：互覆时保留 part 折叠书（书名含 ·，合集语境），否则保留篇数多/索引小的
+        if i_in_j and j_in_i:
+            keep, drop = (i, j) if ("·" in books[i]["title"], -i) >= ("·" in books[j]["title"], -j) else (j, i)
+        elif i_in_j:
+            keep, drop = j, i
+        else:
+            keep, drop = i, j
+        if drop in covered_books:
+            continue
+        covered_books.add(drop)
+        for ci in range(len(books[drop]["chapters"])):
+            # 找覆盖方中对应的篇名（指引文案用）
+            cov_title = ""
+            for cj in range(len(books[keep]["chapters"])):
+                if _ezoe_similar(texts[drop][ci], texts[keep][cj]):
+                    cov_title = books[keep]["chapters"][cj]["title"]
+                    break
+            tomb_ch[(drop, ci)] = (books[keep]["title"], cov_title)
+
+    # 2) 书内重复篇：同书标题相同的篇，保留首篇
+    for i, b in enumerate(books):
+        if i in covered_books:
+            continue
+        seen = {}
+        for ci, t in enumerate(ctitles[i]):
+            if not t:
+                continue
+            if t in seen and _ezoe_similar(texts[i][ci], texts[i][seen[t]]):
+                tomb_ch[(i, ci)] = (b["title"], b["chapters"][seen[t]]["title"])
+            elif t not in seen:
+                seen[t] = ci
+
+    # 3) 执行墓碑化：正文换指引（条目与顺序不动）
+    for (bi, ci), (cov_book, cov_ch) in sorted(tomb_ch.items()):
+        if cov_book == books[bi]["title"]:   # 书内重复：指引省略书名（本文即该书）
+            books[bi]["chapters"][ci]["content"] = (
+                f"（本文与「{cov_ch}」相同，为免重复不再载入，请阅读该篇。）")
+        else:
+            books[bi]["chapters"][ci]["content"] = (
+                f"（本文与《{cov_book}》{cov_ch}相同，为免重复不再载入，请阅读该处。）")
+    return len(tomb_ch), len(covered_books)
 
 
 def write_volume_files(series_id, meta_light, volumes_content):
@@ -312,6 +409,9 @@ def ezoe_category_books(cat_name):
                 chapters.append({"title": ctitle, "content": content})
             if chapters:
                 books.append({"title": title, "chapters": chapters})
+    n_tomb, n_tbook = ezoe_dedup(books)
+    if n_tomb:
+        print(f"  [DEDUP] {cat_name}：{n_tomb} 篇重复内容墓碑化（涉及 {n_tbook} 本），索引保留稳定")
     return books
 
 

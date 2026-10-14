@@ -203,6 +203,26 @@ async function main() {
   console.log('8. bio 合并传记文集:', ok8 ? '✓' : '✗',
     '|', r8.name, '|', r8.count, '本 | book 0:', r8.first, '| 含高峰文集:', r8.hasPeak, '| 先见书:', r8.dupXianjian, '份');
 
+  // 9. 重复篇墓碑化去重（用户 2026-10-14 定稿「整理整理」：同一篇在合集与拆出的
+  //    单篇独立书两处出现、出处混乱）：单篇独立书《上流人的需要》正文换成指引，
+  //    合集《福音讲台总集·变死亡为生命》该篇保留真内容；books/chapters 索引不动
+  const r9 = await page.evaluate(async () => {
+    const d = await fetchJSONStall('data/books/gospel-1.json');
+    const solo = d.books.find(b => b.title === '上流人的需要');
+    const coll = d.books.find(b => b.title === '福音讲台总集·变死亡为生命');
+    const collCh = coll.chapters.find(c => c.title === '上流人的需要');
+    const lm = d.books.find(b => b.title === '生命的意义');
+    return {
+      soloTomb: solo.chapters[0].content.startsWith('（本文与'),
+      soloGuide: solo.chapters[0].content.includes('福音讲台总集·变死亡为生命'),
+      collKept: collCh.content.length > 5000 && !collCh.content.startsWith('（本文与'),
+      inBookTomb: lm.chapters.filter(c => c.content.startsWith('（本文与「')).length,
+    };
+  });
+  console.log('9. 重复篇墓碑化:', r9.soloTomb && r9.soloGuide && r9.collKept && r9.inBookTomb === 5 ? '✓' : '✗',
+    '| 单篇书墓碑:', r9.soloTomb, '| 指引含合集名:', r9.soloGuide, '| 合集篇保留真内容:', r9.collKept,
+    '| 书内墓碑:', r9.inBookTomb, '篇');
+
   console.log('\nJS 错误:', errors.length ? errors : '无');
   await browser.close();
   server.kill();
