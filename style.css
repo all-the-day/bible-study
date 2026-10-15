@@ -584,7 +584,17 @@ sup.xref-ref:hover { color: var(--brand-dark); }
 
 /* ── 划线汇总 ── */
 .hl-section { margin-top: 14px; }
-.hl-header { font-weight: 700; color: var(--heading); margin-bottom: 8px; font-size: calc(15px * var(--reading-scale)); }
+.hl-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-weight: 700; color: var(--heading); margin-bottom: 8px; font-size: calc(15px * var(--reading-scale));
+}
+/* 重读：小胶囊按钮（UI 控件不跟随排版缩放，字号固定） */
+.hl-reread-btn {
+  flex: none; padding: 4px 12px; border: 1px solid var(--border); border-radius: 999px;
+  background: var(--surface); cursor: pointer; font-size: 12px; font-weight: 500;
+  color: var(--text-soft); white-space: nowrap; line-height: 1.3;
+}
+.hl-reread-btn:hover { border-color: var(--brand); color: var(--brand); }
 .hl-tabs { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
 .hl-tab {
   padding: 4px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm);

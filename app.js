@@ -1971,7 +1971,7 @@ function renderMyNotes() {
     a.book === state.currentBook.index &&
     (a.type === 'verse' ? a.chapter === ch : lrIds.has(a.articleId))
   );
-  body.appendChild(renderHighlights(highlights));
+  body.appendChild(renderHighlights(highlights, undefined, { reread: true }));
 }
 
 // 单条标注的分组标签（与 groupHlGlobal 一致；笔记管理模块的树/过滤/大段笔记挂组共用）
@@ -2918,11 +2918,26 @@ function renderHighlights(anns, groupFn, opts) {
   section.className = 'hl-section';
   const header = document.createElement('div');
   header.className = 'hl-header';
+  // 标题放 span：重读按钮固定在右侧，setHeader 只写文本，切来源 tab 不覆盖按钮
+  const headerText = document.createElement('span');
+  header.appendChild(headerText);
   // 计数区分「划线」与「笔记」：带 note 的条目单独计数（切来源 tab 时同步刷新）
   const setHeader = (list) => {
-    const noted = list.filter(a => a.note && a.note.trim()).length;
-    header.textContent = `划线汇总 ${list.length}${noted ? ` · 笔记 ${noted}` : ''}`;
+    const noted = list.filter(annHasNote).length;
+    headerText.textContent = `划线汇总 ${list.length}${noted ? ` · 笔记 ${noted}` : ''}`;
   };
+  // 重读：当前阅读单元存在无笔记划线时才显示（四个阅读器共用本函数，范围由 activeModule 决定）
+  if (opts && opts.reread) {
+    const scope = rereadUnitScope();
+    if (scope && scope.anns.some(a => !annHasNote(a))) {
+      const rereadBtn = document.createElement('button');
+      rereadBtn.className = 'hl-reread-btn';
+      rereadBtn.textContent = '重读';
+      rereadBtn.title = `移除${scope.label}划线，保留笔记`;
+      rereadBtn.addEventListener('click', rereadUnit);
+      header.appendChild(rereadBtn);
+    }
+  }
   section.appendChild(header);
   if (!anns.length) {
     const hint = document.createElement('div');
@@ -3398,7 +3413,7 @@ function renderLrNotes(body) {
   body.appendChild(ta);
   const anns = state.annotations.filter(a =>
     a.type === 'lr' && a.book === state.lrBookIndex && a.articleId === state.lrArticleId);
-  body.appendChild(renderHighlights(anns, undefined, { hideGroupHeader: true, hideItemLoc: true }));
+  body.appendChild(renderHighlights(anns, undefined, { hideGroupHeader: true, hideItemLoc: true, reread: true }));
 }
 
 // 同卷切篇：重渲染主区 + 右栏 + crumb + 左栏 active，正文滚顶
@@ -3676,7 +3691,7 @@ function renderBookNotes(body) {
   const anns = state.annotations.filter(a =>
     a.type === 'book' && a.series === state.bookSeries && a.volume === state.bookVolume &&
     a.book === state.bookBook && a.chapter === state.bookChapter);
-  body.appendChild(renderHighlights(anns, undefined, { hideGroupHeader: true, hideItemLoc: true }));
+  body.appendChild(renderHighlights(anns, undefined, { hideGroupHeader: true, hideItemLoc: true, reread: true }));
 }
 
 // 切系列 → 第 1 辑第 1 本第 1 章（系列条点击）
@@ -3877,7 +3892,7 @@ function renderMorningSide() {
   body.appendChild(ta);
   const anns = state.annotations.filter(a =>
     a.type === 'morning' && a.period === state.morningPeriod && a.chapterId === state.morningChapterId);
-  body.appendChild(renderHighlights(anns, undefined, { hideGroupHeader: true, hideItemLoc: true }));
+  body.appendChild(renderHighlights(anns, undefined, { hideGroupHeader: true, hideItemLoc: true, reread: true }));
   side.appendChild(body);
 }
 
@@ -5304,6 +5319,50 @@ function deleteAnn(annId) {
   saveDeleted(LS_ANNOTATIONS, state.annotations, [annId]);
   rerenderAnn(ann);
   hideMarkTool();
+}
+
+/* ============ 重读（批量移除当前阅读单元的无笔记划线，带笔记的标注原样保留） ============ */
+// 「带笔记」判据（与笔记模块过滤/汇总计数同口径）：note 非空白
+function annHasNote(a) { return !!(a.note && a.note.trim()); }
+
+/* 重读范围：当前阅读单元自己的划线，过滤条件与各模块主区/右栏的一致——
+   读经=本章经文（关联生命读经篇目属于别的「篇」，不动）；生命读经=本篇；书报=当前章；听抄=当前篇 */
+function rereadUnitScope() {
+  if (state.activeModule === 'bible' && state.currentBook) {
+    return { label: '本章经文', anns: state.annotations.filter(a =>
+      a.type === 'verse' && a.book === state.currentBook.index && a.chapter === state.currentChapter) };
+  }
+  if (state.activeModule === 'lifereading') {
+    return { label: '本篇', anns: state.annotations.filter(a =>
+      a.type === 'lr' && a.book === state.lrBookIndex && a.articleId === state.lrArticleId) };
+  }
+  if (state.activeModule === 'books') {
+    return { label: '本章', anns: state.annotations.filter(a =>
+      a.type === 'book' && a.series === state.bookSeries && a.volume === state.bookVolume &&
+      a.book === state.bookBook && a.chapter === state.bookChapter) };
+  }
+  if (state.activeModule === 'morning') {
+    return { label: '本篇', anns: state.annotations.filter(a =>
+      a.type === 'morning' && a.period === state.morningPeriod && a.chapterId === state.morningChapterId) };
+  }
+  return null;
+}
+
+/* 重读：移除本单元全部无笔记划线，带笔记的标注原样保留；删除走 saveDeleted
+   （本地墓碑 + 云同步 del op，与单条/批量删除同通道），不做撤销（云端 30 天备份兜底） */
+function rereadUnit() {
+  const scope = rereadUnitScope();
+  if (!scope) return;
+  const targets = scope.anns.filter(a => !annHasNote(a));
+  if (!targets.length) return;
+  const noted = scope.anns.length - targets.length;
+  confirmDialog('重读', `将移除${scope.label}的 ${targets.length} 处划线${noted ? `，保留 ${noted} 处带笔记的标注` : ''}。划线会同步从云端删除，且无法撤销。`, () => {
+    const ids = new Set(targets.map(a => a.id));
+    state.annotations = state.annotations.filter(a => !ids.has(a.id));
+    saveDeleted(LS_ANNOTATIONS, state.annotations, [...ids]);
+    rerenderAnn(targets[0]);   // 按被删条目的类型定向重渲染（与 deleteAnn 同模式）
+    showToast(`已重读：移除 ${targets.length} 处划线${noted ? `，保留 ${noted} 处笔记` : ''}`);
+  }, '移除划线');
 }
 
 /* ============ 反馈 ============ */
