@@ -25,14 +25,14 @@ async function main() {
   await page.waitForSelector('#homeGrid .home-block', { timeout: 15000 });
   await new Promise((r) => setTimeout(r, 800));
 
-  // 1. 词典加载 + scope 收敛在 slat
+  // 1. 词典加载 + scope 收敛在 slat + ni（2026-10-15 反馈 #26：倪文集接入）
   await page.evaluate(() => ensurePersonsData());
   const r1 = await page.evaluate(() => ({
     scope: state.personsData ? state.personsData.scope : null,
     n: state.personsData ? state.personsData.persons.length : 0,
     slat: personScopeOn('slat'), ni: personScopeOn('ni'), bio: personScopeOn('bio'),
   }));
-  console.log('1. 词典与范围:', r1.n > 0 && r1.slat && !r1.ni && !r1.bio ? '✓' : '✗',
+  console.log('1. 词典与范围:', r1.n > 0 && r1.slat && r1.ni && !r1.bio ? '✓' : '✗',
     '| 人物:', r1.n, '| scope:', JSON.stringify(r1.scope), '| slat/ni/bio:', r1.slat, r1.ni, r1.bio);
 
   // 2. 匹配规则：最长优先（路德马丁→马丁路德）/ 复合词保护（加尔文主义不链）/ 与经文引用可共存
@@ -82,16 +82,18 @@ async function main() {
   console.log('3b. 偏移坐标与源文本一致:', r3b.bad === 0 && r3b.lines > 5 ? '✓' : '✗',
     '| 行数:', r3b.lines, '| 不一致:', r3b.bad, JSON.stringify(r3b.sample || ''));
 
-  // 4. 非 slat 系列（倪文集）不注入
-  await page.evaluate(() => openBookChapter(1, 0, 0, 'ni'));
+  // 4. 倪文集启用（反馈 #26，2026-10-15）：直进「告诉祂」（讲经记录卷二，含司布真段）
+  //    → 正文注入 person-link，且点开可弹人物小传
+  await page.evaluate(() => openBookChapter(1, 17, 7, 'ni'));
   await new Promise((r) => setTimeout(r, 2500));
   const r4 = await page.evaluate(() => ({
     series: state.bookSeries,
     persons: document.querySelectorAll('#bookMain span.person-link').length,
     paras: document.querySelectorAll('#bookMain .bk-para').length,
+    spurgeon: [...document.querySelectorAll('#bookMain span.person-link')].filter(l => l.dataset.person === 'charles-haddon-spurgeon').length,
   }));
-  console.log('4. 倪文集不启用:', r4.series === 'ni' && r4.persons === 0 && r4.paras > 0 ? '✓' : '✗',
-    '| series:', r4.series, '| person-link:', r4.persons, '| 段落:', r4.paras);
+  console.log('4. 倪文集启用人物链接:', r4.series === 'ni' && r4.persons > 0 && r4.spurgeon > 0 && r4.paras > 0 ? '✓' : '✗',
+    '| series:', r4.series, '| person-link:', r4.persons, '| 司布真:', r4.spurgeon, '| 段落:', r4.paras);
 
   // 5. 十二篮「一个两面的真理」（慕迪 8 处）点人名 → 弹窗（简介 + 生卒 + 摘录 + 出处 + 跳转按钮）
   await page.evaluate(() => openBookChapter(11, 0, 10, 'slat'));

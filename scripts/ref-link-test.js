@@ -291,6 +291,66 @@ async function main() {
   check('17b. 同段四8、16 → 约壹4:8/约壹4:16',
     bodyRefs.includes('约壹4:8') && bodyRefs.includes('约壹4:16'), JSON.stringify(bodyRefs));
 
+  // 18. 反馈 #27/#28：正文裸书名/裸「书卷+章」提及作本行弱上下文（不带节号不成引用，
+  //     但为其后相对引用提供书卷/章号归属）。约束：不跨句、被全书引用覆盖、
+  //     只收全名形态书名（先知/使徒简称同为人名不收）、章号以最新带章号引用为准
+  // 18a. #28 听抄 2026-04 篇3：「罗马八章所说的万有（28）」——「罗马八章」无节号，
+  //      全书引用正则故意不认（防 雅各一/创世记十一 误判），此前（28）继承 carry 的
+  //      陈旧上下文错链 耶4:28
+  r = await page.evaluate(() => {
+    const carry = { acronym: '耶', chapter: 4 };
+    return detectRefs('我们所忍受一切的环境和境遇，就是罗马八章所说的万有（28）。', null, carry).map(x => x.refText);
+  });
+  check('18a. 裸章提及：罗马八章…（28）→ 罗8:28', JSON.stringify(r) === JSON.stringify(['罗8:28']), JSON.stringify(r));
+  // 18b. #27 同篇：「尤其是哥林多后书，多处提到耶稣的治死（四10～13）」——裸书名不建
+  //      上下文时按最近全书引用（耶四八11）归属，错链 耶4:10-13
+  r = await page.evaluate(() => {
+    const carry = { acronym: '耶', chapter: 4 };
+    return detectRefs('在保罗的著作中，尤其是哥林多后书，多处提到耶稣的治死（四10～13）。', null, carry).map(x => x.refText);
+  });
+  check('18b. 裸书名提及：哥林多后书…（四10～13）→ 林后4:10～13',
+    JSON.stringify(r) === JSON.stringify(['林后4:10～13']), JSON.stringify(r));
+  // 18c. 弱上下文不跨句：提及在上一句、引用落在下一句，属行文旁及，仍归主题书卷
+  //      （生命读经 出29：「彼前三章二十节追溯创世记中洪水…（十三3，14）」应归 出）
+  r = await refsOf('彼前三章二十节追溯创世记中洪水所预表的浸水。我们已指出，挪亚一家和以色列人都是藉水得救的。（十三3，14。）', '出');
+  check('18c. 弱上下文不跨句（创世记旁及 → 出13:3/13:14）',
+    JSON.stringify(r) === JSON.stringify(['彼前三章二十节', '出13:3', '出13:14']), JSON.stringify(r));
+  // 18d. 句末+括注式引用不判跨句（「…蒙拣选。（弗一4，）」「（10，）…；（14；）」），
+  //      引用仍属该句——加太篇「在加拉太书…福。（三14。）」应归 加
+  r = await refsOf('在加拉太书，这灵乃是福分的灵，就是福音那包括一切并包罗万有的福。（三14。）', '伯');
+  check('18d. 句末+括注不判跨句（加拉太书…（三14）→ 加3:14）',
+    JSON.stringify(r) === JSON.stringify(['加3:14']), JSON.stringify(r));
+  r = await refsOf('在约翰四章，主耶稣说到活水，（10，）以及涌入永远生命的泉源；（14；）', '诗');
+  check('18d-2. 分号后括注不判跨句（（14；）→ 约4:14）',
+    JSON.stringify(r) === JSON.stringify(['约4:10', '约4:14']), JSON.stringify(r));
+  // 18e. 章号新鲜度：本行先出现带章号的相对引用后，纯阿拉伯节号沿用它的章，
+  //      不被后面的裸章提及抢走（但以理七章…（二32，39上）的 39上 = 但2:39）
+  r = await refsOf('但以理二章的金头，（二37～38，）与但以理七章的四个兽相符。（二32，39上，）', '但');
+  check('18e. 章号新鲜度（39上 → 但2:39上，不跟 七章）',
+    JSON.stringify(r) === JSON.stringify(['但2:37～38', '但2:32', '但2:39上']), JSON.stringify(r));
+  // 18f. 先知/使徒简称同时是人名，不作弱上下文（撒迦利亚书三章满篇「约书亚」，
+  //      不能把后面引用劫到约书亚记）；全名形态（以 书/记/篇/音/传/录 收尾）才收
+  r = await refsOf('撒迦利亚五章也说到那些指耶和华的名起假誓的人。（3下，4下。）', '亚');
+  check('18f. 简称人名不建上下文（约书亚在场 → 亚5:3下/5:4下）',
+    JSON.stringify(r) === JSON.stringify(['亚5:3下', '亚5:4下']), JSON.stringify(r));
+  r = await refsOf('照着希伯来书，我们不但是有分于基督的人，也是祂的同伙。（三15。）', '彼前');
+  check('18f-2. 全名裸书名建上下文（希伯来书…（三15）→ 来3:15）',
+    JSON.stringify(r) === JSON.stringify(['来3:15']), JSON.stringify(r));
+  // 18g. 全书引用覆盖弱上下文（同句内先提创世记三章、后引罗马八章二十八节）
+  r = await refsOf('就如创世记三章所论，罗马八章二十八节也应许万有互相効力。（28）', null);
+  check('18g. 全书引用覆盖裸章弱上下文 → 罗8:28',
+    JSON.stringify(r) === JSON.stringify(['罗马八章二十八节', '罗8:28']), JSON.stringify(r));
+  // 18h. 端到端：听抄 2026-04 篇3（反馈 #27/#28 同段）渲染出 林后4:10～13 与 罗8:28
+  await page.evaluate(() => openMorningArticle('2026-04', 3));
+  await page.waitForFunction(() => {
+    const el = document.querySelector('#morningMain .morning-content');
+    return el && el.querySelector('.ref-link');
+  }, { timeout: 20000 });
+  const fbRefs = await page.evaluate(() =>
+    [...document.querySelectorAll('#morningMain .morning-content .ref-link')].map(s => s.dataset.refs));
+  check('18h. 听抄 2026-04 篇3：四10～13 → 林后4:10～13', fbRefs.includes('林后4:10～13'), JSON.stringify(fbRefs.slice(0, 20)));
+  check('18i. 听抄 2026-04 篇3：罗马八章（28）→ 罗8:28', fbRefs.includes('罗8:28'), JSON.stringify(fbRefs.slice(0, 20)));
+
   console.log(`\n${pass} passed, ${fail} failed`);
   console.log('JS 错误:', errors.length ? errors : '无');
   await browser.close();

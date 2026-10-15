@@ -202,7 +202,9 @@ def main():
         })
 
     data = {
-        'scope': ['slat'],   # 原型阶段：仅这些系列正文启用人物链接，空数组=全模块
+        'scope': ['slat', 'ni'],   # 这些系列正文启用人物链接，空数组=全模块。
+        # ni（倪柝声文集）2026-10-15 随反馈 #26 接入：文集正文常提教会史人物
+        # （司布真/慕勒/盖恩夫人等），词典 31 人皆有 bio 小传可跳
         'source': {'series': BIO, 'volume': BIO_VOLUME},
         'blockWords': BLOCK_WORDS,
         'persons': persons,

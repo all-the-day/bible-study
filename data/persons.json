@@ -1,6 +1,7 @@
 {
  "scope": [
-  "slat"
+  "slat",
+  "ni"
  ],
  "source": {
   "series": "bio",
