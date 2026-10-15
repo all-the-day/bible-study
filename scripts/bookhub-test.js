@@ -51,7 +51,8 @@ async function main() {
       blocks: [...document.querySelectorAll('#bookHubGrid .home-block')].map(b => b.dataset.series),
     }));
     const ok3 = r3.bookhub && !r3.home && r3.blocks.includes('slat') && r3.blocks.includes('bio')
-      && r3.blocks.includes('gospel') && r3.blocks.includes('misc') && !r3.blocks.includes('ni');
+      && r3.blocks.includes('gospel') && r3.blocks.includes('misc') && !r3.blocks.includes('ni')
+      && r3.blocks.includes('fuyintiandi');
     console.log('3. 合集层:', ok3 ? '✓' : '✗', '| bookhub 态:', r3.bookhub, '| 块:', r3.blocks.join(','));
     if (!ok3) fail = 1;
 

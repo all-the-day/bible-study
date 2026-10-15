@@ -121,6 +121,10 @@ def read_ezoe_md(path):
 # （福音讲台总集四部 vs 25 个单篇独立书，实测 ratio 1.000），书内也有同篇两录
 EZOE_DUP_RATIO = 0.98
 
+# 墓碑正文统一开头：源侧状态标记（absorbed/duplicate/merged_elsewhere）与 ezoe_dedup
+# 产出的墓碑正文均以此开头，ezoe_dedup 据此跳过已墓碑篇目，防墓碑互判重复被二次覆盖
+EZOE_TOMB_PREFIX = "（本文"
+
 
 def _ezoe_similar(a, b):
     """全文相似度（quick_ratio 预筛砍掉明显不同的对）"""
@@ -143,8 +147,10 @@ def ezoe_dedup(books):
     编排，不动。返回 (墓碑篇数, 墓碑书数)。
     """
     n = lambda s: re.sub(r"\s+", "", s or "")
-    # 各篇归一化正文 + 书名/篇名归一化
-    texts = [[n(c["content"]) for c in b["chapters"]] for b in books]
+    # 各篇归一化正文 + 书名/篇名归一化。已墓碑篇目（源侧状态标记产出的指引正文）
+    # 换唯一占位串：墓碑之间、墓碑与正文都不判重，防墓碑被二次覆盖成错乱指引
+    texts = [[f"\x00tomb{i}-{ci}" if c["content"].startswith(EZOE_TOMB_PREFIX) else n(c["content"])
+              for ci, c in enumerate(b["chapters"])] for i, b in enumerate(books)]
     btitles = [n(b["title"]) for b in books]
     ctitles = [[n(c["title"]) for c in b["chapters"]] for b in books]
 
@@ -358,6 +364,43 @@ def export_bio():
     return meta, volumes_content
 
 
+def _ezoe_flag_tombstone(ch, rel_map, book_title=""):
+    """源侧标记为非 saved 的篇目 → 墓碑正文（保留条目与顺序，(volume,book,chapter)
+    索引稳定，旧标注不错位）。
+
+    源侧 2026-10-15 起（bible P0 去重 + 吸收合并）对重复/被吸收篇目翻 status 并删除
+    对应 md 文件，但索引条目保位不删：
+    - absorbed：正文已并入「既有灵粮」（福音天地/属灵书报/高峰真理），absorbed_by 记去向
+    - duplicate：与 duplicate_of 指向的篇目重复；指向的本身已被吸收时跟随其吸收去向
+    - merged_elsewhere：源站空壳页，内容已由同书其他篇目收录
+    rel_map: local_rel → (书名, 篇目条目)，同分类内解析 duplicate_of 用；
+    book_title：本篇所属书名（同书重复时指引省略书名，同 ezoe_dedup 风格）。
+    """
+    st = ch.get("status")
+    if st == "absorbed":
+        loc = (ch.get("absorbed_by") or "").replace("/", " · ").strip(" ·")
+        return f"（本文已并入《{loc}》，为免重复不再载入。）" if loc else \
+               "（本文已并入他处，为免重复不再载入。）"
+    if st == "duplicate":
+        tgt = rel_map.get(ch.get("duplicate_of") or "")
+        if tgt:
+            tbook, tch = tgt
+            ttitle = tch.get("title") or ""
+            if tch.get("status") == "absorbed":
+                loc = (tch.get("absorbed_by") or "").replace("/", " · ").strip(" ·")
+                if loc:
+                    return f"（本文与《{loc}》{ttitle}相同，为免重复不再载入。）"
+            if tbook == book_title:   # 书内重复：指引省略书名（本文即该书）
+                return f"（本文与「{ttitle}」相同，为免重复不再载入，请阅读该篇。）"
+            if tbook:
+                return f"（本文与《{tbook}》{ttitle}相同，为免重复不再载入，请阅读该处。）"
+            return f"（本文与「{ttitle}」相同，为免重复不再载入，请阅读该篇。）"
+        return "（本文与他处重复，为免重复不再载入。）"
+    if st == "merged_elsewhere":
+        return "（本文内容已由同书其他篇目收录，为免重复不再载入。）"
+    return "（本文暂缺，不再载入。）"
+
+
 def ezoe_category_books(cat_name):
     """ezoe 单个分类 → books 条目列表（供独立系列导出与合并进 bio 共用）。
 
@@ -373,6 +416,11 @@ def ezoe_category_books(cat_name):
     层级（##/###/####）与行内 **加粗**，尾部 --- + **来源/URL/获取时间/说明** 元数据。
     书名/篇名由 chunk 标题与 crumb 承载故剥掉；markdown 记号本项目无对应渲染通道，
     剥记号保留文本（detectLrHeading 按裸编号/短行兜底识别层级）。
+
+    篇目状态（2026-10-15 起源侧标记）：saved 正常载入；absorbed/duplicate/
+    merged_elsewhere 的 md 已被源侧删除，**墓碑化保留条目**（正文换指引）而非
+    过滤丢弃——旧标注按 (volume,book,chapter) 索引定位，删条目会让后续索引
+    前移、标注错位丢失（v1.0.50 实测：按 saved 过滤重导会丢 30 本书）。
     """
     src_dir = os.path.join(BASE, "ezoe书报合辑")
     with open(os.path.join(src_dir, "目录索引.json"), encoding="utf-8") as f:
@@ -382,10 +430,16 @@ def ezoe_category_books(cat_name):
         print(f"  [WARN] ezoe 分类不存在：{cat_name}")
         return []
 
+    # local_rel → (书名, 篇目条目)：解析 duplicate_of 的覆盖方与吸收去向用
+    rel_map = {}
+    for b in (cat.get("books") or []):
+        for ch in (b.get("chapters") or []):
+            if ch.get("local_rel"):
+                rel_map[ch["local_rel"]] = (b.get("title") or "", ch)
+
     books = []
     for b in (cat.get("books") or []):
-        chs = [ch for ch in (b.get("chapters") or [])
-               if ch.get("status") == "saved" and ch.get("local_rel")]
+        chs = [ch for ch in (b.get("chapters") or []) if ch.get("local_rel")]
         parts = []
         for ch in chs:
             p = ch.get("part") or ""
@@ -400,12 +454,16 @@ def ezoe_category_books(cat_name):
             title = f"{b.get('title', '')}·{key}" if key else b.get("title", "")
             chapters = []
             for ch in gchs:
+                ctitle = ch.get("title") or re.sub(r"^\d+\s*", "", os.path.basename(ch["local_rel"])[:-3])
                 path = os.path.join(src_dir, ch["local_rel"])
-                if not os.path.isfile(path):
-                    print(f"  [WARN] 文件缺失：{path}")
-                    continue
-                content = read_ezoe_md(path)
-                ctitle = ch.get("title") or re.sub(r"^\d+\s*", "", os.path.basename(path)[:-3])
+                if ch.get("status") != "saved":
+                    content = _ezoe_flag_tombstone(ch, rel_map, title)
+                elif os.path.isfile(path):
+                    content = read_ezoe_md(path)
+                else:
+                    # saved 但文件缺失：保留墓碑条目防索引前移（正常不应发生）
+                    print(f"  [WARN] saved 篇目文件缺失（保留墓碑条目保索引稳定）：{path}")
+                    content = "（本文暂缺。）"
                 chapters.append({"title": ctitle, "content": content})
             if chapters:
                 books.append({"title": title, "chapters": chapters})
@@ -424,10 +482,83 @@ def export_ezoe_cat(cat_id, cat_name):
     return meta, volumes_content
 
 
+def read_gospelfood_md(path, book_title):
+    """福音天地篇目 md → (标题, 正文)。源是早年网页版抓取，头部有两类噪声：
+
+    - 网页版原文件：`# 篇名` 之后是「篇名重复 + 书名碎片（可拆行，如「书中之书—」
+      +「圣经」、「恩」+「言」）+ 篇名重复」的页眉块，然后才是正文
+    - ezoe 吸收合并入库的篇目（页脚带 **书报号**/**说明**）：页眉较干净，仅篇名重复行
+
+    页眉块整段剥掉；尾部爬取元数据（**来源/URL/获取时间/书报号/说明**）剥掉。
+    书名碎片与篇名裹行都短，故第三条规则带长度上限，防误吃正文短行（如「读经：」）。
+    """
+    with open(path, encoding="utf-8") as f:
+        lines = [ln.strip() for ln in f.read().split("\n") if ln.strip()]
+    title = ""
+    if lines and TITLE_RE.match(lines[0]):
+        title = TITLE_RE.match(lines[0]).group(1).strip()
+    body = lines[1:] if title else lines
+    n = lambda s: re.sub(r"[\s\u3000\u00a0]+", "", s or "")
+    nt, nb = n(title), n(book_title)
+    # 1) 开头连续的篇名重复行（偶有三连）
+    while body and nt and n(body[0]) == nt:
+        body.pop(0)
+    # 2) 书名碎片行：以前 6 行内第二次出现篇名为界整体剥掉
+    for i in range(min(6, len(body))):
+        if nt and n(body[i]) == nt:
+            body = body[i + 1:]
+            break
+    else:
+        # 3) 无第二次篇名（篇名被裹行）：按 title/dir 子串剥短行
+        while body and nt and nb and len(n(body[0])) <= 15 and (
+                n(body[0]) == nt or n(body[0]) in nt + nb or nb in n(body[0])):
+            body.pop(0)
+    # 4) 尾部爬取元数据：`---` 分隔线 + **来源/URL/获取时间/书报号/说明** 行
+    GF_META_RE = re.compile(r"^\*\*(来源|URL|获取时间|书报号|说明)\*\*")
+    while body and (body[-1] == "---" or GF_META_RE.match(body[-1])):
+        body.pop()
+    if body and body[-1] == "---":
+        body.pop()
+    return title, "\n".join(body)
+
+
+def export_gospelfood():
+    """福音天地（2026-10-15 新增系列）：早年网页版抓取的福音主题文集；bible 侧 ezoe
+    吸收合并后也是那 6 本被合并 gospel 书的正版所在地。源：福音天地/福音天地目录索引.json
+    （扁平 items：title/url/local_rel/书报号）+ {书目录}/NN{篇名}.md。按顶级目录分书
+    （22 本，新旧约福音题纲 4 个子目录不拆、295 篇一书），单 volume 多 books，同 bio 形态。"""
+    src_dir = os.path.join(BASE, "福音天地")
+    with open(os.path.join(src_dir, "福音天地目录索引.json"), encoding="utf-8") as f:
+        idx = json.load(f)
+    by_dir = {}
+    for it in (idx.get("items") or []):
+        rel = it.get("local_rel")
+        if rel:
+            by_dir.setdefault(rel.split("/")[0], []).append(it)
+    books = []
+    for dir_name, items in by_dir.items():
+        chapters = []
+        for it in items:
+            path = os.path.join(src_dir, it["local_rel"])
+            if not os.path.isfile(path):
+                print(f"  [WARN] 文件缺失：{path}")
+                continue
+            title, content = read_gospelfood_md(path, dir_name)
+            ctitle = title or re.sub(r"^\d+\s*", "", it.get("title") or "")
+            chapters.append({"title": ctitle, "content": content})
+        if chapters:
+            books.append({"title": dir_name, "chapters": chapters})
+    name = "福音天地"
+    meta = {"name": name, "volumes": [{"title": name, "books": books}]}
+    volumes_content = [{"volume": name, "books": books}]
+    return meta, volumes_content
+
+
 SERIES = {
     "ni": export_ni,
     "slat": export_slat,   # 十二篮（slat = 十二篮英译通称 Twelve Baskets 的篮）
     "bio": export_bio,     # 传记与文集（bio 原子集 + ezoe 传记、文集类合并，单一 volume）
+    "fuyintiandi": export_gospelfood,   # 福音天地（网页版灵粮文集 + ezoe 吸收合并正版）
 }
 # ezoe 书报合辑（bible 项目 2026-10-12 入库）：每个分类 = 独立系列，平级进书报合集层
 # （用户 2026-10-13 定稿：类别即系列，不再裹成「ezoe书报合辑」大系列切辑）。
