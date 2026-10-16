@@ -28,6 +28,7 @@ const LS_NOTES_PREFS = 'bible-study.notesPrefs';     // {source, color, sort} �
 const LS_DRAWER_DOCKED = 'bible-study.drawerDocked'; // 桌面导航抽屉是否停靠展开（收起后 ☰/crumb 再展开）
 const LS_VCONSOLE = 'bible-study.vconsole';          // 调试模式（PageSpy）开关：'1'=开启，设置弹窗版本号连点 5 次切换
 const LS_TYPO = 'bible-study.typography';            // {scale, lh} 阅读排版（字号倍率 / 行距），纯本地不入云同步
+const LS_THEME = 'bible-study.theme';                // 阅读主题：classic|indigo|paper|minimal，纯本地不入云同步（index.html 头部 early script 同步读）
 // 阅读排版取值约束（必须在 state 初始化前声明：state.typography 依赖 normalizeTypo 读取这两个常量）
 const TYPO_DEFAULTS = { scale: 1, lh: 2 };
 const TYPO_RANGE = { scale: [0.85, 2], lh: [1.5, 2.4] };   // 字号上限 2.0：满足 WCAG 1.4.4「文字可放大 200%」
@@ -111,6 +112,71 @@ const COLLECTIONS = [
   { id: 'ni', title: '倪文集', icon: '📚', entry: () => enterModule('books', { series: 'ni' }) },
   { id: 'bookhub', title: '书报', icon: '🗂️', entry: () => openBookHub() },
 ];
+
+/* ── 阅读主题（设置 → 阅读主题；style.css 末尾 :root[data-theme=…] 变量覆盖）── */
+const THEMES = { classic: '经典', indigo: '靛蓝', paper: '暖纸', minimal: '素灰' };
+const THEME_SWATCH = {   // 选择器里的三圆点预览：[主色, 页面底, 正文色]
+  classic: ['#5B67D4', '#f0f3f9', '#1f2937'],
+  indigo: ['#5662CE', '#f4f5f8', '#26272b'],
+  paper: ['#8a6a2f', '#faf7f1', '#33302a'],
+  minimal: ['#5662CE', '#f6f6f8', '#1c1c1e'],
+};
+// 非经典主题的合集块线性图标（classic 用 emoji；SVG stroke=currentColor，颜色由 CSS 按 theme 给）
+function _thSvg(paths) {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
+}
+const THEME_ICONS = {
+  bible: _thSvg('<path d="M12 5.5C10 3.9 7.5 3.5 4.5 3.7v14c3-.2 5.5.2 7.5 1.8 2-1.6 4.5-2 7.5-1.8v-14C16.5 3.5 14 3.9 12 5.5z"/><path d="M12 5.5v14"/>'),
+  lifereading: _thSvg('<path d="M6 3.5h12v17l-6-3.5-6 3.5z"/><path d="M9.5 3.5v7l2.5-1.8 2.5 1.8v-7"/>'),
+  notes: _thSvg('<rect x="5" y="4" width="14" height="16" rx="2"/><path d="M8.5 9h7M8.5 13h7M8.5 17h4"/>'),
+  morning: _thSvg('<path d="M4.5 13.5a7.5 7.5 0 0 1 15 0"/><rect x="3.5" y="13.5" width="4" height="6.5" rx="1.6"/><rect x="16.5" y="13.5" width="4" height="6.5" rx="1.6"/>'),
+  ni: _thSvg('<path d="M5 6.5h11M7 10h11M9 13.5h11"/><path d="M4 17.5l3.2-11h2"/>'),
+  bookhub: _thSvg('<path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>'),
+  slat: _thSvg('<path d="M4.5 9.5h15l-1.6 8.2a2 2 0 0 1-2 1.8H8.1a2 2 0 0 1-2-1.8z"/><path d="M8.5 9.5 10.5 5M15.5 9.5 13.5 5M9 13h6"/>'),
+  bio: _thSvg('<circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/>'),
+  fuyintiandi: _thSvg('<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c-5 5.5-5 11.5 0 17 5-5.5 5-11.5 0-17"/>'),
+  gospel: _thSvg('<path d="M12 20s-7-4.6-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.4-7 10-7 10z"/>'),
+  reading: _thSvg('<rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M9 3.5v17"/>'),
+  periodicals: _thSvg('<path d="M4 5h13v14H6a2 2 0 0 1-2-2z"/><path d="M17 8h3v9a2 2 0 0 1-2 2"/><path d="M7.5 9h6M7.5 12.5h6M7.5 16h4"/>'),
+  misc: _thSvg('<path d="M4 8l8-4.5L20 8v8l-8 4.5L4 16z"/><path d="M4 8l8 4.5L20 8M12 12.5v8"/>'),
+  _default: _thSvg('<path d="M6 3.5h8l4 4v13H6z"/><path d="M14 3.5v4h4"/>'),
+};
+function blockIconHtml(emoji, iconKey) {
+  return `<span class="hb-ic-em">${emoji}</span><span class="hb-ic-line">${THEME_ICONS[iconKey] || THEME_ICONS._default}</span>`;
+}
+function currentTheme() {
+  const t = document.documentElement.dataset.theme;
+  return THEMES[t] ? t : 'classic';
+}
+function applyTheme(t) {
+  if (!THEMES[t]) t = 'classic';
+  document.documentElement.dataset.theme = t;
+  save(LS_THEME, t);
+  // 图标双渲染（classic=emoji / 其余=线性）跟随主题，需重渲染所在屏幕的合集块
+  if (state.screen === 'home') renderHome();
+  else if (document.body.classList.contains('bookhub')) renderBookHub();
+}
+function openThemePicker() {
+  const cur = currentTheme();
+  openPopup('阅读主题', `
+    <div class="theme-list">
+      ${Object.entries(THEMES).map(([id, name]) => `
+        <div class="theme-item${id === cur ? ' cur' : ''}" data-theme-id="${id}">
+          <span class="theme-dots">${THEME_SWATCH[id].map(c => `<i class="theme-dot" style="background:${c}"></i>`).join('')}</span>
+          <span class="theme-name">${name}</span>
+          ${id === cur ? '<span class="theme-check">✓</span>' : '<span class="theme-check"></span>'}
+        </div>`).join('')}
+    </div>
+    <div class="fb-hint">主题只改变观感，标注与笔记不受影响；排版（Aa）设置各主题通用。</div>
+  `, { replace: true });   // 原位替换设置层：选完 ← 一步出弹窗，避免返回后设置行残留旧值
+  const body = $('popupBody');
+  body.querySelectorAll('.theme-item').forEach(el => {
+    el.addEventListener('click', () => {
+      applyTheme(el.dataset.themeId);
+      openThemePicker();   // 重渲染选中态（replace 原位，不压栈）
+    });
+  });
+}
 
 function load(key, fallback) {
   try {
@@ -467,6 +533,10 @@ function openSettingsModal() {
           <span class="settings-label">视图模式</span>
           <span class="settings-value">${VIEW_MODE_LABELS[state.viewMode] || '双页'}</span>
         </div>
+        <div class="settings-row" id="setTheme">
+          <span class="settings-label">阅读主题</span>
+          <span class="settings-value">${THEMES[currentTheme()] || '经典'}</span>
+        </div>
       </div>
       <div class="settings-card">
         <div class="settings-group">其他</div>
@@ -512,6 +582,8 @@ function onSettingsRow(e) {
     save(LS_VIEW_MODE, state.viewMode);
     const v = row.querySelector('.settings-value');
     if (v) v.textContent = VIEW_MODE_LABELS[state.viewMode] || '双页';
+  } else if (id === 'setTheme') {
+    openThemePicker();
   } else if (id === 'setSyncNow') {
     manualSyncNow();
   } else if (id === 'setSyncCompare') {
@@ -985,7 +1057,7 @@ function renderHome() {
   if (!grid) return;
   grid.innerHTML = COLLECTIONS.map(c => `
     <div class="home-block" data-entry="${c.id}" role="button" tabindex="0">
-      <div class="home-block-icon">${c.icon}</div>
+      <div class="home-block-icon">${blockIconHtml(c.icon, c.id)}</div>
       <div class="home-block-title">${c.title}</div>
     </div>`).join('');
   renderHomeHistory();
@@ -1055,7 +1127,7 @@ function renderBookHub() {
   const render = (list) => {
     grid.innerHTML = list.map(s => `
       <div class="home-block" data-series="${s.id}" role="button" tabindex="0">
-        <div class="home-block-icon">${s.icon || '📄'}</div>
+        <div class="home-block-icon">${blockIconHtml(s.icon || '📄', s.id)}</div>
         <div class="home-block-title">${escapeHtml(s.name)}</div>
       </div>`).join('');
   };
@@ -3353,7 +3425,7 @@ function buildHlItemBody(a, cls, hideLoc) {
   div.className = cls || 'hl-item';
   if (a.underline) {
     // 下划线型无颜色分类，用统一橙色底表达"有标注但无分类"，与有色标注底色模式对齐
-    div.style.backgroundColor = 'rgba(235,108,5,.08)';
+    div.style.backgroundColor = 'var(--note-soft)';   // 与 --note-wavy 同源的 8% 橙底（token 化 2026-10-16）
   } else {
     div.style.backgroundColor = colorBgSoft(a.colorId);   // 8% 同色背景
   }
