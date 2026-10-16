@@ -178,6 +178,58 @@ function openThemePicker() {
   });
 }
 
+/* ── 用户语言版本记录（单一来源）：① 使用帮助弹窗「最近更新」；② 更新弹窗「本次更新」。
+   纪律：只记用户可见变化、不记 chore/内部改动；用户可见功能发布时在顶部补一行（AGENTS.md 发版流程）。 ── */
+const CHANGELOG = [
+  { v: '1.0.55', date: '2026-10-16', items: ['设置新增「使用帮助」：功能介绍、五色划线含义与最近更新一目了然', '更新弹窗改为用户语言的「本次更新」，不再显示工程提交记录'] },
+  { v: '1.0.54', date: '2026-10-16', items: ['阅读主题上线：经典 / 靛蓝 / 暖纸 / 素灰四种观感任选', '手机滑动翻页：正文左右横扫切章/篇'] },
+  { v: '1.0.53', date: '2026-10-16', items: ['每个位置都有独立网址，可分享、可收藏'] },
+  { v: '1.0.51', date: '2026-10-15', items: ['「重读」按钮：一键清掉本章读过的无笔记划线', '倪文集正文的人名可点，查看人物小传', '福音天地合集上线（书报合集层）'] },
+  { v: '1.0.50', date: '2026-10-14', items: ['重复收录的篇目自动给出指引，不再重复阅读'] },
+];
+// 更新弹窗用：严格晚于本地版本的全部条目（数值逐位比较，不依赖「本地版本在记录里」）——
+// 记录空隙（该版无条目）只展示真正更新的；记录比本地旧/漏补时自然为空 → 回退原始提交信息；本地过老自然全量
+function changelogSince(current) {
+  const cur = String(current || '').split('.').map(n => parseInt(n, 10) || 0);
+  return CHANGELOG.filter(e => {
+    const v = e.v.split('.').map(n => parseInt(n, 10) || 0);
+    for (let i = 0; i < Math.max(cur.length, v.length); i++) {
+      const a = cur[i] || 0, b = v[i] || 0;
+      if (b !== a) return b > a;
+    }
+    return false;   // 相同版本不算「更新」
+  });
+}
+function openHelpPopup() {
+  const upd = CHANGELOG.slice(0, 3).map(e => `
+    <div class="help-ver">v${escapeHtml(e.v)} · ${escapeHtml(e.date.slice(5))}</div>
+    ${e.items.map(i => `<div class="help-up-item">${escapeHtml(i)}</div>`).join('')}`).join('');
+  openPopup('使用帮助', `
+    <div class="help-h"><span class="n">1</span>从这里开始</div>
+    <div class="help-li">首页六个方块就是六个模块，点进去直接用</div>
+    <div class="help-li">顶部搜索：输 <span class="help-k">创24</span> 直达创世记 24 章；也能搜篇目和你自己的笔记</div>
+    <div class="help-h"><span class="n">2</span>阅读</div>
+    <div class="help-li">经文里橙色小数字 = 注解，蓝色字母 = 串珠，点开看</div>
+    <div class="help-li">正文里紫色虚线是引用经文，点一下跳过去</div>
+    <div class="help-li">书报里青绿色的名字是人名，点开看他的人物小传</div>
+    <div class="help-h"><span class="n">3</span>划线与笔记</div>
+    <div class="help-li">选中文字 → 选颜色划下来。五色各有含义：<mark class="c1">黄</mark>=重要句子 · <mark class="c2">绿</mark>=「耶和华我的神」等 · <mark class="c3">紫</mark>=「我是耶和华」 · <mark class="c4">蓝</mark>=神所喜爱赞赏的 · <mark class="c5">红</mark>=神所恨恶审判禁止的</div>
+    <div class="help-li">同一工具条还能写笔记、复制文字（复制自动附上出处）</div>
+    <div class="help-li">点已划的线：改色 / 补笔记 / 删除</div>
+    <div class="help-li">所有划线笔记在首页「我的笔记」块里统一管理</div>
+    <div class="help-h"><span class="n">4</span>实用技巧</div>
+    <div class="help-li">手机：正文左右横向一划 = 翻下一章/篇</div>
+    <div class="help-li">字号行距：顶栏 <span class="help-k">Aa</span> 随时调</div>
+    <div class="help-li">观感主题：设置 → 阅读主题（经典 / 靛蓝 / 暖纸 / 素灰）</div>
+    <div class="help-li">多设备同步：设置 → 云同步</div>
+    <div class="help-li">分享：每个位置都有网址，复制给别人打开就是这里</div>
+    <div class="help-up">
+      <div class="help-h">最近更新</div>
+      ${upd}
+    </div>
+  `);
+}
+
 function load(key, fallback) {
   try {
     const v = localStorage.getItem(key);
@@ -540,6 +592,10 @@ function openSettingsModal() {
       </div>
       <div class="settings-card">
         <div class="settings-group">其他</div>
+        <div class="settings-row" id="setHelp">
+          <span class="settings-label">使用帮助</span>
+          <span class="settings-arrow">›</span>
+        </div>
         <div class="settings-row" id="setUpdate">
           <span class="settings-label">检查更新</span>
           <span class="settings-value" id="setUpdateVal">${_updateInfo ? (_updateInfo.hasUpdate ? `新版本 v${_updateInfo.latest.version}` : '已是最新') : '检查更新'}</span>
@@ -590,6 +646,8 @@ function onSettingsRow(e) {
     openSyncCompareModal();
   } else if (id === 'setFeedback') {
     openFeedbackModal();
+  } else if (id === 'setHelp') {
+    openHelpPopup();
   } else if (id === 'setUpdate') {
     openUpdateModal();
   }
@@ -4940,6 +4998,7 @@ function bindEvents() {  // 首页：合集块点击 + 顶部搜索 + ⌂ 回首
   // 检查更新弹窗
   $('updateCancel').addEventListener('click', closeUpdateModal);
   $('updateAction').addEventListener('click', startUpdateDownload);
+  $('updateHelp').addEventListener('click', () => { closeUpdateModal(); openHelpPopup(); });
   // 研读面板拖拽调宽
   bindResize();
   // 研读 tab（常规点击我的笔记 → 当前章聚合模式）
@@ -6583,6 +6642,7 @@ function openUpdateModal() {
   action.hidden = true;
   action.textContent = '下载并安装';
   action.disabled = false;
+  $('updateHelp').hidden = true;
 
   window.BibleStudyUpdate.check().then((res) => {
     _updateInfo = res;
@@ -6598,9 +6658,19 @@ function openUpdateModal() {
       return;
     }
     status.textContent = `发现新版本 v${latest.version}（当前 v${current}）`;
-    body.innerHTML = escapeHtml(latest.body ? latest.body.slice(0, 500) : '');
+    // 「本次更新」：CHANGELOG 用户语言条目（跨版本累计——本地版本之后的全部条目）；
+    // 本地过老（不在记录里）时全量展示；本地已是记录最新时回退原始提交信息（更新记录还没补的窗口期）
+    const pending = changelogSince(current);
+    if (pending.length) {
+      body.innerHTML = '<div class="upd-ch">本次更新</div>' +
+        pending.map(e => e.items.map(i => `<div class="upd-ch-item">${escapeHtml(i)}</div>`).join('')).join('');
+    } else {
+      body.innerHTML = escapeHtml(latest.body ? latest.body.slice(0, 500) : '');
+    }
+    const helpBtn = $('updateHelp');
+    if (helpBtn) helpBtn.hidden = false;
     if (!window.BibleStudyUpdate.isNative()) {
-      body.innerHTML += '\n\n网页版内容会自动更新，刷新页面即可；如需安装 APK 请点下方按钮前往 Releases 下载。';
+      body.innerHTML += '<div class="upd-note">网页版内容会自动更新，刷新页面即可；如需安装 APK 请点下方按钮前往 Releases 下载。</div>';
       action.textContent = '前往 Releases';
     }
     action.hidden = false;

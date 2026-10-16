@@ -1619,3 +1619,29 @@ body.bookhub #menuBtn { display: none; }               /* 合集层是层级选�
 :root:not([data-theme="classic"]) .home-block-icon .hb-ic-em { display: none; }
 :root:not([data-theme="classic"]) .home-block-icon .hb-ic-line { display: block; color: var(--brand); }
 :root[data-theme="minimal"] .home-block-icon .hb-ic-line { color: var(--text-soft); }
+
+/* ── 使用帮助（设置 → 使用帮助）：正文 + 最近更新；「最近更新」与更新弹窗「本次更新」
+   共用 app.js CHANGELOG（用户语言单一来源，2026-10-16）── */
+.help-h {
+  font-size: var(--fs-14); font-weight: 700; color: var(--heading);
+  margin: 16px 0 6px; display: flex; align-items: center; gap: 6px;
+}
+.help-h:first-child { margin-top: 2px; }
+.help-h .n {
+  display: inline-flex; width: 20px; height: 20px; flex: none;
+  border-radius: var(--radius-pill); background: var(--brand); color: var(--on-brand);
+  font-size: var(--fs-12); align-items: center; justify-content: center;
+}
+.help-li { font-size: var(--fs-13); color: var(--text-soft); line-height: 1.75; padding-left: 26px; margin-bottom: 5px; position: relative; }
+.help-li::before { content: '·'; position: absolute; left: 14px; color: var(--text-faint); }
+.help-k { color: var(--brand-dark); font-weight: 600; }
+.help-up { border-top: 1px solid var(--border); margin-top: 14px; padding-top: 4px; }
+.help-ver { font-size: var(--fs-12); color: var(--brand-dark); font-weight: 700; margin: 8px 0 3px; }
+.help-up-item { font-size: var(--fs-12); color: var(--text-soft); line-height: 1.7; padding-left: 14px; position: relative; }
+.help-up-item::before { content: '·'; position: absolute; left: 2px; color: var(--text-faint); }
+
+/* 更新弹窗「本次更新」（CHANGELOG 用户语言，替代原始提交信息） */
+.update-body .upd-ch { font-size: var(--fs-12); color: var(--brand-dark); font-weight: 700; margin-bottom: 6px; }
+.update-body .upd-ch-item { font-size: var(--fs-13); color: var(--text); line-height: 1.8; padding-left: 16px; position: relative; margin-bottom: 4px; }
+.update-body .upd-ch-item::before { content: '·'; position: absolute; left: 3px; color: var(--text-faint); }
+.update-body .upd-note { margin-top: 10px; font-size: var(--fs-12); color: var(--text-muted); line-height: 1.7; }
