@@ -26,10 +26,10 @@ async function main() {
       bodyHome: document.body.classList.contains('home'),
       cols, // 375px 宽约 3 列
       menuHidden: getComputedStyle(document.querySelector('#menuBtn')).display === 'none',
-      mobileNavHidden: getComputedStyle(document.querySelector('#mobileNav')).display === 'none',
+      mobileNavGone: !document.querySelector('#mobileNav'),   // 底部导航已移除（2026-10-16 滑动翻页取代）
     };
   });
-  console.log('A. 移动端首页:', m1.bodyHome ? '✓' : '✗', '| 网格列数:', m1.cols, '| ☰ 隐藏:', m1.menuHidden, '| 底nav隐藏:', m1.mobileNavHidden);
+  console.log('A. 移动端首页:', m1.bodyHome ? '✓' : '✗', '| 网格列数:', m1.cols, '| ☰ 隐藏:', m1.menuHidden, '| 底nav已移除:', m1.mobileNavGone);
   // 点读经块 → 直接进读经视图（不再弹选章）
   await page.click('#homeGrid .home-block[data-entry="bible"]');
   await new Promise((r) => setTimeout(r, 1500));
@@ -37,10 +37,10 @@ async function main() {
     home: document.body.classList.contains('home'),
     mobileStudy: document.body.classList.contains('mobile-study'),
     popupHidden: document.querySelector('#popup').hidden,
-    mobileNav: getComputedStyle(document.querySelector('#mobileNav')).display,
+    mobileNavGone: !document.querySelector('#mobileNav'),
     verseVisible: getComputedStyle(document.querySelector('.verse')).display !== 'none',
   }));
-  console.log('   进读经视图: 非首页', !m2.home ? '✓' : '✗', '| 无弹窗', m2.popupHidden ? '✓' : '✗', '| 经文可见', m2.verseVisible ? '✓' : '✗', '| 底nav', m2.mobileNav);
+  console.log('   进读经视图: 非首页', !m2.home ? '✓' : '✗', '| 无弹窗', m2.popupHidden ? '✓' : '✗', '| 经文可见', m2.verseVisible ? '✓' : '✗', '| 底nav已移除', m2.mobileNavGone);
   await page.close();
 
   // ── B. 笔记管理模块跨书卷聚合 + 首页搜索跨书卷跳转 ──

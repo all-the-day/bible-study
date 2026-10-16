@@ -1325,6 +1325,93 @@ function initNativeBack() {
   _nativeBackBound = true;
 }
 
+/* ============ 移动端滑动翻页（2026-10-16，小说阅读器式横扫切章/篇） ============
+   正文区快速横扫：向左 = 下一篇，向右 = 上一篇。四模块各自边界内切换（读经切章、
+   生命读经/听抄切本卷/本期内篇、书报切本书内章），到边界不动。
+   与划线选区互斥：touchend 时有选区 → 走既有标注流程，不当滑动。
+   弹窗/抽屉/研读视图（mobile-study）不响应；动画 = 新内容轻淡入（长文滚动型阅读器
+   不做整页翻页动画）。 */
+let _swipeStart = null;
+
+// dir: 1 = 下一篇/章，-1 = 上一篇/章；返回是否触发
+function swipeTargetChapter(dir) {
+  const m = state.activeModule;
+  if (m === 'bible') {
+    const ch = state.currentChapter + dir;
+    if (!state.currentBook || ch < 1 || ch > state.currentBook.chapters) return false;
+    selectChapter(ch);
+    return true;
+  }
+  if (m === 'lifereading') {
+    const vol = state.lrVolumes[state.lrBookIndex];
+    const arts = (vol && vol.articles) || [];
+    const i = arts.findIndex(a => a.id === state.lrArticleId);
+    const next = i >= 0 ? arts[i + dir] : null;
+    if (!next) return false;
+    selectLrArticle(next.id);
+    return true;
+  }
+  if (m === 'books') {
+    const metaVol = state.bookMeta && state.bookMeta.volumes[state.bookVolume - 1];
+    const book = metaVol && metaVol.books[state.bookBook];
+    const ch = state.bookChapter + dir;
+    if (!book || !book.chapters || ch < 0 || ch >= book.chapters.length) return false;
+    selectBookChapter(state.bookVolume, state.bookBook, ch);
+    return true;
+  }
+  if (m === 'morning') {
+    const data = state.morningData[state.morningPeriod];
+    const chs = (data && data.chapters) || [];
+    const i = chs.findIndex(c => c.number === state.morningChapterId);
+    const next = i >= 0 ? chs[i + dir] : null;
+    if (!next) return false;
+    selectMorningChapter(next.number);
+    return true;
+  }
+  return false;
+}
+
+// 切换反馈：新内容轻淡入（方向感：下一篇从右进来，上一篇从左进来）
+function swipeFeedback(dir) {
+  const col = $('textCol');
+  if (!col) return;
+  col.classList.remove('swipe-in-l', 'swipe-in-r');
+  void col.offsetWidth;   // 重置动画
+  col.classList.add(dir === 1 ? 'swipe-in-l' : 'swipe-in-r');
+}
+
+function bindSwipeNav() {
+  const col = $('textCol');
+  if (!col) return;
+  col.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) { _swipeStart = null; return; }
+    const t = e.touches[0];
+    _swipeStart = { x: t.clientX, y: t.clientY, t: Date.now(), target: e.target };
+  }, { passive: true });
+  col.addEventListener('touchend', (e) => {
+    if (!_swipeStart) return;
+    const s = _swipeStart;
+    _swipeStart = null;
+    if (!e.changedTouches || e.changedTouches.length !== 1) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - s.x, dy = t.clientY - s.y;
+    const dt = Date.now() - s.t;
+    // 手势判定：快扫（<600ms）、明显横向（|dx|≥60 且几乎无上下偏移 |dy|<40）
+    if (dt > 600 || Math.abs(dx) < 60 || Math.abs(dy) >= 40) return;
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed) return;                                  // 有选区 = 划线标注流程
+    if (document.body.classList.contains('mobile-study')) return;         // 研读视图不响应
+    if (_routeApplying || _routeBusy) return;                             // 路由就位进行中不响应（防与深链纠偏互相踩）
+    if (state.screen !== 'work' || !READER_MODULES[state.activeModule]) return;
+    if (!$('popup').hidden || !$('typoModal').hidden || !$('updateModal').hidden || !$('noteModal').hidden) return;
+    const dw = $('navDrawer');
+    if (dw && !dw.hidden && dw.classList.contains('open')) return;        // 抽屉开着不响应
+    if (s.target && s.target.closest && s.target.closest('button, a, input, textarea, select, .tool-btn, .sw, .study-tab, .dw-item, .hl-tab')) return;
+    const dir = dx < 0 ? 1 : -1;
+    if (swipeTargetChapter(dir)) swipeFeedback(dir);
+  }, { passive: true });
+}
+
 /* ============ 阅读器外壳 + 模块注册表 ============ */
 /* 每个合集模块 = 一套三列阅读器配置。模块切换只发生在首页（⌂ → 点合集块 → enterModule）。 */
 const READER_MODULES = {
@@ -1727,7 +1814,6 @@ async function selectChapter(chapter) {
   renderChapterNav();
   renderStudy();
   renderDrawer();   // 停靠抽屉同步 cur 高亮与旧约/新约 tab（jumpDrawerBrowse 先经 enterWork 用旧书卷渲染过一次，此处以新位置纠正；与书报/听抄/生命读经跳转一致，反馈 #23/#25）
-  updateMobileNav();
   $('textCol').scrollTop = 0;   // 翻章滚顶；jumpToVerse 等跳转路径随后自行 scrollIntoView 覆盖
   save(LS_LAST, { book: state.currentBook.index, chapter });
   pushHistory('bible', { book: state.currentBook.index, chapter }, `${state.currentBook.name} ${chapter}章`);
@@ -3355,7 +3441,6 @@ function setMobileView(view) {
   if (!isMobile() || state.screen === 'home') return;   // 首页是第三种态，不切读/研
   document.body.classList.toggle('mobile-study', view === 'study');
   syncModePill();
-  updateMobileNav();
 }
 
 // pill 高亮与实际视图态对齐（showHome 会把 body.mobile-study 重置回读经，但首页不更新
@@ -3373,24 +3458,6 @@ function matchedLrArticles() {
   const manual = state.lrMap[`${acr}${ch}`];
   const ids = manual !== undefined ? manual : autoMatchLrIds(articles, ch);
   return ids.map(id => articles.find(a => a.id === id)).filter(Boolean);
-}
-
-// 底部导航状态：读经模式专用（研读模式底部导航隐藏），按钮文字 + 边界禁用
-function updateMobileNav() {
-  if (!isMobile()) return;
-  const prev = $('mPrevBtn'), next = $('mNextBtn');
-  prev.textContent = '‹ 上一章';
-  next.textContent = '下一章 ›';
-  prev.disabled = state.currentChapter <= 1;
-  next.disabled = state.currentChapter >= state.currentBook.chapters;
-}
-
-// 底部翻页：仅读经模式翻章（研读模式无底部导航，翻章/翻篇走 crumb 选章 / ☰ 篇目导航）
-function mobileNavGo(dir) {
-  if (state.activeModule !== 'bible') return;   // 兜底：非读经模块无「章」概念（按钮已由 CSS 隐藏）
-  const ch = state.currentChapter + dir;
-  if (ch < 1 || ch > state.currentBook.chapters) return;
-  selectChapter(ch);
 }
 
 // 轻提示（底部弹出，自动消失；供同步状态、空状态等轻量提醒）
@@ -4772,10 +4839,6 @@ function bindEvents() {  // 首页：合集块点击 + 顶部搜索 + ⌂ 回首
   document.querySelectorAll('#modePill .mode-pill-btn').forEach(b => {
     b.addEventListener('click', () => setMobileView(b.dataset.view));
   });
-  // 移动端底部导航：纯翻页（读经翻章 / 生命读经翻篇）
-  $('mPrevBtn').addEventListener('click', () => mobileNavGo(-1));
-  $('mNextBtn').addEventListener('click', () => mobileNavGo(1));
-  // 设置菜单（⚙️）——行点击走委托，弹窗栈返回后依然有效
   $('settingsBtn').addEventListener('click', openSettingsModal);
   // 排版面板（Aa）：字号 / 行距，滑杆即时生效（style.css 消费 --reading-scale / --reading-lh）
   $('typographyBtn').addEventListener('click', () => {
@@ -4857,6 +4920,8 @@ function bindEvents() {  // 首页：合集块点击 + 顶部搜索 + ⌂ 回首
   // 路由：浏览器/系统前进后退、手动改 hash（我们自己的写入走 pushState/replaceState，不触发这两个事件）
   window.addEventListener('popstate', onUrlChange);
   window.addEventListener('hashchange', onUrlChange);
+  // 移动端滑动翻页（正文横扫切章/篇）
+  bindSwipeNav();
 }
 
 // 从注号上标定位其所在节的 key（经文区域内上标无 data-key，需自行反推）
