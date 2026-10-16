@@ -972,6 +972,8 @@ async function init() {
     return;
   }
   splashHide();   // 启动数据全部就绪，放行首页
+  initRoute();      // 深链：带 hash 冷启动直接就位（无 hash = 首页；非法 hash 净化回首页）
+  initNativeBack(); // APK：接管 Android 返回键（仅原生生效，浏览器为 no-op）
   // 更新检查：APK 端启动 ~3s 静默检查（本地浏览器跳过）；详见 update.js
   if (window.Update) window.Update.check().catch(() => {});
 }
@@ -1023,6 +1025,7 @@ function showHome() {
   renderHome();
   const res = $('homeSearchResults');
   if (res) res.innerHTML = '';
+  syncRoute();   // 回首页：URL 回根（有历史则 push，可后退返回阅读位置）
 }
 
 /* ============ 书报二级合集层（2026-10-12） ============ */
@@ -1039,6 +1042,7 @@ function openBookHub() {
   const grid = $('bookHubGrid');
   if (grid) grid.dataset.epoch = String(Number(grid.dataset.epoch || '0') + 1);   // 使旧补渲染失效
   renderBookHub();
+  syncRoute();
 }
 
 function closeBookHub() {
@@ -1064,12 +1068,19 @@ function renderBookHub() {
     render(list);
     grid.dataset.loaded = '1';
     // 旧系列清单缓存（SW stale-while-revalidate 首帧回旧值/HTTP 启发式缓存）会导致
-    // 首开空块（如只有 ni 则全部被排除）——预取每个系列元数据，成功一个重渲染一次，
-    // 新系列清单到位后自动补齐（对齐笔记视图的预取补渲染模式）
-    list.forEach(s => prefetchSeriesMeta(s.id).then((m) => {
-      if (!m || stale()) return;
-      render(list);
-    }));
+    // 首开缺块或旧名——元数据全部预取完成后重读一次索引（此时 SWR 背景更新多半已落缓存），
+    // 清单有变就更新缓存并补渲染（2026-10-16 修复：原 `.then((m) => if (!m …))` 因
+    // prefetchSeriesMeta 无返回值，补渲染从未生效）
+    Promise.all(list.map(s => prefetchSeriesMeta(s.id))).then(() => {
+      if (stale()) return;
+      fetchJSON('data/books/index.json').then((fresh) => {
+        if (stale()) return;
+        const cached = state.bookSeriesIndex;
+        if (cached && JSON.stringify(cached) === JSON.stringify(fresh)) return;
+        state.bookSeriesIndex = fresh;
+        render((fresh.series || []).filter(s => s.id !== 'ni').map(s => ({ ...s, icon: BOOK_HUB_ICONS[s.id] })));
+      }).catch(() => {});
+    });
   });
 }
 
@@ -1086,6 +1097,232 @@ function enterWork() {
   applyDrawerDock();   // 恢复停靠列（isDocked 依赖 screen==='work'）
   const hb = $('homeBtn');
   if (hb) hb.classList.remove('active');
+}
+
+/* ============ 路由（URL ↔ 视图同步，2026-10-15） ============
+   hash 方案（如 #/bible/1/24）：URL 只变 fragment，不发网络请求——SW/CF 部署/相对资源
+   路径/APK 全部零改动。路由串全 ASCII（卷用 1-66 序号），无编码问题。
+   写入规则：容器内位置变化 = replace（翻章不堆历史）；容器/屏幕/模块变化 = push（可逐级
+   后退）。三个来源：① 我们的导航函数（pushState/replaceState，不触发事件）；② 浏览器/
+   系统前进后退（popstate/hashchange → onUrlChange → 走既有统一入口就位）；③ 冷启动带
+   hash（initRoute 就位；非法 hash 净化回首页）。 */
+let _routeReady = false;         // init 裁决初始路由前禁止写入（防 showHome 冲掉冷启动深链）
+let _routeApplying = false;      // applyRoute 期间禁止回写（防事件环）
+let _routeBusy = false;          // onUrlChange 重入守卫（parse 是异步的，防连按后退交叉）
+let _routeRerun = false;         // busy 期间又来的 URL 变化，完成后补跑一次
+let _routePending = false;       // 微任务合并：一次事务内多次导航只写一次 URL
+let _routeLastContainer = null;  // 上次写入 URL 的容器（决定 push/replace）
+
+// 容器 = 屏幕/模块 + 一级定位（读经按卷、生命读经按卷、书报按系列·辑·书、听抄按期）
+function routeContainer() {
+  if (state.screen === 'home') return 'home';
+  if (state.screen === 'bookhub') return 'hub';
+  const m = state.activeModule;
+  if (m === 'bible') return state.currentBook ? `bible:${state.currentBook.index}` : null;
+  if (m === 'lifereading') return state.lrBookIndex ? `lr:${state.lrBookIndex}` : null;
+  if (m === 'books') return state.bookSeries ? `books:${state.bookSeries}:${state.bookVolume}:${state.bookBook}` : null;
+  if (m === 'morning') return state.morningPeriod ? `morning:${state.morningPeriod}` : null;
+  if (m === 'notes') return 'notes';
+  return null;
+}
+
+// 当前状态 → 路由串（'' = 首页；null = 状态未就绪，调用方跳过写入）
+function formatRoute() {
+  if (state.screen === 'home') return '';
+  if (state.screen === 'bookhub') return '#/hub';
+  const m = state.activeModule;
+  if (m === 'bible') return (state.currentBook && state.currentChapter)
+    ? `#/bible/${state.currentBook.index}/${state.currentChapter}` : null;
+  if (m === 'lifereading') return (state.lrBookIndex && state.lrArticleId)
+    ? `#/lr/${state.lrBookIndex}/${state.lrArticleId}` : null;
+  if (m === 'books') return (state.bookSeries && state.bookVolume)
+    ? `#/book/${state.bookSeries}/${state.bookVolume}/${state.bookBook || 0}/${state.bookChapter || 0}` : null;
+  if (m === 'morning') return (state.morningPeriod && state.morningChapterId)
+    ? `#/morning/${state.morningPeriod}/${state.morningChapterId}` : null;
+  if (m === 'notes') return '#/notes';
+  return null;
+}
+
+// 导航函数尾部调用：把当前状态写进 URL（微任务合并；applyRoute 期间跳过）。
+// 我们自己的写入用 history API（不触发 popstate/hashchange），不会回灌 onUrlChange。
+function syncRoute() {
+  if (!_routeReady || _routeApplying || _routePending) return;
+  _routePending = true;
+  queueMicrotask(() => {
+    _routePending = false;
+    if (!_routeReady || _routeApplying) return;
+    const want = formatRoute();
+    if (want === null) return;
+    const cur = location.hash || '';
+    if (want === cur) { _routeLastContainer = routeContainer(); return; }
+    const container = routeContainer();
+    const url = want || (location.pathname + location.search);   // 首页 = 清理 hash 的干净 URL
+    if (container && container === _routeLastContainer) history.replaceState(null, '', url);
+    else history.pushState(null, '', url);
+    _routeLastContainer = container;
+  });
+}
+
+// hash → 目标（null = 非法，回落首页）。越界钳制：章按 books.json、书报按元数据。
+async function parseRoute() {
+  const h = decodeURIComponent(location.hash || '').replace(/^#/, '');
+  if (!h || h === '/') return { kind: 'home' };
+  const parts = h.split('/').filter(Boolean);
+  const seg = parts[0];
+  if (seg === 'hub') return { kind: 'hub' };
+  if (seg === 'notes') return { kind: 'notes' };
+  if (seg === 'bible') {
+    const book = +parts[1], chapter = +parts[2];
+    if (!Number.isInteger(book) || book < 1 || book > 66) return null;
+    if (!Number.isInteger(chapter) || chapter < 1) return null;
+    const meta = state.books.find(b => b.index === book);
+    if (!meta) return null;
+    return { kind: 'bible', book, chapter: Math.min(chapter, meta.chapters) };
+  }
+  if (seg === 'lr') {
+    const book = +parts[1], article = +parts[2];
+    if (!Number.isInteger(book) || book < 1 || book > 66) return null;
+    if (!Number.isInteger(article) || article < 1) return null;
+    return { kind: 'lr', book, article };
+  }
+  if (seg === 'book') {
+    const series = parts[1], volume = +parts[2], book = +parts[3], chapter = +parts[4];
+    if (!series || !/^[a-z0-9_-]+$/i.test(series)) return null;
+    if (!Number.isInteger(volume) || volume < 1) return null;
+    if (!Number.isInteger(book) || book < 0) return null;
+    if (!Number.isInteger(chapter) || chapter < 0) return null;
+    const idx = await ensureBookSeriesIndex();
+    if (!((idx.series || []).some(s => s.id === series))) return null;
+    // prefetchSeriesMeta 是 fire-and-forget（无返回值），统一经 seriesMeta() 同步读缓存
+    let meta = seriesMeta(series);
+    if (!meta) { await prefetchSeriesMeta(series); meta = seriesMeta(series); }
+    if (!meta || !(meta.volumes || []).length) return { kind: 'book', series, volume: 1, book: 0, chapter: 0 };
+    const vi = Math.min(volume, meta.volumes.length) - 1;
+    const books = meta.volumes[vi].books || [];
+    const bi = Math.min(book, Math.max(0, books.length - 1));
+    const chs = (books[bi] && books[bi].chapters) || [];
+    return { kind: 'book', series, volume: vi + 1, book: bi, chapter: Math.min(chapter, Math.max(0, chs.length - 1)) };
+  }
+  if (seg === 'morning') {
+    const period = parts[1], chapter = +parts[2];
+    if (!period || !Number.isInteger(chapter) || chapter < 1) return null;
+    const idx = await ensureMorningIndex();
+    if (!((idx.trainings || []).some(t => t.id === period))) return null;
+    return { kind: 'morning', period, chapter };
+  }
+  return null;
+}
+
+// 路由 → 视图（一律走既有统一入口，行为与点击/搜索完全一致）
+async function applyRoute(r) {
+  _routeApplying = true;
+  try {
+    if (r.kind === 'home') { showHome(); return; }
+    if (r.kind === 'hub') { openBookHub(); return; }
+    if (r.kind === 'notes') { await enterModule('notes'); return; }
+    if (r.kind === 'bible') {
+      await enterModule('bible');
+      if (!state.currentBook || state.currentBook.index !== r.book) await selectBook(r.book, r.chapter);
+      else if (state.currentChapter !== r.chapter) await selectChapter(r.chapter);
+      return;
+    }
+    if (r.kind === 'lr') { await openLrArticle(r.book, { id: r.article }); return; }
+    if (r.kind === 'book') {
+      await openBookChapter(r.volume, r.book, r.chapter, r.series);
+      // enter 路径的「续接上次位置」只认 truthy opts（chapter 0 会被 last 顶替，既有行为）——
+      // 深链要求精确就位，显式纠偏
+      if (state.bookSeries === r.series &&
+          (state.bookVolume !== r.volume || state.bookBook !== r.book || state.bookChapter !== r.chapter)) {
+        await selectBookChapter(r.volume, r.book, r.chapter);
+      }
+      return;
+    }
+    if (r.kind === 'morning') { await openMorningArticle(r.period, r.chapter); return; }
+  } finally {
+    _routeApplying = false;
+    _routeLastContainer = routeContainer();
+  }
+}
+
+// URL 变化（浏览器前进/后退、系统返回、手动改 hash）→ 就位 + 归一化
+async function onUrlChange() {
+  if (!_routeReady) return;
+  // 上一次就位还在进行（applyRoute/_routeBusy）时来的变化不能丢：排队补跑（parse 读的是最新 URL）
+  if (_routeApplying || _routeBusy) { _routeRerun = true; return; }
+  _routeBusy = true;
+  _routeRerun = false;   // 本次就位读取的是最新 URL，此前排队的补跑作废
+  try {
+    let r = null;
+    try { r = await parseRoute(); } catch (e) { /* 数据缺失等 → 回落首页 */ }
+    if (!r) {
+      history.replaceState(null, '', location.pathname + location.search);
+      await applyRoute({ kind: 'home' });
+      return;
+    }
+    try {
+      await applyRoute(r);
+    } catch (e) {
+      // 就位中途失败（数据缺失等）：回落首页并净化 URL，不留悬空态与未处理 rejection
+      await applyRoute({ kind: 'home' }).catch(() => showHome());
+      history.replaceState(null, '', location.pathname + location.search);
+      return;
+    }
+    // 钳制/回退后的真实位置可能与请求不同（如章号越界）→ replace 修正 URL，不新增历史
+    const want = formatRoute();
+    if (want !== null && (location.hash || '') !== want) {
+      history.replaceState(null, '', want || (location.pathname + location.search));
+    }
+  } finally {
+    _routeBusy = false;
+    if (_routeRerun) { _routeRerun = false; onUrlChange(); }
+  }
+}
+
+// 冷启动：数据就绪（splash 放行）后应用深链；无效 hash 净化回首页
+async function initRoute() {
+  let r = null;
+  try { r = await parseRoute(); } catch (e) { /* 同 onUrlChange */ }
+  if (r && r.kind !== 'home') {
+    try { await applyRoute(r); } catch (e) { showHome(); }
+    const want = formatRoute();
+    if (want !== null && (location.hash || '') !== want) {
+      history.replaceState(null, '', want || (location.pathname + location.search));
+    }
+  } else if (location.hash) {
+    history.replaceState(null, '', location.pathname + location.search);
+  }
+  _routeLastContainer = routeContainer();
+  _routeReady = true;
+}
+
+/* Android 返回键（APK）：先逐层关浮层，再走 history 后退，首页/无历史才退出 app。
+   注册 backButton 监听会禁用 @capacitor/app 的原生默认行为（见 AGENTS.md「路由」节），
+   故 canGoBack 判定与 history.back 都在这里显式实现。 */
+function handleNativeBack(info) {
+  if (!$('popup').hidden) { closePopup(); return; }                      // 设置/注脚/人物/确认框…（弹窗栈逐层）
+  if (!$('floatTool').hidden || !$('markTool').hidden) { hideFloatTool(); hideMarkTool(); return; }   // 划词浮动工具栏（瞬态浮层）
+  if (!$('typoModal').hidden) { closeTypoModal(); return; }
+  if (!$('updateModal').hidden) { closeUpdateModal(); return; }
+  if (!$('noteModal').hidden) { cancelNoteEditor(); return; }
+  if (state.activeModule === 'notes' && isMobile() && document.body.classList.contains('mobile-study')) {
+    closeNotesEditor(); return;
+  }
+  const dw = $('navDrawer');
+  if (dw && !dw.hidden && dw.classList.contains('open') && !isDocked()) { closeNavDrawer(); return; }
+  if (info && info.canGoBack) { history.back(); return; }
+  const App = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App;
+  if (App && App.exitApp) App.exitApp();
+}
+
+let _nativeBackBound = false;
+function initNativeBack() {
+  if (_nativeBackBound) return;
+  if (!window.Capacitor || typeof window.Capacitor.isNativePlatform !== 'function') return;
+  if (!window.Capacitor.isNativePlatform()) return;
+  const App = window.Capacitor.Plugins && window.Capacitor.Plugins.App;
+  if (!App || !App.addListener) return;
+  App.addListener('backButton', handleNativeBack);
+  _nativeBackBound = true;
 }
 
 /* ============ 阅读器外壳 + 模块注册表 ============ */
@@ -1271,6 +1508,7 @@ async function enterModule(id, opts) {
     await Promise.all([mod.renderNav(), mod.renderMain(), mod.renderSide(), mod.renderCrumb()]);
     applyDrawerDock();   // 模块切换后重估停靠态（notes 隐藏停靠列，其他模块恢复）
   }
+  syncRoute();   // 模块进入/切换落定后同步 URL（首页块/搜索/全局笔记跳转共用此入口）
 }
 
 // 首页合集块点击委托 + 顶部搜索
@@ -1493,6 +1731,7 @@ async function selectChapter(chapter) {
   $('textCol').scrollTop = 0;   // 翻章滚顶；jumpToVerse 等跳转路径随后自行 scrollIntoView 覆盖
   save(LS_LAST, { book: state.currentBook.index, chapter });
   pushHistory('bible', { book: state.currentBook.index, chapter }, `${state.currentBook.name} ${chapter}章`);
+  syncRoute();
   // 生命读经懒加载（结果同时缓存到 lrVolumes，供首页篇目列表/全局笔记复用；init 预填缓存时直接命中）
   if (!state.lifereading) {
     try {
@@ -3429,6 +3668,7 @@ async function selectLrArticle(articleId) {
   mod.renderSide();
   mod.renderCrumb();
   $('textCol').scrollTop = 0;
+  syncRoute();
 }
 
 // 切卷 → 该卷第一篇
@@ -3446,6 +3686,7 @@ async function selectLrVolume(bookIndex) {
   mod.renderSide();
   mod.renderCrumb();
   $('textCol').scrollTop = 0;
+  syncRoute();
 }
 
 // 统一入口（首页搜索 / crumb 篇目 / 全局笔记 / 合集块）：模块内切篇，模块外进模块
@@ -3711,6 +3952,7 @@ async function selectBookSeries(series) {
   mod.renderSide();
   mod.renderCrumb();
   $('textCol').scrollTop = 0;
+  syncRoute();
 }
 
 // 选辑 → 第 1 本第 1 章
@@ -3732,6 +3974,7 @@ async function selectBookVolume(volume) {
   mod.renderSide();
   mod.renderCrumb();
   $('textCol').scrollTop = 0;
+  syncRoute();
 }
 
 // 选书 → 第 1 章
@@ -3749,6 +3992,7 @@ async function selectBookItem(book) {
   mod.renderSide();
   mod.renderCrumb();
   $('textCol').scrollTop = 0;
+  syncRoute();
 }
 
 // 切章（同书内）
@@ -3765,6 +4009,7 @@ async function selectBookChapter(volume, book, chapter) {
   mod.renderSide();
   mod.renderCrumb();
   $('textCol').scrollTop = 0;
+  syncRoute();
 }
 
 // 搜索结果跨辑跳转：先切辑（selectBookVolume 重渲染左栏），再切书/章
@@ -3910,6 +4155,7 @@ async function selectMorningChapter(chapterId) {
   renderMorningSide();
   READER_MODULES.morning.renderCrumb();
   $('textCol').scrollTop = 0;
+  syncRoute();
 }
 
 // 切期 → 该期第 1 篇
@@ -3929,6 +4175,7 @@ async function selectMorningPeriod(periodId) {
   renderMorningSide();
   mod.renderCrumb();
   $('textCol').scrollTop = 0;
+  syncRoute();
 }
 
 // 统一入口（首页块 / 搜索 / 全局笔记）：模块内切篇，模块外进模块
@@ -4607,6 +4854,9 @@ function bindEvents() {  // 首页：合集块点击 + 顶部搜索 + ⌂ 回首
   $('overlay').addEventListener('click', closePopupAll);
   // 注脚/串珠点击（事件委托）
   document.addEventListener('click', onContentClick);
+  // 路由：浏览器/系统前进后退、手动改 hash（我们自己的写入走 pushState/replaceState，不触发这两个事件）
+  window.addEventListener('popstate', onUrlChange);
+  window.addEventListener('hashchange', onUrlChange);
 }
 
 // 从注号上标定位其所在节的 key（经文区域内上标无 data-key，需自行反推）

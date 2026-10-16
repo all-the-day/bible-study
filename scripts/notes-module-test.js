@@ -210,6 +210,9 @@ async function main() {
   // 11. 偏好持久化：切听抄 tab → 重载 → 再进模块 tab 仍为听抄
   await page.evaluate(() => { [...document.querySelectorAll('.notes-tab')].find(t => t.textContent === '听抄').click(); });
   await wait(400);
+  // 路由上线后 reload 会深链回当前模块（此刻 URL 是 #/notes，首页块处于隐藏态）；
+  // 本步语义是「冷启动后从首页重进模块」，先清 hash 回到纯首页
+  await page.evaluate(() => history.replaceState(null, '', location.pathname));
   await page.reload({ waitUntil: 'networkidle0' });
   await page.waitForSelector('#homeGrid .home-block', { timeout: 15000 });
   await wait(800);

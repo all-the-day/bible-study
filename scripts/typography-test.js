@@ -186,6 +186,8 @@ async function main() {
     '| 生命读经', r8a.fs, r8a.val, '| 书报', r8b.fs, r8b.val);
 
   // 9. 刷新持久化（回到经文模块，1.5x / 2.00 保持）
+  // 路由上线后 reload 会深链回当前模块（此刻在书报，基准 15px）；本步按原语义验证回经文模块，先清 hash 冷启动
+  await page.evaluate(() => history.replaceState(null, '', location.pathname));
   await page.reload({ waitUntil: 'networkidle0' });
   await page.waitForSelector('#homeGrid .home-block', { timeout: 15000 });
   await toWork();
