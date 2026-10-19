@@ -39,6 +39,9 @@ async function main() {
     attr: document.documentElement.dataset.theme,
     bodyBg: getComputedStyle(document.body).backgroundColor,
     topbarImage: getComputedStyle(document.querySelector('.topbar')).backgroundImage,
+    topbarSolid: getComputedStyle(document.querySelector('.topbar')).backgroundColor,
+    barInTopbar: document.querySelector('.topbar').contains(document.querySelector('#readingProgress')),
+    barPos: getComputedStyle(document.querySelector('#readingProgress')).position,
     cardShadow: getComputedStyle(document.querySelector('.scripture-card')).boxShadow,
     vtext: getComputedStyle(document.querySelector('.vtext')).fontSize,
     em: getComputedStyle(document.querySelector('.hb-ic-em')).display,
@@ -60,6 +63,12 @@ async function main() {
   else ok('1g. classic 弹窗面板底纯白（--panel）');
   if (c.em !== 'inline' || c.line !== 'none') fail(`1f. classic 应显 emoji 隐线性图标（em=${c.em}, line=${c.line}）`);
   else ok('1f. classic 图标=emoji');
+  // iOS 26 Safari 顶部取色只采样贴视口边缘的 fixed/sticky 元素：
+  // 进度条必须在顶栏内且为 absolute，顶栏自身须有可被采样的纯色底
+  if (!c.barInTopbar || c.barPos !== 'absolute') fail(`1h. 进度条应在顶栏内且 absolute，实际 in=${c.barInTopbar} pos=${c.barPos}`);
+  else ok('1h. 进度条在顶栏内 absolute（不参与 iOS 顶部取色）');
+  if (c.topbarSolid !== 'rgb(102, 126, 234)') fail(`1i. classic 顶栏显式底色应 #667EEA，实际 ${c.topbarSolid}`);
+  else ok('1i. classic 顶栏显式底色 #667EEA（iOS 取色源）');
 
   // 2. 进工作区有经文卡片可断言（首页没有 .scripture-card）
   await page.evaluate(() => { enterWork(); });
@@ -71,6 +80,12 @@ async function main() {
   const ids = await page.evaluate(() => [...document.querySelectorAll('.theme-item')].map((x) => x.dataset.themeId));
   if (ids.join(',') !== 'classic,indigo,paper,minimal') fail(`3a. 选择器应含 4 主题，实际 ${ids.join(',')}`);
   else ok('3a. 主题选择器 4 项（经典/靛蓝/暖纸/素灰）');
+  // 三主题的顶栏采样色都要等于各自 --topbar-solid（iOS 26 顶部取色源）
+  await page.click('.theme-item[data-theme-id="indigo"]');
+  await page.waitForFunction(() => document.documentElement.dataset.theme === 'indigo', { timeout: 5000 });
+  const i1 = await page.evaluate(() => getComputedStyle(document.querySelector('.topbar')).backgroundColor);
+  if (i1 !== 'rgb(86, 98, 206)') fail(`3h. indigo 顶栏采样色应 #5662CE，实际 ${i1}`);
+  else ok('3h. indigo 顶栏采样色 #5662CE');
   await page.click('.theme-item[data-theme-id="paper"]');
   await page.waitForFunction(() => document.documentElement.dataset.theme === 'paper', { timeout: 5000 });
   const p1 = await page.evaluate(() => ({
@@ -101,12 +116,15 @@ async function main() {
   await page.waitForFunction(() => document.documentElement.dataset.theme === 'minimal', { timeout: 5000 });
   const m1 = await page.evaluate(() => ({
     bodyBg: getComputedStyle(document.body).backgroundColor,
+    topbarBg: getComputedStyle(document.querySelector('.topbar')).backgroundColor,
     cardBorder: getComputedStyle(document.querySelector('.scripture-card')).borderTopWidth,
     cardShadow: getComputedStyle(document.querySelector('.scripture-card')).boxShadow,
     ol2: getComputedStyle(document.querySelector('.outline-item.lv2')).color,
   }));
   if (m1.bodyBg !== 'rgb(246, 246, 248)') fail(`4a. minimal 页面底应 #f6f6f8，实际 ${m1.bodyBg}`);
   else ok('4a. minimal 页面底 #f6f6f8');
+  if (m1.topbarBg !== m1.bodyBg) fail(`4d. minimal 顶栏采样色应跟随 --page-bg，实际 ${m1.topbarBg} vs ${m1.bodyBg}`);
+  else ok('4d. minimal 顶栏采样色跟随 --page-bg');
   if (m1.cardBorder === '0px' && m1.cardShadow === 'none') ok('4b. minimal 卡片纯色差分层（无描边阴影）');
   else fail(`4b. minimal 卡片应无描边阴影，实际 border=${m1.cardBorder} shadow=${m1.cardShadow}`);
   if (m1.ol2 !== 'rgb(72, 72, 77)') fail(`4c. minimal 纲目二级应转灰 #48484d，实际 ${m1.ol2}`);

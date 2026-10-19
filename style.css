@@ -35,6 +35,7 @@
      indigo / paper / minimal 三主题在文件末尾覆盖差异变量。新增样式一律用 token ── */
   /* 顶栏 */
   --topbar-bg: linear-gradient(135deg, #667EEA, #5B67D4);
+  --topbar-solid: #667EEA;   /* iOS 26 Safari 顶部取色只读 background-color（渐变不参与） */
   --topbar-fg: #fff;
   --topbar-shadow: var(--shadow-md);
   --topbar-border: none;
@@ -159,13 +160,19 @@ body {
   display: flex; align-items: center; gap: 12px;
   height: 52px; padding: 0 12px;
   background: var(--topbar-bg);
+  /* iOS 26 Safari 顶部取色只采元素自身的 background-color（渐变 background-image 不参与）；
+     渐变之下垫主题纯色，classic 才有可采样的品牌色，渲染像素不变 */
+  background-color: var(--topbar-solid);
   color: var(--topbar-fg);
   box-shadow: var(--topbar-shadow); border-bottom: var(--topbar-border);
 }
-/* 阅读进度条：固定顶边 2px 细线，随 #textCol 滚动指示当前阅读进度（晨读 app 同款，纯 UI）
-   顶栏 z30 之上，弹窗 z50+ 之下——不盖弹窗、不挡交互（pointer-events:none） */
+/* 阅读进度条：顶栏内 2px 细线，随 #textCol 滚动指示当前阅读进度（晨读 app 同款，纯 UI）
+   必须留在顶栏内用 absolute：iOS 26 Safari 只采样贴视口边缘的 fixed/sticky 元素给顶部取色，
+   贴顶 fixed 的白线会把状态栏染白（经典主题下进度线自己消失）；absolute 子元素不参与采样。
+   视觉位置仍是工作区顶边（top:0），桌面/Android 像素不变；z-index 只在顶栏堆叠上下文内生效。
+   不盖弹窗、不挡交互（pointer-events:none） */
 .reading-progress {
-  position: fixed; top: 0; left: 0; height: 2px; width: 0%;
+  position: absolute; top: 0; left: 0; height: 2px; width: 0%;
   background: var(--topbar-fg); opacity: .9; z-index: var(--z-progress);
   pointer-events: none; transition: width .08s linear;
 }
@@ -1555,7 +1562,7 @@ body.bookhub #menuBtn { display: none; }               /* 合集层是层级选�
   --scripture-bg: #f5f6f9;
   --heading: #17181c; --text: #26272b; --text-soft: #43454c; --text-muted: #71747d;
   --hover: #eef0fa;
-  --topbar-bg: #5662CE; --topbar-shadow: none; --topbar-border: 1px solid rgba(0,0,0,.10);
+  --topbar-bg: #5662CE; --topbar-solid: #5662CE; --topbar-shadow: none; --topbar-border: 1px solid rgba(0,0,0,.10);
   --card-shadow: 0 1px 2px rgba(0,0,0,.05);
 }
 
@@ -1566,7 +1573,7 @@ body.bookhub #menuBtn { display: none; }               /* 合集层是层级选�
   --scripture-bg: #f6f1e6;
   --heading: #2b2822; --text: #33302a; --text-soft: #4d4636; --text-muted: #8a8170;
   --hover: #f3ecdc;
-  --topbar-bg: #faf7f1; --topbar-fg: #33302a; --topbar-shadow: none;
+  --topbar-bg: #faf7f1; --topbar-solid: #faf7f1; --topbar-fg: #33302a; --topbar-shadow: none;
   --topbar-border: 1px solid #eae3d5;
   --topbar-line: rgba(0,0,0,.14); --topbar-line-strong: rgba(0,0,0,.18);
   --topbar-btn: rgba(0,0,0,.05); --topbar-btn-on: rgba(0,0,0,.09);
@@ -1586,7 +1593,7 @@ body.bookhub #menuBtn { display: none; }               /* 合集层是层级选�
   --scripture-bg: #f2f2f5;
   --heading: #1c1c1e; --text: #262629; --text-soft: #48484d; --text-muted: #6e6e73;
   --hover: #ececf0;
-  --topbar-bg: var(--page-bg); --topbar-fg: #1c1c1e; --topbar-shadow: none;
+  --topbar-bg: var(--page-bg); --topbar-solid: var(--page-bg); --topbar-fg: #1c1c1e; --topbar-shadow: none;
   --topbar-border: 1px solid #e6e6ea;
   --topbar-line: rgba(0,0,0,.14); --topbar-line-strong: rgba(0,0,0,.18);
   --topbar-btn: rgba(0,0,0,.05); --topbar-btn-on: rgba(0,0,0,.09);

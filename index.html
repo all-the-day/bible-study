@@ -65,10 +65,11 @@
     </div>
     <button id="typographyBtn" class="icon-btn aa-btn" aria-label="排版设置" title="排版">Aa</button>
     <button id="settingsBtn" class="icon-btn" aria-label="设置">⚙️</button>
+    <!-- 阅读进度条：顶栏内 2px 细线，随 #textCol 滚动指示当前阅读进度（纯 UI，不存储）。
+         absolute 而非 fixed：iOS 26 Safari 顶部取色只采样贴视口边缘的 fixed/sticky 元素，
+         进度线留在 fixed 顶边会把状态栏染成进度线颜色（经典主题白线→白顶栏上不可见）。 -->
+    <div id="readingProgress" class="reading-progress" aria-hidden="true"></div>
   </header>
-
-  <!-- 阅读进度条：固定顶边细线，随 #textCol 滚动指示当前阅读进度（纯 UI，不存储） -->
-  <div id="readingProgress" class="reading-progress" aria-hidden="true"></div>
 
   <div class="layout">
     <!-- 左栏仅剩笔记管理分类树（层级导航已统一走停靠抽屉 #navDrawer） -->
