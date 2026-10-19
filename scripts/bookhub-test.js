@@ -70,7 +70,7 @@ async function main() {
     if (!ok4) fail = 1;
 
     // 5. 回合集层搜索「两种的认识」→ 跨合集命中：ezoe 分类系列（misc）篇目与十二篮篇目同列
-    //    （series 按 id 排序，misc 首条），点击第一条直进 misc 该篇
+    //    （展示顺序由导出层 SERIES_ORDER 决定，结果按系列顺序排列；5b 按系列名定位 misc）
     await page.click('#homeBtn');
     await new Promise((r) => setTimeout(r, 400));
     await page.click('#homeGrid .home-block[data-entry="bookhub"]');
@@ -90,8 +90,14 @@ async function main() {
     console.log('5. 合集层搜索:', ok5 ? '✓' : '✗', '|', r5.first.slice(0, 40));
     if (!ok5) fail = 1;
 
-    // 5b. 点击第一条搜索结果 → 直进 misc 该篇（合集层搜索跳转链路）
-    await page.click('#bookHubSearchResults .home-sr-item');
+    // 5b. 点击「其他」那条搜索结果 → 直进 misc 该篇（合集层搜索跳转链路）
+    //     系列展示顺序由导出层 SERIES_ORDER 决定（2026-10-19 起为策划顺序，不再按 id 字母序），
+    //     故按结果里的系列名定位，不假设首条是 misc
+    await page.evaluate(() => {
+      const items = [...document.querySelectorAll('#bookHubSearchResults .home-sr-item')];
+      const el = items.find(x => x.textContent.includes('其他'));
+      if (el) el.click();
+    });
     await new Promise((r) => setTimeout(r, 1500));
     const r5b = await page.evaluate(() => ({
       work: state.screen === 'work',

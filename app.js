@@ -181,6 +181,7 @@ function openThemePicker() {
 /* ── 用户语言版本记录（单一来源）：① 使用帮助弹窗「最近更新」；② 更新弹窗「本次更新」。
    纪律：只记用户可见变化、不记 chore/内部改动；用户可见功能发布时在顶部补一行（AGENTS.md 发版流程）。 ── */
 const CHANGELOG = [
+  { v: '1.0.56', date: '2026-10-19', items: ['书报全量上线：属灵书报、特会信息、结晶读经、新约总论、圣经之旅、真理课程等 24 个新合集', '书报正文清理了网页页眉、断行与重复收录，阅读更顺'] },
   { v: '1.0.55', date: '2026-10-16', items: ['设置新增「使用帮助」：功能介绍、五色划线含义与最近更新一目了然', '更新弹窗改为用户语言的「本次更新」，不再显示工程提交记录'] },
   { v: '1.0.54', date: '2026-10-16', items: ['阅读主题上线：经典 / 靛蓝 / 暖纸 / 素灰四种观感任选', '手机滑动翻页：正文左右横扫切章/篇'] },
   { v: '1.0.53', date: '2026-10-16', items: ['每个位置都有独立网址，可分享、可收藏'] },
@@ -1214,7 +1215,15 @@ function renderBookHub() {
   });
 }
 
-const BOOK_HUB_ICONS = { slat: '🧺', bio: '👤' };
+const BOOK_HUB_ICONS = {
+  slat: '🧺', bio: '👤', fuyintiandi: '🌏', gospel: '💗', reading: '📕',
+  periodicals: '🗞️', misc: '🧩',
+  // 灵粮全量导入（2026-10-19）：按来源给块图标，线性图标走 THEME_ICONS，缺省回落 📄
+  sg: '📚', th: '🎤', jd: '💎', sjzl: '📔', xyzl: '📘', zlyd: '📗',
+  zlkc: '🎓', smkc: '🌱', sjyn: '❓', jkhy: '🗣️', zlzt: '📄', zlpz: '⚖️',
+  kdyf: '✅', jpl: '🔍', hhls: '🏛️', tllc: '🛤️', xblm: '🕍', hmgq: '🌅',
+  zjgs: '📖', sl: '🗃️', zsxx: '🗂️', cqxl: '🏫', zj: '🪴', jh: '⛪',
+};
 
 // 进工作区：移除 body.home，.layout 恢复显示。幂等，任何工作区入口调用
 function enterWork() {
