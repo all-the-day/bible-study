@@ -7,7 +7,7 @@ const fs = require('fs');
 const ROOT = path.resolve(__dirname, '..');
 const PORT = 8765;
 const KV_PORT = 8745;
-const SERVER = 'D:/coder/aiWorkSpace/server-ops/files/bible-reader/server.py';
+const SERVER = 'D:/AIWorkSpace/project/server-ops/files/bible-reader/server.py';
 
 async function main() {
   const kv = spawn('python', [SERVER, '--host', '127.0.0.1', '--port', String(KV_PORT),
@@ -15,7 +15,7 @@ async function main() {
     { env: { ...process.env, FEEDBACK_ADMIN_TOKEN: 'test-admin-token' }, stdio: 'ignore' });
   const site = spawn('python', ['-m', 'http.server', String(PORT), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
   await new Promise((r) => setTimeout(r, 2500));
-  const puppeteer = require('D:/coder/aiWorkSpace/bible-reader/node_modules/puppeteer-core');
+  const puppeteer = require('D:/AIWorkSpace/project/bible-reader/node_modules/puppeteer-core');
   const browser = await puppeteer.launch({
     executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe',
     headless: 'new', args: ['--no-sandbox'],

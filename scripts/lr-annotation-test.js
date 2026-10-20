@@ -1,4 +1,4 @@
-const puppeteer = require('D:/coder/aiWorkSpace/bible-reader/node_modules/puppeteer-core');
+const puppeteer = require('D:/AIWorkSpace/project/bible-reader/node_modules/puppeteer-core');
 
 (async () => {
   const browser = await puppeteer.launch({

@@ -20,7 +20,7 @@ async function newPage(browser, viewport) {
 async function main() {
   const server = spawn('python', ['-m', 'http.server', String(PORT), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
   await wait(1500);
-  const puppeteer = require('D:/coder/aiWorkSpace/bible-reader/node_modules/puppeteer-core');
+  const puppeteer = require('D:/AIWorkSpace/project/bible-reader/node_modules/puppeteer-core');
   const browser = await puppeteer.launch({
     executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe',
     headless: 'new', args: ['--no-sandbox'],

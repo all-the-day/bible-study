@@ -13,7 +13,7 @@ async function main() {
   const server = spawn('python', ['-m', 'http.server', String(PORT)], { cwd: ROOT, stdio: 'ignore' });
   await new Promise((r) => setTimeout(r, 1500));
 
-  const puppeteer = require('D:/coder/aiWorkSpace/bible-reader/node_modules/puppeteer-core');
+  const puppeteer = require('D:/AIWorkSpace/project/bible-reader/node_modules/puppeteer-core');
   const browser = await puppeteer.launch({
     executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe',
     headless: 'new',

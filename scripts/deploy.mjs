@@ -2,7 +2,8 @@
 /* ============================================================
  * deploy.mjs — 部署 Cloudflare Pages 前自动同步 staging
  *
- * 背景：staging 目录在仓库外（默认 D:/coder/aiWorkSpace/.cf-bible-study），
+ * 背景：staging 目录在仓库外（默认 D:/AIWorkSpace/.cf-bible-study，
+ * 2026-10-20 新机迁移从 D:/coder/aiWorkSpace/.cf-bible-study 改来），
  * 不受 git 管理，过去靠手工把改动文件覆盖过去再 deploy——漏同步就会把
  * 旧文件部署上去（AGENTS.md 部署节为此写过警告）。本脚本按白名单同步
  * 运行时文件到 staging（逐文件 md5 校验，仅拷贝有差异的），并检测
@@ -20,7 +21,7 @@ import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const STAGING = resolve(process.env.STAGING || "D:/coder/aiWorkSpace/.cf-bible-study");
+const STAGING = resolve(process.env.STAGING || "D:/AIWorkSpace/.cf-bible-study");
 const PROJECT = "bible-study";
 const DRY = process.argv.includes("--check");
 
