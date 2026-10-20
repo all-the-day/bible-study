@@ -141,8 +141,16 @@ const THEME_ICONS = {
   misc: _thSvg('<path d="M4 8l8-4.5L20 8v8l-8 4.5L4 16z"/><path d="M4 8l8 4.5L20 8M12 12.5v8"/>'),
   _default: _thSvg('<path d="M6 3.5h8l4 4v13H6z"/><path d="M14 3.5v4h4"/>'),
 };
+// 新系列在非经典主题下复用相近的线性图标（否则 24 个块全回落同一个文件图标）
+const SERIES_ICON_ALIAS = {
+  sg: 'reading', th: 'morning', jd: 'lifereading', sjzl: 'bible', xyzl: 'reading',
+  zlyd: 'reading', zlkc: 'lifereading', smkc: 'lifereading', sjyn: 'notes',
+  jkhy: 'reading', zlzt: 'reading', zlpz: 'reading', kdyf: 'reading', jpl: 'reading',
+  hhls: 'bio', tllc: 'reading', xblm: 'reading', hmgq: 'morning', zjgs: 'reading',
+  sl: 'reading', zsxx: 'reading', cqxl: 'reading', zj: 'reading', jh: 'reading',
+};
 function blockIconHtml(emoji, iconKey) {
-  return `<span class="hb-ic-em">${emoji}</span><span class="hb-ic-line">${THEME_ICONS[iconKey] || THEME_ICONS._default}</span>`;
+  return `<span class="hb-ic-em">${emoji}</span><span class="hb-ic-line">${THEME_ICONS[iconKey] || THEME_ICONS[SERIES_ICON_ALIAS[iconKey]] || THEME_ICONS._default}</span>`;
 }
 function currentTheme() {
   const t = document.documentElement.dataset.theme;
@@ -181,6 +189,7 @@ function openThemePicker() {
 /* ── 用户语言版本记录（单一来源）：① 使用帮助弹窗「最近更新」；② 更新弹窗「本次更新」。
    纪律：只记用户可见变化、不记 chore/内部改动；用户可见功能发布时在顶部补一行（AGENTS.md 发版流程）。 ── */
 const CHANGELOG = [
+  { v: '1.0.57', date: '2026-10-20', items: ['24 个新合集的图标在靛蓝/暖纸/素灰主题下逐一适配（此前统一显示默认图标）', '书报数据修正：属灵书报补全 3 章源站内容，正文清洗更干净'] },
   { v: '1.0.56', date: '2026-10-19', items: ['书报全量上线：属灵书报、特会信息、结晶读经、新约总论、圣经之旅、真理课程等 24 个新合集', '书报正文清理了网页页眉、断行与重复收录，阅读更顺'] },
   { v: '1.0.55', date: '2026-10-16', items: ['设置新增「使用帮助」：功能介绍、五色划线含义与最近更新一目了然', '更新弹窗改为用户语言的「本次更新」，不再显示工程提交记录'] },
   { v: '1.0.54', date: '2026-10-16', items: ['阅读主题上线：经典 / 靛蓝 / 暖纸 / 素灰四种观感任选', '手机滑动翻页：正文左右横扫切章/篇'] },

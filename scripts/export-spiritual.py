@@ -628,7 +628,7 @@ def _md_title(lines):
 # 训练/特会页眉行（如「二○○○年秋季全时间训练」「二OO一年夏季训练」
 # 「二ΟΟ一年秋季全时间训练」——源站混用 ○/〇/Ｏ/O 与希腊字母 Ο）
 _TRAIN_HEAD_RE = re.compile(
-    r"^[一二三四五六七八九十○〇零ＯOΟ0-9]{2,4}年.*(训练|特会|聚会|大会|秋季|夏季|冬季|春季)")
+    r"^[一二三四五六七八九十○〇零ＯOΟ0-9]{1,4}年?.*(训练|特会|聚会|大会|秋季|夏季|冬季|春季)")
 _YEAR_ONLY_RE = re.compile(r"^[一二三四五六七八九十○〇零ＯOΟ0-9]{1,4}年$")
 _TRAIN_ONLY_RE = re.compile(r"^(春季|夏季|秋季|冬季)(全时间)?训练$")
 # 正文里的独立标签行（拆行重排时不当成碎片并入上一段）
@@ -705,7 +705,8 @@ def _headerish(l, kl, kt, kb, lines, i, prev_year=False):
     if (re.fullmatch(r"[一二三四五六七八九十○〇零ＯOΟ0-9]{1,4}", kl)
             and any(("年" in _key(x) or "训练" in _key(x)) for x in lines[i + 1:i + 4])):
         return True
-    if kl.startswith("年") and len(kl) <= 8 and not re.search(r"[。！？]", l):
+    if kl.startswith("年") and not re.search(r"[。！？]", l) and (
+            len(kl) <= 8 or re.search(r"(训练|特会|聚会|大会|春季|夏季|秋季|冬季)", kl)):
         return True
     # 书名拆行留下的卷次碎片：名：生命课程—（卷 / 一）
     if re.fullmatch(r"[一二三四五六七八九十0-9]+[）)]", kl) and i > 0 \
