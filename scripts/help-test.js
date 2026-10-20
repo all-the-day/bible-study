@@ -56,9 +56,11 @@ async function main() {
       sections: [...b.querySelectorAll('.help-h .n')].map(n => n.textContent),
       marks: b.querySelectorAll('mark.c1, mark.c2, mark.c3, mark.c4, mark.c5').length,
       vers: [...b.querySelectorAll('.help-ver')].map(v => v.textContent.trim()),
-      has54: b.textContent.includes('滑动翻页'),
+      // 期望文案取 CHANGELOG 实际前三条（加新版本条目不会挤掉锚点导致误报）
+      top3text: b.textContent,
       hasUpdHead: b.textContent.includes('最近更新'),
       top: String(window.changelogSince('0')[0].v),   // const 不挂 window，借函数声明 changelogSince 取顶部条目
+      top3: window.changelogSince('0').slice(0, 3).map(x => x.items.join('')),
     };
   });
   if (help.title !== '使用帮助') fail(`2a. 标题应为使用帮助，实际 ${help.title}`);
@@ -69,8 +71,9 @@ async function main() {
   else ok('2c. 五色标注语义色块 5 个');
   if (help.vers.length !== 3 || !help.vers[0].includes(help.top)) fail(`2d. 最近更新应为 3 个版本段且首条=CHANGELOG[0]（${help.top}），实际 ${JSON.stringify(help.vers)}`);
   else ok(`2d. 最近更新 3 段（来自 CHANGELOG），首条 v${help.top}`);
-  if (!help.hasUpdHead || !help.has54) fail('2e. 帮助正文缺「最近更新」或 1.0.54 条目文案');   // 1.0.54 条目持续存在（滑动翻页文案锚点）
-  else ok('2e. 帮助正文含 1.0.54 条目（阅读主题/滑动翻页）');
+  const missItems = (help.top3 || []).filter(txt => !help.top3text.includes(txt));
+  if (!help.hasUpdHead || missItems.length) fail(`2e. 帮助正文缺「最近更新」或 CHANGELOG 前三条条目文案（缺 ${missItems.length} 条）`);   // 条目文案锚点随 CHANGELOG 动态取
+  else ok('2e. 帮助正文含 CHANGELOG 前三条条目文案');
 
   // 3. 关闭帮助；更新弹窗联动：mock check → 发现新版本（1.0.53 → 1.0.54）
   await page.evaluate(() => closePopup());
