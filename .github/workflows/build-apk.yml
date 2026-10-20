@@ -111,6 +111,9 @@ jobs:
           # 书报：系列索引 → 各系列元数据 → 各辑内容（倪柝声文集等，系列自动扩展）
           $CURL "$BASE/books/index.json" -o "www/data/books/index.json"
           check_json "www/data/books/index.json"
+          # 书号表（源侧真实编号，检索用；不是系列元数据，必须单独列）
+          $CURL "$BASE/books/numbers.json" -o "www/data/books/numbers.json"
+          check_json "www/data/books/numbers.json"
           for sid in $(python3 -c "import json; print(' '.join(s['id'] for s in json.load(open('www/data/books/index.json'))['series']))"); do
             $CURL "$BASE/books/$sid.json" -o "www/data/books/$sid.json"
             check_json "www/data/books/$sid.json"

@@ -261,7 +261,8 @@ def export_ni():
                 chapters.append({"title": title, "content": content})
             if len(chapters) < len(expected):
                 print(f"  [WARN] {b.get('title','')}：文件 {len(chapters)} 章 < 索引 {len(expected)} 章")
-            books.append({"title": b.get("title", ""), "chapters": chapters})
+            books.append(_emit_book(b.get("title", ""), chapters,
+                                    _pos_int(b.get("book_number"))))
         meta["volumes"].append({"title": vol_title, "books": books})
         volumes_content.append({"volume": vol_title, "books": books})
     return meta, volumes_content
@@ -467,7 +468,7 @@ def ezoe_category_books(cat_name):
                     content = "（本文暂缺。）"
                 chapters.append({"title": ctitle, "content": content})
             if chapters:
-                books.append({"title": title, "chapters": chapters})
+                books.append(_emit_book(title, chapters, _pos_int(b.get("id"))))
     n_tomb, n_tbook = ezoe_dedup(books)
     if n_tomb:
         print(f"  [DEDUP] {cat_name}：{n_tomb} 篇重复内容墓碑化（涉及 {n_tbook} 本），索引保留稳定")
@@ -538,6 +539,8 @@ def export_gospelfood():
             by_dir.setdefault(rel.split("/")[0], []).append(it)
     books = []
     for dir_name, items in by_dir.items():
+        # 吸收合并进来的 6 本 ezoe 书在 items 上带「书报号」——取该书目录下任一非空值
+        bnum = next((_pos_int(it.get("书报号")) for it in items if it.get("书报号")), None)
         chapters = []
         for it in items:
             path = os.path.join(src_dir, it["local_rel"])
@@ -548,7 +551,7 @@ def export_gospelfood():
             ctitle = title or re.sub(r"^\d+\s*", "", it.get("title") or "")
             chapters.append({"title": ctitle, "content": content})
         if chapters:
-            books.append({"title": dir_name, "chapters": chapters})
+            books.append(_emit_book(dir_name, chapters, bnum))
     name = "福音天地"
     meta = {"name": name, "volumes": [{"title": name, "books": books}]}
     volumes_content = [{"volume": name, "books": books}]
@@ -587,6 +590,15 @@ def _cjk_len(s):
 def _num_prefix(name):
     m = re.match(r"^0*(\d+)", name or "")
     return int(m.group(1)) if m else 10 ** 6
+
+
+def _pos_int(v):
+    """源侧编号 → 正整数或 None（书报号/目录序号/book_number 共用的宽松解析）"""
+    try:
+        n = int(str(v).strip())
+    except (TypeError, ValueError):
+        return None
+    return n if n > 0 else None
 
 
 def _strip_num(name):
@@ -916,8 +928,14 @@ def _book_title_from_dir(dirname, opts):
     return BOOK_TITLE_FIX.get(dirname) or BOOK_TITLE_FIX.get(title) or title
 
 
-def _emit_book(title, chapters):
-    return {"title": title, "chapters": chapters}
+def _emit_book(title, chapters, num=None):
+    """books 条目。num = 源侧真实编号（可空）：
+    ezoe 书报号 / 灵粮目录序号 / 倪文集册内 book_number——只作检索与展示用，
+    不参与 (volume,book,chapter) 索引定位，缺号的书不写该字段。"""
+    book = {"title": title, "chapters": chapters}
+    if num is not None:
+        book["num"] = num
+    return book
 
 
 def _read_dir_chapters(dirpath, opts, book_title, only=None, root_order=None):
@@ -1020,6 +1038,7 @@ def export_legacy(series_id):
     for d in dirs:
         p = os.path.join(src_dir, d)
         num = _num_prefix(d)
+        bnum = num if num != 10 ** 6 else None   # 无数字前缀的目录不写编号
         subdirs = [x for x in os.listdir(p) if os.path.isdir(os.path.join(p, x))]
         has_md = any(f.lower().endswith(".md") for f in os.listdir(p)
                      if os.path.isfile(os.path.join(p, f)))
@@ -1029,19 +1048,19 @@ def export_legacy(series_id):
                 bt = f"{_strip_num(d)}·{_strip_num(sd)}"
                 chs = _read_dir_chapters(os.path.join(p, sd), opts, bt)
                 if chs:
-                    entries.append((num, _emit_book(bt, chs)))
+                    entries.append((num, _emit_book(bt, chs, bnum)))
         elif subdirs and not has_md:
             # 目录下只有子目录（属灵书报的 086/098/110）：子目录提升为 book
             for sd in sorted(subdirs, key=lambda x: (_num_prefix(x), _cn_sort(x), x)):
                 bt = f"{_book_title_from_dir(d, opts)}·{_strip_num(sd)}"
                 chs = _read_dir_chapters(os.path.join(p, sd), opts, bt)
                 if chs:
-                    entries.append((num, _emit_book(bt, chs)))
+                    entries.append((num, _emit_book(bt, chs, bnum)))
         else:
             bt = _book_title_from_dir(d, opts)
             chs = _read_dir_chapters(p, opts, bt)
             if chs:
-                entries.append((num, _emit_book(bt, chs)))
+                entries.append((num, _emit_book(bt, chs, bnum)))
 
     entries.sort(key=lambda x: x[0])
     if opts.get("volumes"):
@@ -1171,9 +1190,30 @@ SERIES_ORDER = [
 ]
 
 
-def export(only=None):
+def export(only=None, numbers_only=False):
     os.makedirs(OUT, exist_ok=True)
     ids = only or list(SERIES)
+    if numbers_only:
+        # --numbers：只跑各系列构建器、只写编号表，**不碰任何内容文件**
+        # （gospel 等冻结系列重导会让索引位移，编号表必须能单独产出）。
+        out = {}
+        for sid in ids:
+            if sid not in SERIES:
+                print(f"[SKIP] 未知系列 id：{sid}")
+                continue
+            meta, _ = SERIES[sid]()
+            rows = [[vi, bi, b["num"]]
+                    for vi, v in enumerate(meta["volumes"], 1)
+                    for bi, b in enumerate(v["books"]) if b.get("num")]
+            if rows:
+                out[sid] = rows
+        _order = {sid: i for i, sid in enumerate(SERIES_ORDER)}
+        out = {k: out[k] for k in sorted(out, key=lambda s: (_order.get(s, len(_order)), s))}
+        path = os.path.join(OUT, "numbers.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
+        print(f"[NUM] {len(out)} 个系列 / {sum(len(v) for v in out.values())} 本带编号 -> {path}")
+        return 0
     with open(os.path.join(OUT, "index.json"), encoding="utf-8") as f:
         series_index = json.load(f)
     for sid in ids:
@@ -1183,7 +1223,11 @@ def export(only=None):
         meta, volumes_content = SERIES[sid]()
         meta_light = {
             "name": meta["name"],
-            "volumes": [{"title": v["title"], "books": [{"title": b["title"], "chapters": [c["title"] for c in b["chapters"]]} for b in v["books"]]} for v in meta["volumes"]],
+            "volumes": [{"title": v["title"], "books": [
+                dict({"title": b["title"],
+                      "chapters": [c["title"] for c in b["chapters"]]},
+                     **({"num": b["num"]} if b.get("num") else {}))
+                for b in v["books"]]} for v in meta["volumes"]],
         }
         n_vol, n_book, n_ch = write_volume_files(sid, meta_light, volumes_content)
         entry = {"id": sid, "name": meta_light["name"], "volumes": n_vol}
@@ -1200,4 +1244,8 @@ def export(only=None):
 
 
 if __name__ == "__main__":
-    sys.exit(export(sys.argv[1:] or None))
+    argv = sys.argv[1:]
+    if "--numbers" in argv:
+        rest = [a for a in argv if a != "--numbers"]
+        sys.exit(export(rest or None, numbers_only=True))
+    sys.exit(export(argv or None))

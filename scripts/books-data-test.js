@@ -111,6 +111,36 @@ for (const [id, n] of Object.entries(EXPECT)) {
 eq(stats.sg ? readJSON(path.join(DATA, "sg.json")).volumes.length : 0, 4, "sg 卷数");
 eq(stats.zj ? readJSON(path.join(DATA, "zj.json")).volumes.length : 0, 2, "zj 卷数");
 
+/* ── 3b. 书号表（data/books/numbers.json，源侧真实编号） ───────── */
+{
+  const p = path.join(DATA, "numbers.json");
+  if (!fs.existsSync(p)) bad("缺书号表 numbers.json（export-spiritual.py --numbers）");
+  else {
+    const nums = readJSON(p);
+    let rows = 0, badRow = [];
+    for (const [sid, list] of Object.entries(nums)) {
+      const metaPath = path.join(DATA, `${sid}.json`);
+      if (!fs.existsSync(metaPath)) { bad(`书号表含未知系列 ${sid}`); continue; }
+      const vols = readJSON(metaPath).volumes || [];
+      for (const [v, b, n] of list) {
+        rows++;
+        if (!(v >= 1 && v <= vols.length)) { badRow.push(`${sid}:${v}:${b}`); continue; }
+        if (!((vols[v - 1].books || [])[b])) badRow.push(`${sid}:${v}:${b}`);
+        if (!(Number.isInteger(n) && n > 0)) badRow.push(`${sid}:${v}:${b}:num=${n}`);
+      }
+    }
+    if (badRow.length) bad(`书号表索引越界 ${badRow.length} 处，例：${badRow.slice(0, 3).join(" / ")}`);
+    else ok(`书号表：${Object.keys(nums).length} 系列 / ${rows} 本（索引全部有效）`);
+    const spot = (sid, want) => {
+      const hit = (nums[sid] || []).find(r => r[2] === want);
+      return hit ? (readJSON(path.join(DATA, `${sid}.json`)).volumes[hit[0] - 1].books[hit[1]] || {}).title : null;
+    };
+    eq(spot("gospel", 1001), "到底有没有神", "书号 1001 指向");
+    eq(spot("fuyintiandi", 1001), "到底有没有神", "福音天地 书号 1001 指向");
+    eq(spot("ni", 1), "灵修指微", "倪文集 第一辑 1 号指向");
+  }
+}
+
 /* ── 4. 去重跳过项 ───────────────────────────────────────────── */
 function allBookTitles(id) {
   const meta = readJSON(path.join(DATA, `${id}.json`));

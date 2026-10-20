@@ -76,6 +76,17 @@ const state = {
   bookBook: null,        // 当前书（辑内序号 0 基）
   bookChapter: null,     // 当前章（书内序号 0 基）
   bookNotes: load(LS_BOOK_NOTES, {}),
+  // 统一检索（2026-10-20）：书号表 + 全局标题索引 + 经文/注解全文索引（均为惰性构建）
+  bookNumbers: null,      // data/books/numbers.json（{series:[[vol,book,num]]}，源侧真实编号）
+  bookSearchIndex: null,  // 全部系列元数据就绪后一次构建的章级索引
+  bookSearchPending: null,
+  bookSearchFailed: false,   // 构建失败（系列清单/元数据全挂）——UI 不再显示「加载中」，下次检索重试
+  bookSearchNeedsNumbers: false, // 上次建索引时书号表没取到，下次检索补到号后重建
+  bookSearchAttempts: 0,     // 构建尝试次数（离线时不无限重试：3 次后本会话放弃）
+  bookNumbersTries: 0,       // 书号表尝试次数（同上）
+  verseSearchIndex: null, // 经文全文（剥 {N}/[a] 标记后的小写正文）
+  noteSearchIndex: null,  // 注解全文
+  morningAllDone: false,  // 听抄各期已全部加载（首页检索用）
   // 晨兴阅读器
   morningIndex: null,        // data/morning/index.json（懒加载）
   morningData: {},           // {periodId: {title, chapters}} 期内容缓存（懒加载）
@@ -189,6 +200,7 @@ function openThemePicker() {
 /* ── 用户语言版本记录（单一来源）：① 使用帮助弹窗「最近更新」；② 更新弹窗「本次更新」。
    纪律：只记用户可见变化、不记 chore/内部改动；用户可见功能发布时在顶部补一行（AGENTS.md 发版流程）。 ── */
 const CHANGELOG = [
+  { v: '1.0.58', date: '2026-10-20', items: ['搜索大升级：书报一次搜遍全部合集（含倪文集），并支持按书号查找', '首页搜索现在能搜经文和注解全文，命中处直接跳转', '搜索结果显示真实命中总数，关键词高亮'] },
   { v: '1.0.57', date: '2026-10-20', items: ['24 个新合集的图标在靛蓝/暖纸/素灰主题下逐一适配（此前统一显示默认图标）', '书报数据修正：属灵书报补全 3 章源站内容，正文清洗更干净'] },
   { v: '1.0.56', date: '2026-10-19', items: ['书报全量上线：属灵书报、特会信息、结晶读经、新约总论、圣经之旅、真理课程等 24 个新合集', '书报正文清理了网页页眉、断行与重复收录，阅读更顺'] },
   { v: '1.0.55', date: '2026-10-16', items: ['设置新增「使用帮助」：功能介绍、五色划线含义与最近更新一目了然', '更新弹窗改为用户语言的「本次更新」，不再显示工程提交记录'] },
@@ -1213,11 +1225,15 @@ function renderBookHub() {
     // prefetchSeriesMeta 无返回值，补渲染从未生效）
     Promise.all(list.map(s => prefetchSeriesMeta(s.id))).then(() => {
       if (stale()) return;
+      // 元数据已齐 → 顺手把全局检索索引建好（合集层搜索首键即出结果）。
+      // 必须走 ensureBookSearchIndex（它先取书号表），直接 build 会漏掉 numbers.json
+      ensureBookSearchIndex().catch(() => null);
       fetchJSON('data/books/index.json').then((fresh) => {
         if (stale()) return;
         const cached = state.bookSeriesIndex;
         if (cached && JSON.stringify(cached) === JSON.stringify(fresh)) return;
         state.bookSeriesIndex = fresh;
+        state.bookSearchIndex = null;   // 系列清单变了，索引下次检索时重建
         render((fresh.series || []).filter(s => s.id !== 'ni').map(s => ({ ...s, icon: BOOK_HUB_ICONS[s.id] })));
       }).catch(() => {});
     });
@@ -1781,39 +1797,43 @@ function bindHomeEvents() {
   const hubInput = $('bookHubSearch');
   const hubResults = $('bookHubSearchResults');
   if (hubInput) {
-    hubInput.addEventListener('input', () => {
-      const q = hubInput.value.trim().toLowerCase();
+    let hubSeq = 0;
+    let hubHits = [];
+    const paint = (q) => {
+      hubHits = [];
       if (!q) { hubResults.innerHTML = ''; return; }
-      const hits = [];
-      (state.bookSeriesIndex ? state.bookSeriesIndex.series : []).forEach(s => {
-        if (s.id === 'ni') return;
-        const meta = seriesMeta(s.id);
-        if (meta && (meta.name || '').toLowerCase().includes(q)) {
-          hits.push({ key: 'series:' + s.id, loc: '合集', text: meta.name, series: s.id });
-        }
-        if (meta) meta.volumes.forEach((v, vi) => (v.books || []).forEach((b, bi) => {
-          (b.chapters || []).forEach((t, ci) => {
-            if (String(t).toLowerCase().includes(q) && hits.length < 20) {
-              hits.push({ key: `ch:${s.id}:${vi}:${bi}:${ci}`, loc: `${meta.name} · ${v.title} · ${b.title}`, text: String(t), series: s.id, volume: vi + 1, book: bi, chapter: ci });
-            }
-          });
-        }));
-      });
-      hubResults.innerHTML = hits.map(h => `
-        <div class="home-sr-item" data-k="${h.key}">
-          <span class="sr-loc">${escapeHtml(h.loc)}</span>${escapeHtml(h.text)}
-        </div>`).join('') || '<div class="home-sr-item">无匹配结果</div>';
-      hubResults.onclick = (e) => {
-        const item = e.target.closest('.home-sr-item');
-        if (!item || !item.dataset.k) return;
-        const hit = hits.find(x => x.key === item.dataset.k);
-        hubResults.innerHTML = '';
-        hubInput.value = '';
-        if (!hit) return;
-        if (hit.volume != null) openBookChapter(hit.volume, hit.book, hit.chapter, hit.series);
-        else enterModule('books', { series: hit.series });
-      };
-    });
+      const terms = searchTerms(q);
+      const r = searchBookTitles(q, 20);
+      hubHits = r.items;
+      let html = r.items.map(h => `
+        <div class="home-sr-item" data-k="${escapeHtml(h.key)}">
+          <span class="sr-loc">${escapeHtml(h.loc)}</span>${highlightHtml(h.label, terms)}
+        </div>`).join('');
+      if (!html) html = '<div class="home-sr-item sr-none">无匹配结果</div>';
+      else if (r.total > r.items.length) {
+        html += `<div class="home-sr-item sr-none">共 ${r.total} 条，仅显示前 ${r.items.length} 条</div>`;
+      }
+      if (!state.bookSearchIndex) {
+        html += '<div class="sr-loading"><span class="loading-spin"></span>书报目录加载中…</div>';
+      }
+      hubResults.innerHTML = html;
+    };
+    const run = async (q) => {
+      const my = ++hubSeq;
+      paint(q);   // 先用已缓存元数据出结果，索引补齐后再刷一次（慢网不空白）
+      await ensureBookSearchIndex().catch(() => null);
+      if (my === hubSeq && hubInput.value.trim() === q) paint(q);
+    };
+    hubInput.addEventListener('input', () => run(hubInput.value.trim()));
+    hubResults.onclick = (e) => {
+      const item = e.target.closest('.home-sr-item');
+      if (!item || !item.dataset.k) return;
+      const hit = hubHits.find(x => x.key === item.dataset.k);
+      if (!hit) return;
+      hubResults.innerHTML = '';
+      hubInput.value = '';
+      hit.go();
+    };
   }
   // 首页「最近阅读」点击委托：条目=跳回原文（复用 jumpHistory），「全部 ›」=开抽屉历史段
   $('homeHist').addEventListener('click', (e) => {
@@ -1825,94 +1845,516 @@ function bindHomeEvents() {
   const input = $('homeSearch');
   const results = $('homeSearchResults');
   let timer = null;
-  const render = () => {
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
     const q = input.value.trim();
-    if (!q) { results.innerHTML = ''; return; }
-    results.innerHTML = homeSearch(q).map(r => `
-      <div class="home-sr-item" data-k="${r.key}">
-        <span class="sr-loc">${escapeHtml(r.loc)}</span>${escapeHtml(r.text)}
-      </div>`).join('');
-  };
-  input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(render, 150); });
+    timer = setTimeout(() => {
+      if (q) runHomeSearch(q);
+      else { results.innerHTML = ''; _homeSearchLast = []; }
+    }, 150);
+  });
+  // 焦点即意图：提前拉全部系列元数据（632KB，br 约 200KB），输入时结果才跟得上
+  input.addEventListener('focus', () => { ensureBookSearchIndex().catch(() => null); });
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { const first = results.querySelector('.home-sr-item'); if (first) first.click(); }
+    if (e.key === 'Enter') {
+      const first = results.querySelector('.home-sr-item[data-k]');
+      if (first) first.click();
+    }
   });
   results.addEventListener('click', (e) => {
+    const more = e.target.closest('[data-more]');
+    if (more) { openSearchResultsAll(more.dataset.more, input.value.trim()); return; }
     const item = e.target.closest('.home-sr-item');
-    if (!item) return;
-    const r = homeSearch(input.value.trim()).find(x => x.key === item.dataset.k);
-    if (r) { r.go(); results.innerHTML = ''; }
+    if (!item || !item.dataset.k) return;
+    const hit = _homeSearchLast.find(x => x.key === item.dataset.k);
+    if (!hit) return;
+    _homeSearchSeq++;   // 作废在途补渲染，防止跳走后结果层又弹回
+    results.innerHTML = '';
+    _homeSearchLast = [];
+    hit.go();
   });
 }
 
-// 顶部搜索（轻量三条过滤；不做全文搜索）
-function homeSearch(q) {
-  const out = [];
-  // 1. 书卷 + 章（如 创24 / 创世记24）→ 进工作区选章
-  const m = q.match(/^([\u4e00-\u9fa5]{1,5})(\d+)$/);
-  if (m) {
-    const idx = resolveBookAlias(m[1]);
-    if (idx) {
-      const b = state.books.find(x => x.index === idx);
-      out.push({
-        key: 'bible-' + idx + '-' + m[2], loc: `${b.name} ${m[2]}章`, text: '读经',
-        go: () => { enterModule('bible'); selectBook(idx, parseInt(m[2], 10)); setMobileView('read'); },
+/* ============ 统一检索内核（2026-10-20） ============
+   数据域：书报标题（32 系列 / 972 本 / 15367 章，元数据懒加载后建一次索引）、
+   经文与注解全文（启动即全量在内存，零额外下载）、我的标注、生命读经篇目、听抄篇目。
+   规则：空白分词 AND；ASCII 不区分大小写；纯数字词按「书号」精确匹配（源侧真实编号：
+   ezoe 书报号 / 灵粮目录序号 / 倪文集册内 book_number，见 data/books/numbers.json）。
+   每个域返回 {items,total}：total 是裁剪前真实总数，下拉每组只展示前几条。 */
+const SR_GROUP_LIMIT = 5;   // 首页下拉每组预览条数
+const SR_CAP = 300;         // 单个域的内部上限（防极端查询把内存打满）
+
+let _homeSearchSeq = 0;
+let _homeSearchLast = [];   // 当前下拉的扁平结果（点击按 key 找回 go）
+
+function searchTerms(q) {
+  return String(q == null ? '' : q).trim().toLowerCase().split(/\s+/).filter(Boolean);
+}
+
+// 命中词高亮：先在原文上定位（小写比较），逐段转义后包 <mark>。
+// 不能先 escapeHtml 再匹配——实体化后下标会错位，还可能把 &amp; 拆开。
+function highlightHtml(text, terms) {
+  const raw = String(text == null ? '' : text);
+  if (!terms || !terms.length) return escapeHtml(raw);
+  const lower = raw.toLowerCase();
+  const spans = [];
+  terms.forEach((t) => {
+    let i = lower.indexOf(t);
+    while (i !== -1) {
+      spans.push([i, i + t.length]);
+      i = lower.indexOf(t, i + t.length);
+    }
+  });
+  if (!spans.length) return escapeHtml(raw);
+  spans.sort((a, b) => a[0] - b[0]);
+  const merged = [spans[0]];
+  for (let i = 1; i < spans.length; i++) {
+    const last = merged[merged.length - 1];
+    if (spans[i][0] <= last[1]) last[1] = Math.max(last[1], spans[i][1]);
+    else merged.push(spans[i]);
+  }
+  let out = '', pos = 0;
+  merged.forEach(([a, b]) => {
+    out += escapeHtml(raw.slice(pos, a)) + '<mark class="sr-hit">' + escapeHtml(raw.slice(a, b)) + '</mark>';
+    pos = b;
+  });
+  return out + escapeHtml(raw.slice(pos));
+}
+
+function matchAllTerms(hay, terms) {
+  for (let i = 0; i < terms.length; i++) if (!hay.includes(terms[i])) return false;
+  return true;
+}
+
+/* ---- 书号（源侧真实编号）---- */
+async function ensureBookNumbers() {
+  if (state.bookNumbers) return state.bookNumbers;
+  if (state.bookNumbersTries >= 2) return null;   // 离线时别每次按键都重试
+  state.bookNumbersTries++;
+  try { state.bookNumbers = await fetchJSON('data/books/numbers.json'); }
+  catch (e) { state.bookNumbers = null; /* 不缓存失败，下次检索再试（标题检索不受影响） */ }
+  return state.bookNumbers;
+}
+
+// 编号优先级：元数据 b.num（将来内容重导后自带）→ numbers.json（当前产物）
+function bookNumOf(series, volume, book) {
+  const meta = seriesMeta(series);
+  const mb = meta && meta.volumes[volume - 1] && meta.volumes[volume - 1].books[book];
+  if (mb && mb.num) return mb.num;
+  const rows = (state.bookNumbers || {})[series] || [];
+  const hit = rows.find(r => r[0] === volume && r[1] === book);
+  return hit ? hit[2] : 0;
+}
+
+/* ---- 书报章级索引（全部系列）---- */
+async function ensureBookSearchIndex() {
+  // 书号表上次没取到时允许重建（否则一次网络抖动会让本次会话永久搜不到书号）
+  if (state.bookSearchIndex && !state.bookSearchNeedsNumbers) return state.bookSearchIndex;
+  if (state.bookSearchPending) return state.bookSearchPending;
+  if (state.bookSearchFailed && state.bookSearchAttempts >= 3) return state.bookSearchIndex;
+  state.bookSearchFailed = false;
+  state.bookSearchAttempts++;
+  state.bookSearchPending = (async () => {
+    try {
+      await ensureBookSeriesIndex();
+      const list = (state.bookSeriesIndex && state.bookSeriesIndex.series) || [];
+      // 清单/元数据全挂时必须留下 null（[] 是 truthy，会永久禁用书报检索）
+      if (!list.length) { state.bookSearchFailed = true; return null; }
+      await Promise.all(list.map(s => prefetchSeriesMeta(s.id)));
+      if (!list.some(s => seriesMeta(s.id))) { state.bookSearchFailed = true; return null; }
+      await ensureBookNumbers();
+      state.bookSearchNeedsNumbers = !state.bookNumbers && state.bookNumbersTries < 2;
+      buildBookSearchIndex();
+    } catch (e) {
+      state.bookSearchFailed = true;
+    } finally {
+      state.bookSearchPending = null;
+    }
+    return state.bookSearchIndex;
+  })();
+  return state.bookSearchPending;
+}
+
+// 条目 = 章。系列名/辑名/书名/书号全进 haystack，故「属灵书报 重生」「1001」都能命；
+// 章级粒度让跳转一步到位，书标题命中时其各章按目录顺序排在前面（正合「找到这本书」）。
+function buildBookSearchIndex() {
+  const items = [];
+  if (!(state.bookSeriesIndex && (state.bookSeriesIndex.series || []).length)) return null;
+  ((state.bookSeriesIndex && state.bookSeriesIndex.series) || []).forEach((s) => {
+    const meta = seriesMeta(s.id);
+    if (!meta) return;
+    (meta.volumes || []).forEach((v, vi) => {
+      (v.books || []).forEach((b, bi) => {
+        const num = b.num || bookNumOf(s.id, vi + 1, bi);
+        const bt = String(b.title || '');
+        const head = `${s.name || s.id} ${v.title || ''} ${bt} ${num || ''}`.toLowerCase();
+        (b.chapters || []).forEach((ct, ci) => {
+          const ctl = String(ct || '').toLowerCase();
+          items.push({
+            s: s.id, sn: s.name || s.id, vt: v.title || '', bt,
+            ct: String(ct || ''), btl: bt.toLowerCase(), ctl,
+            v: vi + 1, b: bi, c: ci, num,
+            hay: head + ' ' + ctl,
+          });
+        });
       });
+    });
+  });
+  state.bookSearchIndex = items;
+  return items;
+}
+
+// 匹配即打分：词都须出现在 haystack（AND）。
+// 纯数字词两条路：精确等于书号（排最前）或作为普通文字匹配（「365」「1988」这类
+// 书名/章名里的数字不能被书号规则吃掉）；其余词按标题/系列/辑匹配。
+function bookEntryScore(e, terms) {
+  let score = 0, titleHit = false, numHit = false;
+  for (let i = 0; i < terms.length; i++) {
+    const t = terms[i];
+    if (!e.hay.includes(t)) return -1;
+    if (/^\d+$/.test(t) && e.num && String(e.num) === t) { numHit = true; continue; }
+    if (e.btl.includes(t) || e.ctl.includes(t)) titleHit = true;
+  }
+  if (numHit) score += 100;
+  if (titleHit) score += 50;
+  return score;
+}
+
+function searchBookTitles(q, limit) {
+  const terms = searchTerms(q);
+  const out = { items: [], total: 0 };
+  if (!terms.length) return out;
+  const hits = [];
+  (state.bookSearchIndex || []).forEach((e) => {
+    const sc = bookEntryScore(e, terms);
+    if (sc < 0) return;
+    out.total++;
+    hits.push({ e, sc });
+  });
+  hits.sort((a, b) => b.sc - a.sc);   // 稳定排序：同分保持目录顺序（系列/辑/书/章）
+  out.items = hits.slice(0, limit || SR_CAP).map(({ e }) => ({
+    key: `bk:${e.s}:${e.v}:${e.b}:${e.c}`,
+    loc: `${e.sn} · ${e.vt}`,
+    label: `${e.num ? '#' + e.num + ' ' : ''}${e.bt} · 第${e.c + 1}章 ${e.ct}`,
+    s: e.s, v: e.v, b: e.b, c: e.c,
+    go: () => openBookChapter(e.v, e.b, e.c, e.s),
+  }));
+  return out;
+}
+
+/* ---- 经文 / 注解全文 ---- */
+const VERSE_MARK_RE = /\{\d+\}|\[[a-z]+\]/g;   // 注脚 {N} / 串珠 [a-z] 标记
+const VERSE_KEY_RE = /^([^\d]+)(\d+):(\d+)([上下]?)$/;
+
+function stripVerseMarks(s) {
+  return String(s == null ? '' : s).replace(VERSE_MARK_RE, '');
+}
+
+function parseVerseKey(k) {
+  const m = VERSE_KEY_RE.exec(k || '');
+  if (!m) return null;
+  const b = state.books.find(x => x.acronym === m[1]);
+  if (!b) return null;
+  return { book: b.index, chapter: +m[2], verse: +m[3], half: m[4] || '' };
+}
+
+function ensureVerseSearchIndex() {
+  if (state.verseSearchIndex) return state.verseSearchIndex;
+  if (!state.bibleText) return null;
+  const list = [];
+  for (const k in state.bibleText) {
+    list.push({ k, t: stripVerseMarks(state.bibleText[k]).toLowerCase() });
+  }
+  state.verseSearchIndex = list;
+  return list;
+}
+
+function ensureNoteSearchIndex() {
+  if (state.noteSearchIndex) return state.noteSearchIndex;
+  if (!state.bibleNotes) return null;
+  const list = [];
+  for (const k in state.bibleNotes) {
+    const obj = state.bibleNotes[k] || {};
+    for (const seq in obj) {
+      if (!obj[seq]) continue;
+      list.push({ k, n: +seq, t: stripVerseMarks(obj[seq]).toLowerCase() });
     }
   }
-  // 2. 笔记文本（note / 选中文本快照）
-  state.annotations.filter(a => (a.note || '').includes(q) || (a.text || '').includes(q)).slice(0, 20).forEach(a => {
-    out.push({
-      key: 'ann-' + a.id,
-      loc: a.type === 'verse'
-        ? `${bookName(a.book)} ${a.chapter}:${a.verse}${a.half || ''}`
-        : hlLocText(a),   // 书报/听抄/生命读经用各自的规范定位文案（反馈：非 verse 一律「生命读经」标签错误）
-      text: (a.note || a.text || '').slice(0, 30),
-      go: () => { enterModule('bible'); navigateToAnnotation(a); },
-    });
+  state.noteSearchIndex = list;
+  return list;
+}
+
+// 命中片段：以首个命中词为中心前后各取 span 字（中文正文需要上下文才有用）
+function snippetAround(text, terms, span) {
+  const w = span || 18;
+  const lower = text.toLowerCase();
+  let at = -1;
+  terms.forEach((t) => {
+    const i = lower.indexOf(t);
+    if (i !== -1 && (at === -1 || i < at)) at = i;
   });
-  // 3. 生命读经篇目标题（仅已缓存卷，阶段 1 不建全量索引）
-  Object.values(state.lrVolumes).forEach(v => {
-    (v.articles || []).forEach(art => {
-      if (art.title.includes(q)) {
-        out.push({
-          key: 'lr-' + v.bookIndex + '-' + art.id,
-          loc: `${v.name} · 生命读经`, text: art.title,
-          go: () => openLrArticle(v.bookIndex, art),
-        });
-      }
-    });
+  if (at === -1) return text.slice(0, w * 2);
+  const a = Math.max(0, at - w), b = Math.min(text.length, at + w);
+  return (a > 0 ? '…' : '') + text.slice(a, b) + (b < text.length ? '…' : '');
+}
+
+function searchScripture(q, limit) {
+  const terms = searchTerms(q);
+  const out = { items: [], total: 0 };
+  if (!terms.length) return out;
+  const idx = ensureVerseSearchIndex();
+  if (!idx) return out;
+  const hits = [];
+  for (let i = 0; i < idx.length; i++) {
+    const e = idx[i];
+    if (!matchAllTerms(e.t, terms)) continue;
+    out.total++;
+    if (hits.length < (limit || SR_CAP)) hits.push(e);
+  }
+  out.items = hits.map((e) => {
+    const p = parseVerseKey(e.k);
+    if (!p) return null;
+    return {
+      key: 'vs:' + e.k,
+      loc: `${bookName(p.book)} ${p.chapter}:${p.verse}${p.half}`,
+      label: snippetAround(e.t, terms),
+      go: async () => {
+        await enterModule('bible');
+        if (state.currentBook.index !== p.book) await selectBook(p.book, p.chapter);
+        else if (state.currentChapter !== p.chapter) await selectChapter(p.chapter);
+        jumpToVerse(p.chapter, p.verse, p.half);
+      },
+    };
+  }).filter(Boolean);
+  return out;
+}
+
+function searchFootnotes(q, limit) {
+  const terms = searchTerms(q);
+  const out = { items: [], total: 0 };
+  if (!terms.length) return out;
+  const idx = ensureNoteSearchIndex();
+  if (!idx) return out;
+  const hits = [];
+  for (let i = 0; i < idx.length; i++) {
+    const e = idx[i];
+    if (!matchAllTerms(e.t, terms)) continue;
+    out.total++;
+    if (hits.length < (limit || SR_CAP)) hits.push(e);
+  }
+  out.items = hits.map((e) => {
+    const p = parseVerseKey(e.k);
+    if (!p) return null;
+    return {
+      key: `fn:${e.k}:${e.n}`,
+      loc: `${bookName(p.book)} ${p.chapter}:${p.verse}${p.half} 注${e.n}`,
+      label: snippetAround(e.t, terms),
+      go: async () => {
+        await enterModule('bible');
+        if (state.currentBook.index !== p.book) await selectBook(p.book, p.chapter);
+        else if (state.currentChapter !== p.chapter) await selectChapter(p.chapter);
+        scrollToVerse(p.verse, p.half);
+        showFootnotePopup(e.n, e.k);
+      },
+    };
+  }).filter(Boolean);
+  return out;
+}
+
+/* ---- 我的标注 / 生命读经篇目 / 听抄篇目 ---- */
+function searchAnnotations(q, limit) {
+  const terms = searchTerms(q);
+  const out = { items: [], total: 0 };
+  if (!terms.length) return out;
+  const hits = [];
+  state.annotations.forEach((a) => {
+    const hay = `${a.text || ''} ${a.note || ''}`.toLowerCase();
+    if (!matchAllTerms(hay, terms)) return;
+    out.total++;
+    if (hits.length < (limit || SR_CAP)) hits.push(a);
   });
-  // 4. 书报章节标题（仅 bookMeta 已加载，按辑内容再懒加载）
-  if (state.bookMeta) {
-    state.bookMeta.volumes.forEach((v, vi) => {
-      v.books.forEach((b, bi) => {
-        (b.chapters || []).forEach((ct, ci) => {
-          if (String(ct).includes(q)) {
-            out.push({
-              key: 'bk-' + vi + '-' + bi + '-' + ci,
-              loc: `${state.bookMeta.name} · ${v.title} · ${b.title}`, text: String(ct),
-              go: () => openBookChapter(vi + 1, bi, ci, state.bookSeries),
-            });
-          }
-        });
-      });
+  out.items = hits.map(a => ({
+    key: 'ann:' + a.id,
+    loc: hlLocText(a),
+    label: (a.note || a.text || '').slice(0, 40),
+    go: () => { enterModule('bible'); navigateToAnnotation(a); },
+  }));
+  return out;
+}
+
+function searchLrTitles(q, limit) {
+  const terms = searchTerms(q);
+  const out = { items: [], total: 0 };
+  if (!terms.length) return out;
+  // 全量索引（1990 条）就绪前退回已缓存卷，保证首帧也有结果
+  const pool = [];
+  if (state.lrTitleIndex) {
+    state.lrTitleIndex.flat.forEach(t => pool.push(t));
+  } else {
+    Object.values(state.lrVolumes).forEach((v) => {
+      (v.articles || []).forEach(a => pool.push({ book: v.bookIndex, id: a.id, title: a.title || '', volName: v.name || '' }));
     });
   }
-  // 5. 晨兴篇标题（仅已加载期）
-  Object.keys(state.morningData).forEach(pid => {
-    const data = state.morningData[pid];
-    (data.chapters || []).forEach(ch => {
-      if (ch.title.includes(q)) {
-        out.push({
-          key: 'mr-' + pid + '-' + ch.number,
-          loc: `${(data.title || pid)} · 听抄`, text: ch.title,
-          go: () => openMorningArticle(pid, ch.number),
-        });
-      }
+  const hits = [];
+  pool.forEach((t) => {
+    if (!matchAllTerms(String(t.title || '').toLowerCase(), terms)) return;
+    out.total++;
+    if (hits.length < (limit || SR_CAP)) hits.push(t);
+  });
+  out.items = hits.map(t => ({
+    key: `lr:${t.book}:${t.id}`,
+    loc: `${t.volName} · 生命读经`,
+    label: t.title,
+    go: () => openLrArticle(t.book, { id: t.id }),
+  }));
+  return out;
+}
+
+function searchMorningTitles(q, limit) {
+  const terms = searchTerms(q);
+  const out = { items: [], total: 0 };
+  if (!terms.length) return out;
+  const hits = [];
+  Object.keys(state.morningData).forEach((pid) => {
+    const d = state.morningData[pid] || {};
+    (d.chapters || []).forEach((c) => {
+      if (!matchAllTerms(String(c.title || '').toLowerCase(), terms)) return;
+      out.total++;
+      if (hits.length < (limit || SR_CAP)) hits.push({ pid, n: c.number, title: c.title, pname: d.title || pid });
     });
   });
-  return out.slice(0, 25);
+  out.items = hits.map(h => ({
+    key: `mr:${h.pid}:${h.n}`,
+    loc: `${h.pname} · 听抄`,
+    label: h.title,
+    go: () => openMorningArticle(h.pid, h.n),
+  }));
+  return out;
+}
+
+// 「创24 / 创世记24」→ 读经跳转项（同步命中，不依赖任何索引；首页首帧就有结果）
+function parseBookChapterQuery(q) {
+  const m = String(q == null ? '' : q).trim().match(/^([\u4e00-\u9fa5]{1,6})\s*(\d{1,3})$/);
+  if (!m) return null;
+  const idx = resolveBookAlias(m[1]);
+  if (!idx) return null;
+  const b = state.books.find(x => x.index === idx);
+  const ch = parseInt(m[2], 10);
+  if (!b || !(ch >= 1 && ch <= b.chapters)) return null;
+  return {
+    key: `bible:${idx}:${ch}`, loc: '读经', label: `${b.name} 第${ch}章`,
+    book: idx, chapter: ch,
+    go: () => { enterModule('bible'); selectBook(idx, ch); setMobileView('read'); },
+  };
+}
+
+/* ---- 首页检索：分组收集 + 渲染 ---- */
+const SR_KIND_LABEL = {
+  bible: '读经', books: '书报', lr: '生命读经',
+  verse: '经文', fn: '注解', ann: '我的笔记', morning: '听抄',
+};
+
+function collectHomeHits(q) {
+  const groups = [];
+  const push = (kind, r) => { if (r && r.items.length) groups.push({ kind, label: SR_KIND_LABEL[kind], items: r.items, total: r.total }); };
+  const bc = parseBookChapterQuery(q);
+  if (bc) push('bible', { items: [bc], total: 1 });
+  push('books', searchBookTitles(q, SR_GROUP_LIMIT));
+  push('lr', searchLrTitles(q, SR_GROUP_LIMIT));
+  push('verse', searchScripture(q, SR_GROUP_LIMIT));
+  push('fn', searchFootnotes(q, SR_GROUP_LIMIT));
+  push('ann', searchAnnotations(q, SR_GROUP_LIMIT));
+  push('morning', searchMorningTitles(q, SR_GROUP_LIMIT));
+  return groups;
+}
+
+function searchByKind(kind, q, limit) {
+  if (kind === 'books') return searchBookTitles(q, limit);
+  if (kind === 'lr') return searchLrTitles(q, limit);
+  if (kind === 'verse') return searchScripture(q, limit);
+  if (kind === 'fn') return searchFootnotes(q, limit);
+  if (kind === 'ann') return searchAnnotations(q, limit);
+  if (kind === 'morning') return searchMorningTitles(q, limit);
+  return { items: [], total: 0 };
+}
+
+function renderHomeSearch(q) {
+  const results = $('homeSearchResults');
+  const terms = searchTerms(q);
+  const groups = collectHomeHits(q);
+  const flat = [];
+  let html = '';
+  groups.forEach((g) => {
+    html += `<div class="sr-group" data-g="${g.kind}">` +
+      `<div class="sr-group-head">${g.label}<span class="sr-count">${g.total}</span></div>`;
+    g.items.forEach((it) => {
+      flat.push(it);
+      html += `<div class="home-sr-item" data-k="${escapeHtml(it.key)}">` +
+        (it.loc ? `<span class="sr-loc">${escapeHtml(it.loc)}</span>` : '') +
+        highlightHtml(it.label, terms) + '</div>';
+    });
+    if (g.total > g.items.length) {
+      html += `<div class="home-sr-item sr-more" data-more="${g.kind}">查看全部 ${g.total} 条 ›</div>`;
+    }
+    html += '</div>';
+  });
+  if (!groups.length) {
+    html = (state.bookSearchIndex || state.bookSearchFailed)
+      ? '<div class="home-sr-item sr-none">无匹配结果</div>'
+      : '<div class="sr-loading"><span class="loading-spin"></span>检索目录加载中…</div>';
+  } else if (!state.bookSearchIndex && !state.bookSearchFailed) {
+    html += '<div class="sr-loading"><span class="loading-spin"></span>书报目录加载中…</div>';
+  }
+  _homeSearchLast = flat;
+  results.innerHTML = html;
+}
+
+// 首帧同步出结果（已缓存数据 + 经文/注解全文），索引补齐后再刷一次。
+// seq 守卫防慢请求回写；输入已变则丢弃本次补渲染。
+async function runHomeSearch(q) {
+  const my = ++_homeSearchSeq;
+  renderHomeSearch(q);
+  const pending = [];
+  // needsNumbers：上次建索引时书号表没取到，继续输入也再试一次（tries 上限在 ensureBookNumbers 内）
+  if (!state.bookSearchIndex || state.bookSearchNeedsNumbers) pending.push(ensureBookSearchIndex().catch(() => null));
+  if (!state.lrTitleIndex) pending.push(ensureLrTitleIndex().catch(() => null));
+  if (!state.morningAllDone) pending.push(ensureMorningAll().catch(() => null));
+  if (!pending.length) return;
+  await Promise.all(pending);
+  if (my !== _homeSearchSeq) return;
+  const input = $('homeSearch');
+  if (!input || input.value.trim() !== q) return;
+  renderHomeSearch(q);
+}
+
+// 「查看全部」弹窗：复用 popup 栈，条目点击才跳转（列表只浏览）
+function openSearchResultsAll(kind, q) {
+  if (!q) return;
+  const terms = searchTerms(q);
+  const r = searchByKind(kind, q, 200);
+  if (!r.items.length) return;
+  const rows = r.items.map(it => `
+    <div class="home-sr-item" data-k="${escapeHtml(it.key)}">
+      ${it.loc ? `<span class="sr-loc">${escapeHtml(it.loc)}</span>` : ''}${highlightHtml(it.label, terms)}
+    </div>`).join('');
+  openPopup(`${SR_KIND_LABEL[kind] || '搜索'} · ${r.total} 条`,
+    `<div class="sr-all">${rows}</div>` +
+    (r.total > r.items.length ? `<div class="sr-all-foot">仅显示前 ${r.items.length} 条，可细化关键词</div>` : ''));
+  $('popupBody').querySelectorAll('.home-sr-item[data-k]').forEach((el) => {
+    el.addEventListener('click', () => {
+      const hit = r.items.find(x => x.key === el.dataset.k);
+      closePopupAll();
+      if (hit) hit.go();
+    });
+  });
+}
+
+// 听抄全量（0.7MB）：首页搜索要能搜到所有期的篇目，而不是只搜已加载期
+async function ensureMorningAll() {
+  const idx = await ensureMorningIndex();
+  const list = await Promise.all(((idx && idx.trainings) || []).map(t => ensureMorningData(t.id)));
+  state.morningAllDone = list.every(Boolean);   // 有期失败则下次检索重试
+  return idx;
 }
 
 // 书卷名/缩写 → book index（复用 REF_ALIASES 全名/简称/缩写映射）
@@ -4227,12 +4669,6 @@ async function selectBookChapter(volume, book, chapter) {
   syncRoute();
 }
 
-// 搜索结果跨辑跳转：先切辑（selectBookVolume 重渲染左栏），再切书/章
-async function openBookResult(v, b, c) {
-  if (v !== state.bookVolume) await selectBookVolume(v);
-  if (b !== state.bookBook || c !== state.bookChapter) await selectBookChapter(v, b, c);
-}
-
 // 统一入口（首页块 / 搜索 / 全局笔记）：模块内切章，模块外进模块
 async function openBookChapter(volume, book, chapter, series) {
   if (state.activeModule === 'books' && state.screen === 'work') {
@@ -4551,7 +4987,7 @@ function renderDrawer(sync = true) {
     return;
   }
   const inp = $('dwSearchInput');
-  inp.placeholder = { bible: '搜索书卷…', lifereading: '搜索全部篇目…', books: '搜索全部书卷/章节…', morning: '搜索全部篇目…' }[mod] || '';
+  inp.placeholder = { bible: '搜索书卷 / 章（如 创24）…', lifereading: '搜索全部篇目…', books: '搜索全部系列书卷/章节/书号…', morning: '搜索全部篇目…' }[mod] || '';
   if (document.activeElement !== inp) inp.value = dwState.query || '';
   renderDrawerSearch(mod);
   const seg = $('dwSeg');
@@ -4731,48 +5167,59 @@ async function renderDrawerSearch(mod) {
   const my = ++_dwSearchSeq;
   res.hidden = false;
   res.innerHTML = '<div class="dw-sr-head">搜索中…</div>';
+  const terms = searchTerms(q);
   let items = [];   // {label, loc, cur?, attrs}
+  let total = 0;
   if (mod === 'lifereading') {
     const idx = await ensureLrTitleIndex();
     if (my !== _dwSearchSeq) return;
-    items = idx ? idx.flat
-      .filter(t => t.title.includes(q) || String(t.id).includes(q))
-      .slice(0, 50)
-      .map(t => ({ label: t.title, loc: t.volName, cur: t.book === state.lrBookIndex && t.id === state.lrArticleId, attrs: `data-sr="lr" data-bk="${t.book}" data-id="${t.id}"` }))
-      : [];
+    const all = idx ? idx.flat.filter(t => matchAllTerms(String(t.title || '').toLowerCase(), terms)
+      || String(t.id).includes(q)) : [];
+    total = all.length;
+    items = all.slice(0, 50).map(t => ({
+      label: t.title, loc: t.volName,
+      cur: t.book === state.lrBookIndex && t.id === state.lrArticleId,
+      attrs: `data-sr="lr" data-bk="${t.book}" data-id="${t.id}"`,
+    }));
   } else if (mod === 'books') {
-    await ensureBookMeta();
+    // 跨全部系列（不再只搜当前系列的元数据）；书号纯数字词走精确匹配
+    await ensureBookSearchIndex();
     if (my !== _dwSearchSeq) return;
-    const out = [];
-    ((state.bookMeta && state.bookMeta.volumes) || []).forEach((v, vi) => {
-      (v.books || []).forEach((b, bi) => {
-        if (b.title.includes(q)) out.push({ v: vi + 1, b: bi, c: 0, label: b.title, loc: v.title });
-        (b.chapters || []).forEach((ct, ci) => {
-          if (String(ct).includes(q)) out.push({ v: vi + 1, b: bi, c: ci, label: `${b.title} · 第${ci + 1}章 ${ct}`, loc: v.title });
-        });
-      });
-    });
-    items = out.slice(0, 50).map(x => ({ label: x.label, loc: x.loc, attrs: `data-sr="books" data-v="${x.v}" data-b="${x.b}" data-c="${x.c}"` }));
+    const r = searchBookTitles(q, 50);
+    total = r.total;
+    items = r.items.map(x => ({
+      label: x.label, loc: x.loc,
+      attrs: `data-sr="books" data-s="${escapeHtml(x.s)}" data-v="${x.v}" data-b="${x.b}" data-c="${x.c}"`,
+    }));
   } else if (mod === 'morning') {
     const trainings = (state.morningIndex && state.morningIndex.trainings) || [];
     for (const t of trainings) {
       const d = await ensureMorningData(t.id);
       if (my !== _dwSearchSeq) return;
       if (d) d.chapters.forEach(c => {
-        if (c.title.includes(q) || String(c.number).includes(q)) {
+        if (matchAllTerms(String(c.title || '').toLowerCase(), terms) || String(c.number).includes(q)) {
           items.push({ label: c.title, loc: d.title || t.title || t.id, attrs: `data-sr="morning" data-p="${t.id}" data-n="${c.number}"` });
         }
       });
     }
+    total = items.length;
     items = items.slice(0, 50);
   } else if (mod === 'bible') {
+    const bc = parseBookChapterQuery(q);
+    if (bc) {
+      total = 1;
+      items.push({ label: bc.label, loc: '读经', attrs: `data-sr="bible-ch" data-b="${bc.book}" data-c="${bc.chapter}"` });
+    }
     if (state.books.length) {
-      items = state.books.filter(b => b.name.includes(q) || (b.acronym && b.acronym.includes(q)))
-        .slice(0, 30)
-        .map(b => ({ label: b.name, loc: '', attrs: `data-sr="bible" data-b="${b.index}"` }));
+      const books = state.books.filter(b => b.name.includes(q) || (b.acronym && b.acronym.includes(q)));
+      total += books.length;
+      items = items.concat(books.slice(0, 30).map(b => ({ label: b.name, loc: '', attrs: `data-sr="bible" data-b="${b.index}"` })));
     }
   }
-  const head = `<div class="dw-sr-head">${items.length ? `「${escapeHtml(q)}」共 ${items.length} 条结果` : `「${escapeHtml(q)}」无结果`}</div>`;
+  // 计数用 slice 前的真实总数，并注明只显示了前多少条（原实现用裁剪后长度，永远显示 50）
+  const head = `<div class="dw-sr-head">${total
+    ? `「${escapeHtml(q)}」共 ${total} 条结果${total > items.length ? `，显示前 ${items.length} 条` : ''}`
+    : `「${escapeHtml(q)}」无结果`}</div>`;
   res.innerHTML = head + items.map(x =>
     `<div class="dw-item${x.cur ? ' cur' : ''}" ${x.attrs}>${x.loc ? `<span class="nav-result-loc">${escapeHtml(x.loc)}</span>` : ''}<span class="t">${escapeHtml(x.label)}</span></div>`).join('');
 }
@@ -4785,8 +5232,9 @@ async function jumpDrawerSearchResult(it) {
   closeNavDrawer();
   enterWork();
   if (kind === 'lr') await openLrArticle(+it.dataset.bk, { id: +it.dataset.id });
-  else if (kind === 'books') await openBookResult(+it.dataset.v, +it.dataset.b, +it.dataset.c);
+  else if (kind === 'books') await openBookChapter(+it.dataset.v, +it.dataset.b, +it.dataset.c, it.dataset.s);
   else if (kind === 'morning') await openMorningArticle(it.dataset.p, +it.dataset.n);
+  else if (kind === 'bible-ch') { await selectBook(+it.dataset.b, +it.dataset.c); setMobileView('read'); }
   else if (kind === 'bible') { await selectBook(+it.dataset.b, 1); setMobileView('read'); }
   renderDrawer();
 }
@@ -4856,7 +5304,7 @@ async function jumpDrawerBrowse(mod, r) {
       }
       return;
     }
-    // 跨辑时先切辑（selectBookVolume 重渲染停靠列，同 openBookResult 模式），再切章
+    // 跨辑时先切辑（selectBookVolume 重渲染停靠列，同 openBookChapter 内部链路），再切章
     if (vol !== state.bookVolume) await selectBookVolume(vol);
     if (left !== state.bookBook || +r !== state.bookChapter) {
       await selectBookChapter(vol, left, +r);

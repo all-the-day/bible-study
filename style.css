@@ -1149,6 +1149,26 @@ body.bookhub #menuBtn { display: none; }               /* 合集层是层级选�
 .home-sr-item:last-child { border-bottom: none; }
 .home-sr-item:hover { background: var(--surface-alt); }
 .home-sr-item .sr-loc { color: var(--text-muted); margin-right: 8px; font-size: var(--fs-13); }
+/* 统一检索（2026-10-20）：分组头 / 命中高亮 / 查看全部 / 加载态 */
+.sr-group-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 7px 14px 5px; font-size: var(--fs-12); font-weight: 600;
+  color: var(--text-muted); background: var(--surface-alt);
+}
+.sr-group .sr-count { font-weight: 400; opacity: .85; }
+mark.sr-hit {
+  background: rgba(var(--brand-rgb), .18); color: inherit;
+  border-radius: 3px; padding: 0 1px;
+}
+.home-sr-item.sr-more { color: var(--brand); font-size: var(--fs-13); }
+.home-sr-item.sr-none { color: var(--text-muted); cursor: default; }
+.home-sr-item.sr-none:hover { background: transparent; }
+.sr-loading {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; color: var(--text-muted); font-size: var(--fs-13);
+}
+.sr-all { max-height: 60vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.sr-all-foot { padding: 10px 14px; color: var(--text-muted); font-size: var(--fs-12); }
 .home-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; margin-top: 24px; }
 .home-block {
   aspect-ratio: 1/1; display: flex; flex-direction: column;

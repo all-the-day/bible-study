@@ -71,14 +71,15 @@ async function main() {
   }));
   console.log('   点击条目进面板:', panel.stayNotes && panel.title === '经文标注' ? '✓' : '✗', '|', panel.title);
 
-  // 跨书卷跳转改走首页搜索的标注分支：搜「基督」→ 点击结果 → 跳到罗马书
+  // 跨书卷跳转改走首页搜索的标注分支：搜「基督」→ 点「我的笔记」组的结果 → 跳到罗马书
+  // （2026-10-20 起首页搜索分组返多域结果，必须按组定位，不能点全局首条）
   await page2.click('#homeBtn');
   await new Promise((r) => setTimeout(r, 300));
   await page2.type('#homeSearch', '基督');
-  await new Promise((r) => setTimeout(r, 500));
-  const srCount = await page2.$$eval('#homeSearchResults .home-sr-item', els => els.length);
+  await new Promise((r) => setTimeout(r, 1200));
+  const srCount = await page2.$$eval('#homeSearchResults .sr-group[data-g="ann"] .home-sr-item', els => els.length);
   if (srCount) {
-    await page2.click('#homeSearchResults .home-sr-item');
+    await page2.click('#homeSearchResults .sr-group[data-g="ann"] .home-sr-item');
     await new Promise((r) => setTimeout(r, 2000));
     const jumped = await page2.evaluate(() => ({
       home: document.body.classList.contains('home'),
