@@ -99,6 +99,12 @@ jobs:
             $CURL "$BASE/$f" -o "www/data/$f"
             check_json "www/data/$f"
           done
+          # 专题（作业单）：每个专题一个数据文件（REGISTRY 新增专题时同步加这里）
+          mkdir -p www/data/topics
+          for tid in vitality8; do
+            $CURL "$BASE/topics/$tid.json" -o "www/data/topics/$tid.json"
+            check_json "www/data/topics/$tid.json"
+          done
           for acr in $(python3 -c "import json; print(' '.join(b['acronym'] for b in json.load(open('www/data/books.json'))))"); do
             # CF Pages 对非 ASCII 路径要求百分号编码（裸中文 400，Vercel 当年自动容忍）：
             # URL 用编码值，本地文件名仍用原文缩写

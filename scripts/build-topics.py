@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""build-topics.py — 专题数据装配 → data/topics/{id}.json
+"""build-topics.py — 专题（作业单）数据装配 → data/topics/{id}.json
 
-专题（如「活力八」）= 把散在各模块的**已有内容**按主题清单编成一条阅读动线：
-经文走读经模块（不复制），生命读经/书报正文在这里拼成一份按书的读经单。
+专题 = 一份「作业单」的**链接聚合页**：每周一条任务，条目分别指向读经模块的原文、
+生命读经模块的篇目、书报模块的章节——正文一律不复制，页面只放跳转。
 
-数据只读**已导出的** data/lifereading/{缩写}.json 与 data/books/，与页面看到的是
-同一份数据（先跑 export.py / export-spiritual.py 再跑本脚本）。
+数据只读**已导出的** data/lifereading/{缩写}.json 与 data/books/（与页面看到的是同一份）。
+篇目标题、章标题由脚本解析；篇号对不上/不覆盖该章/章号越界都直接报错退出，不静默少内容。
 
 用法：
     python build-topics.py            # 生成全部专题
-    python build-topics.py --check    # 只校验（清单里的名字对不上就非零退出），不写文件
-    TOPICS_DATA=/path/to/data python build-topics.py   # 数据目录覆盖（Delta worktree 里数据不在库、指向主工作区时用）
+    python build-topics.py --check    # 只校验不写文件
+    TOPICS_DATA=/path/to/data python build-topics.py   # 数据目录覆盖（data/ 不入库的 worktree 用）
 
-改专题内容 = 改下面的 REGISTRY，再重跑本脚本（**不要手改 data/topics/*.json**）。
+改作业单内容 = 改下面的 REGISTRY 再重跑（**不要手改 data/topics/*.json**）。
 """
 import json
 import os
@@ -24,59 +24,36 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.environ.get('TOPICS_DATA') or os.path.join(ROOT, 'data')
 OUT_DIR = os.path.join(ROOT, 'data', 'topics')   # 产物总写回本仓库（数据可指向别处的只读副本）
 
-# 书卷（序号须与 data/books.json 一致：腓立比书 50 / 歌罗西书 51）
-BOOKS = {
-    50: {'acronym': '腓', 'name': '腓立比书', 'chapters': 4},
-    51: {'acronym': '西', 'name': '歌罗西书', 'chapters': 4},
-}
+# 作业单只收这两卷（腓立比书 / 歌罗西书）；书卷名与章数以 data/books.json 为准
+ALLOWED_BOOKS = (50, 51)
 
-# 读经单条目：src='lr' → data/lifereading/{缩写}.json 的篇目（按篇名**包含**匹配）；
-#             src='book' → data/books 的指定章（按章标题匹配）
-# 名字对不上会在构建时报错——专题内容是人工条目，宁可构建失败也不要静默少一篇。
+# 作业单：一周一条。字段——
+#   n        周次（页面显示「第 n 周」；与章号无绑定，按活动作业单编）
+#   book     书卷序号（1-66，见 data/books.json）
+#   chapter  该周所学的章
+#   articles 生命读经篇号（按顺序；id 见 data/lifereading/{缩写}.json），页面按顺序列链接
+#   bookRead 指定书报 {series, volume, book, chapter}（volume 1 基、book/chapter 0 基，与书报路由一致）
+#            或 None → 页面该行显示「指定书报待填」
+#   memory   背经经节（如 '腓1:21'）或 None → 该行显示「背经经节待填」
+#
+# ⚠️ 下面的篇号是**默认值**（按「经文整段落在该章内、按篇号取前三篇」选出来的），
+#    活动作业单到手后逐周替换即可；西 4 章源数据只有 2 篇整段落在本章（31/65），故只挂 2 篇。
 REGISTRY = {
     'vitality8': {
         'title': '活力八',
-        'blurb': '腓立比书与歌罗西书里的八条线：全备的供应、活基督、基督是一切、祈求与代求、'
-                 '不住的祷告、同心合意、生机的联结与新生。',
-        'payload': {
-            'books': [
-                {
-                    'book': 50,
-                    'chapters': [
-                        {'n': 1, 'reads': [
-                            {'src': 'lr', 'match': '耶稣基督之灵全备的供应'},
-                            {'src': 'lr', 'match': '藉着活基督显大基督'},
-                        ]},
-                        {'n': 2, 'reads': [
-                            {'src': 'lr', 'match': '同魂与不顾我们的魂'},
-                        ]},
-                        {'n': 4, 'reads': [
-                            {'src': 'lr', 'match': '使徒在基督里知足的秘诀'},
-                            {'src': 'book', 'series': 'sg', 'volume': 1, 'book': 25, 'chapter': 2},
-                        ]},
-                    ],
-                },
-                {
-                    'book': 51,
-                    'chapters': [
-                        {'n': 1, 'reads': [
-                            {'src': 'lr', 'match': '基督—居首位并包罗万有者'},
-                            {'src': 'lr', 'match': '基督在你们里面成了荣耀的盼望'},
-                        ]},
-                        {'n': 3, 'reads': [
-                            {'src': 'lr', 'match': '基督—我们的生命'},
-                        ]},
-                    ],
-                },
-            ],
-        },
+        'blurb': '腓立比书与歌罗西书：按作业单逐周读原文、生命读经与注解。',
+        'weeks': [
+            {'n': 1, 'book': 50, 'chapter': 1, 'articles': [3, 4, 5], 'bookRead': None, 'memory': None},
+            {'n': 2, 'book': 50, 'chapter': 2, 'articles': [9, 10, 11], 'bookRead': None, 'memory': None},
+            {'n': 3, 'book': 50, 'chapter': 3, 'articles': [17, 18, 19], 'bookRead': None, 'memory': None},
+            {'n': 4, 'book': 50, 'chapter': 4, 'articles': [26, 27, 28], 'bookRead': None, 'memory': None},
+            {'n': 5, 'book': 51, 'chapter': 1, 'articles': [2, 3, 4], 'bookRead': None, 'memory': None},
+            {'n': 6, 'book': 51, 'chapter': 2, 'articles': [18, 19, 20], 'bookRead': None, 'memory': None},
+            {'n': 7, 'book': 51, 'chapter': 3, 'articles': [27, 28, 29], 'bookRead': None, 'memory': None},
+            {'n': 8, 'book': 51, 'chapter': 4, 'articles': [31, 65], 'bookRead': None, 'memory': None},
+        ],
     },
 }
-
-# 篇内唯一 id（同缩写篇号可能因两辑重号，加缩写前缀）
-def _ref_id(acronym, num, title):
-    m = re.match(r'^(\d+)', str(title))
-    return f'{acronym}{num or (m.group(1) if m else "?")}'
 
 
 def _load(path):
@@ -84,178 +61,114 @@ def _load(path):
         return json.load(f)
 
 
-def _lr_volume(acronym):
-    """data/lifereading/{缩写}.json → {articles, source}（含全文，构建期才读）。"""
+def _books_meta():
+    """data/books.json → {index: {name, acronym, chapters}}（只取作业单允许的书卷）。"""
+    return {b['index']: b for b in _load(os.path.join(DATA, 'books.json')) if b['index'] in ALLOWED_BOOKS}
+
+
+def _lr_articles(acronym):
+    """data/lifereading/{缩写}.json → articles（构建期只读，正文不进产物）。"""
     path = os.path.join(DATA, 'lifereading', f'{acronym}.json')
     if not os.path.exists(path):
         raise SystemExit(f'缺少 {path}：先跑 scripts/export.py')
-    return _load(path)
+    return _load(path).get('articles') or []
 
 
-def _strip_lr_header(text):
-    """去掉篇尾来源页脚与篇首「读经：…」引文块（导出时已剥掉标题行）。
-
-    只动首尾的展示噪音：正文（含标题行与空行）不被重排列，标注偏移与 lr 模块一致。
-    """
-    lines = str(text or '').split('\n')
-    while lines and re.match(r'^\*\*(来源|URL|获取时间)\*\*', lines[-1].strip()):
-        lines.pop()
-    while lines and not lines[-1].strip():
-        lines.pop()
-    if lines and lines[-1].strip() == '---':
-        lines.pop()
-    while lines and not lines[-1].strip():
-        lines.pop()
-    i = 0
-    while i < len(lines) and not lines[i].strip():
-        i += 1
-    if i < len(lines) and lines[i].strip().rstrip('：:') == '读经':
-        i += 1
-        # 引文块 = 连续的、以「书卷名…节。」/「。」结尾的行（续行以「。」结尾）
-        while i < len(lines) and re.match(
-                r'^[\u4e00-\u9fff○〇一二三四五六七八九十百\-~～、，,：:（）()上中下\s]*[节。]\s*$', lines[i].strip()):
-            i += 1
-    return '\n'.join(lines[i:])
+def _clean_lr_title(title):
+    """生命读经篇名：去掉「005第五篇、」这类编号前缀（页面自己排顺序）。"""
+    return re.sub(r'^\d*第[^、]*、', '', str(title or '')).strip()
 
 
-def _strip_book_header(text, title):
-    """书报章正文头部去重：容器自己渲染标题，正文开头重复的书名/章名行去掉。
+def _cover_chapter(art, chapter):
+    """篇目 verses 的首段章号是否覆盖该章（与前端 autoMatch 同口径）。"""
+    for v in (art.get('verses') or []):
+        m = re.match(r'^(\d+)', str(v))
+        if m and int(m.group(1)) == chapter:
+            return True
+    return False
 
-    `markdown` 类的行保留（其后的正文与解析出的 title 不完全一致时也不直删）。
-    偏移仍在行尾之后重新拼接（调用方传入的 text 就是后续渲染的源文本，前端按它算偏移）。
-    """
-    lines = str(text or '').split('\n')
-    i = 0
-    while i < len(lines) and not lines[i].strip():
-        i += 1
-    # 三行式头部：「# 书名」→「## 篇名」→「篇名」（含前一行 md 标题）
-    for k in range(3):
-        if i >= len(lines):
-            break
-        t = lines[i].strip().lstrip('#').strip()
-        if not t:
-            break
-        if k < 2 or t == str(title).strip() or t.endswith(str(title).strip()):
-            i += 1
+
+def _book_read_ref(ref, errors):
+    """指定书报：校验章节存在并取章标题（与书报路由同基数：volume 1 基、book/chapter 0 基）。"""
+    series = str(ref.get('series') or '')
+    v, b, c = ref.get('volume'), ref.get('book'), ref.get('chapter')
+    meta_path = os.path.join(DATA, 'books', f'{series}.json')
+    vol_path = os.path.join(DATA, 'books', f'{series}-{v}.json')
+    if not series or not os.path.exists(meta_path) or not os.path.exists(vol_path):
+        errors.append(f'书报 {series} 缺数据（先跑 scripts/export-spiritual.py）')
+        return None
+    try:
+        title = _load(meta_path)['volumes'][v - 1]['books'][b]['chapters'][c]
+    except (KeyError, IndexError, TypeError):
+        errors.append(f'书报 {series} 卷{v} 书{b} 章{c} 超出范围')
+        return None
+    return {'series': series, 'volume': v, 'book': b, 'chapter': c, 'title': str(title)}
+
+
+def _week(w, meta, lr_cache, errors):
+    n, book, chapter = w.get('n'), w.get('book'), w.get('chapter')
+    if not isinstance(n, int) or n < 1:
+        errors.append(f'周次非法：{n!r}')
+        return None
+    if book not in meta:
+        errors.append(f'第{n}周：书卷 {book} 不在作业单允许范围（{ALLOWED_BOOKS}）')
+        return None
+    m = meta[book]
+    if not isinstance(chapter, int) or not (1 <= chapter <= m['chapters']):
+        errors.append(f'第{n}周：{m["name"]} 章号越界 {chapter!r}')
+        return None
+    if book not in lr_cache:
+        lr_cache[book] = _lr_articles(m['acronym'])
+    arts = lr_cache[book]
+    by_id = {a.get('id'): a for a in arts}
+    out_arts, ids = [], w.get('articles') or []
+    if not ids:
+        errors.append(f'第{n}周：没有生命读经篇目')
+    for aid in ids:
+        a = by_id.get(aid)
+        if not a:
+            errors.append(f'第{n}周：{m["name"]} 第{aid}篇不存在')
             continue
-        break
-    # 紧跟的「书名副题」行（如「…中对基督主观的经历」）：短行且与下一个标题行相像时删掉
-    if i < len(lines) and lines[i].strip() and not lines[i].strip().startswith(('读经', '#', '壹', '一　')):
-        head = lines[i].strip()
-        nxt = lines[i + 1].strip() if i + 1 < len(lines) else ''
-        if nxt.rstrip('：:') == '读经' and len(head) <= 40:
-            i += 1
-    return '\n'.join(lines[i:])
+        if not _cover_chapter(a, chapter):
+            errors.append(f'第{n}周：第{aid}篇「{_clean_lr_title(a.get("title"))}」不覆盖第{chapter}章')
+            continue
+        out_arts.append({'id': aid, 'title': _clean_lr_title(a.get('title'))})
+    return {
+        'n': n,
+        'book': book,
+        'bookName': m['name'],
+        'acronym': m['acronym'],
+        'chapter': chapter,
+        'articles': out_arts,
+        'bookRead': _book_read_ref(w['bookRead'], errors) if w.get('bookRead') else None,
+        'memory': (str(w.get('memory')).strip() or None) if w.get('memory') else None,
+    }
 
 
 def build(topic_id, entry):
-    payload = entry['payload']
-    out_books = []
-    errors = []
-    for b in payload['books']:
-        meta = BOOKS.get(b['book'])
-        if not meta:
-            errors.append(f"未知书卷 {b['book']}")
-            continue
-        acr = meta['acronym']
-        vol = _lr_volume(acr)
-        arts = vol.get('articles') or []
-        out_chapters = []
-        for ch in b['chapters']:
-            if not (1 <= ch['n'] <= meta['chapters']):
-                errors.append(f"{meta['name']} 章号越界 {ch['n']}")
-                continue
-            reads, refs = [], []
-            for item in ch['reads']:
-                if item['src'] == 'lr':
-                    hits = _find_lr(arts, item['match'], ch['n'])
-                    if not hits:
-                        errors.append(f"{meta['name']} 第{ch['n']}章：生命读经里找不到「{item['match']}」（且篇目覆盖本章）")
-                        continue
-                    for a in hits:
-                        rid = _ref_id(acr, a.get('id'), a.get('title'))
-                        refs.append({'tw': a.get('id'), 'id': rid})
-                        reads.append({
-                            'title': re.sub(r'^\d*第[^、]*、', '', str(a.get('title') or '')).strip(),
-                            'src': 'lr',
-                            'book': b['book'],
-                            'id': rid,
-                            'tw': a.get('id'),
-                            'text': _strip_lr_header(a.get('content')),
-                        })
-                elif item['src'] == 'book':
-                    cases = _load_book_chapter(item, errors)
-                    if cases:
-                        reads.extend(cases)
-                else:
-                    errors.append(f"未知来源 {item['src']}")
-            out_chapters.append({'n': ch['n'], 'refs': refs, 'reads': reads})
-        out_books.append({'book': b['book'], 'name': meta['name'], 'acronym': acr, 'chapters': out_chapters})
-
+    meta = _books_meta()
+    errors, lr_cache, weeks = [], {}, []
+    for w in entry.get('weeks') or []:
+        out = _week(w, meta, lr_cache, errors)
+        if out:
+            weeks.append(out)
+    # 自检：空作业单 / 周次重复都不算合法产物
+    if not weeks:
+        errors.append('作业单没有任何有效周次')
+    ns = [w['n'] for w in weeks]
+    if len(set(ns)) != len(ns):
+        errors.append(f'周次重复：{ns}')
     if errors:
         for e in errors:
             print('ERROR:', e, file=sys.stderr)
         raise SystemExit(1)
-    # 产物自检：空正文/空屏/空 refs 都是装配出错，不能静静上线
-    for bk in out_books:
-        for ch in bk['chapters']:
-            if not ch['refs']:
-                errors.append(f"{bk['name']} 第{ch['n']}章：没有可跳转的读经单条目")
-            for r in ch['reads']:
-                if len(r['text']) < 200:
-                    errors.append(f"{bk['name']} 第{ch['n']}章「{r['title']}」正文为空/过敏（{len(r['text'])} 字）")
-    if errors:
-        for e in errors:
-            print('ERROR:', e, file=sys.stderr)
-        raise SystemExit(1)
-    sizes = sum(len(r['text']) for bk in out_books for ch in bk['chapters'] for r in ch['reads'])
-    out = {'id': topic_id, 'title': entry['title'], 'blurb': entry['blurb'], 'books': out_books}
-    pages = sum(len(bk['chapters']) for bk in out_books)
-    print(f"{topic_id}: {len(out_books)} 卷 / {pages} 屏 / {sum(len(ch['reads']) for bk in out_books for ch in bk['chapters'])} 篇 / {sizes / 1024:.0f} KB")
+    weeks.sort(key=lambda w: w['n'])
+    out = {'id': topic_id, 'title': entry['title'], 'blurb': entry['blurb'], 'weeks': weeks}
+    n_arts = sum(len(w['articles']) for w in weeks)
+    n_book = sum(1 for w in weeks if w['bookRead'])
+    n_mem = sum(1 for w in weeks if w['memory'])
+    print(f'{topic_id}: {len(weeks)} 周 / {n_arts} 篇生命读经 / 书报 {n_book} 条 / 背经 {n_mem} 条')
     return out
-
-
-def _find_lr(arts, match, chapter):
-    """在卷篇目里找清单条目：篇名包含 match，且**篇目覆盖本章**（verses 首段章号）——
-    配套辑的篇名常互相包含（「X」⊂「X 为着显大基督」），以章号约束选出本章那一本篇。"""
-    hits = []
-    for a in arts:
-        if match not in str(a.get('title') or ''):
-            continue
-        chs = []
-        for v in (a.get('verses') or []):
-            m = re.match(r'^(\d+)', str(v))
-            if m:
-                chs.append(int(m.group(1)))
-        if chapter in chs:
-            hits.append(a)
-    return hits
-
-
-def _load_book_chapter(item, errors):
-    """书报某一章 → 一条 reads（按 metadata 取章标题，内容文件按辑加载）。"""
-    series = item['series']
-    v, b, c = item['volume'], item['book'], item['chapter']
-    meta_path = os.path.join(DATA, 'books', f'{series}.json')
-    vol_path = os.path.join(DATA, 'books', f'{series}-{v}.json')
-    if not os.path.exists(meta_path) or not os.path.exists(vol_path):
-        errors.append(f'缺少 {series} 书报数据（先跑 scripts/export-spiritual.py）')
-        return []
-    meta = _load(meta_path)
-    content = _load(vol_path)
-    try:
-        title = meta['volumes'][v - 1]['books'][b]['chapters'][c]
-        chapter = content['books'][b]['chapters'][c]
-    except (KeyError, IndexError):
-        errors.append(f'{series} 卷{v} 书{b} 章{c} 超出范围')
-        return []
-    return [{
-        'title': str(title),
-        'src': 'book',
-        'book': None,
-        'bookRef': {'series': series, 'volume': v, 'book': b, 'chapter': c},
-        'text': _strip_book_header(chapter.get('content'), title),
-    }]
 
 
 def main():

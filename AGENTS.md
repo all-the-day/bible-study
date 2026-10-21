@@ -36,8 +36,8 @@
 | `scripts/export-morning-epub.py` | 从特会信息 epub（Notion 下载，如 2026-3-MDC.epub）导出**完整听抄** → `data/morning/{期}.json`；同时更新 index.json 该期条目。**听抄唯一来源**（旧反编译晨读 APK 资源 detail_sections 被截断每篇缺 18-27%，已废弃，2026-08 起以 epub 为准） |
 | `scripts/export-spiritual.py` | 书报多系列导出 → `data/books/`：系列注册表 SERIES（ni=倪柝声文集三级「辑→书→章」；slat=十二篮两级「辑→篇」；fuyintiandi=福音天地；bio=「传记与文集」= 名人传记原子集 + ezoe 传记、文集类合并；**ezoe 书报合辑其余按分类拆独立系列**——gospel 福音类/reading 读经类/periodicals 代售与期刊类/misc 其他，各为「单 volume 多 books」同 bio 形态，平级进书报合集层，2026-10-13 用户定稿**不裹「ezoe书报合辑」大系列切辑**）→ index.json 系列清单 + {id}.json 元数据 + {id}-{n}.json 按辑懒加载；`python export-spiritual.py [id...]` 可只导指定系列。**ezoe 源格式与其他系列不同**（bible 项目 2026-10-12 入库的 `../bible/data/raw/spiritual_food/ezoe书报合辑/`，7 分类 374 本 7394 章）：篇目 md 是规整二行式开头（首行 `# 书名`、次行 `## 篇名`）+ 正文 markdown 标题层级（##/###/####）+ 尾部 `**来源/URL/获取时间**` 元数据；导出用独立 `read_ezoe_md`——书名/篇名行剥掉（chunk 标题与 crumb 已承载）、markdown 记号剥掉保留文本（本项目无对应渲染通道，`detectLrHeading` 按裸编号/短行兜底层级）、多「部」书按索引 `part` 折叠成「书名·部」books 条目（单部书的 part 是「目录/前言」式源站分组名，忽略）。**`ezoe_dedup` 重复篇墓碑化去重（2026-10-14 用户定稿「整理整理」）**：源站把同一篇既收进合集又拆出单本独立书（福音讲台总集四部 vs 21 个单篇独立书，实测全文相似度 1.000）、书内也有同篇两录（生命的意义 5 篇）——`ezoe_category_books` 末尾跑 `ezoe_dedup`：整书被完全覆盖（阈值 `EZOE_DUP_RATIO`=0.98，difflib 全文相似度）或书内重复的篇**墓碑化**（正文换成「本文与《X》N 相同，为免重复不再载入」指引），**保留 books/chapters 条目与顺序不变**——旧标注按 (volume,book,chapter) 索引定位，删条目会让后续索引前移、标注错位丢失；墓碑只换正文，索引稳定、笔记不丢、点进去知道去哪读。跨书部分重叠（节选与原文，如初信喂养365题摘编《生命的意义》）与有实质差异的两个版本（《变死亡为生命》两版 ratio 0.85-0.99）不判重，属正常编排**源侧状态标记墓碑化（2026-10-15，bible P0 去重+吸收合并之后消费侧适配）**：bible 侧对重复/被吸收篇目翻 `status`（absorbed 220 / duplicate 75 / merged_elsewhere 1）并删除对应 md 文件、索引条目保位不删——`ezoe_category_books` 因此从「只取 saved」改为**保留全部条目**：非 saved 篇目由 `_ezoe_flag_tombstone` 墓碑化（absorbed 指引指向 `absorbed_by` 的吸收去向即福音天地/属灵书报/高峰真理；duplicate 跟随 `duplicate_of`，其指向的本身已被吸收时继续指向吸收去向），saved 但文件缺失也保留墓碑条目；`ezoe_dedup` 对已墓碑篇目用占位串跳过防二次覆盖。旧过滤行为实测重导丢福音类 30 本书（6 本全 absorbed 进福音天地 + 21 个单篇独立书 + 福音故事 + 福音讲台总集四部）、生命的意义 62→57 章，索引前移即标注错位。**P1 记号剥离（bible 2026-10-15，7026 文件）对消费侧零影响**——`read_ezoe_md` 本就剥 markdown 记号，导出产物逐字不变。**福音天地 2026-10-15 已成新系列**（fuyintiandi，22 本 845 章 6.4MB，absorbed 正版所在地）；**gospel 数据仍未随源码重导**——冻结产物（v1.0.50）内容完整（6 本 absorbed 书正文仍在、生命的意义 62 章），重导只剩一个待定项：生命的意义 62→110（源索引 110 条 = 57 saved + 53 duplicate，与冻结的 saved 压缩空间不同）与第十五集 +1 有一次性的小索引位移、可能错位旧标注，任何尊重源标记的重导都不可避免——**确认这两处无旧标注后再重导**，届时 6 本 absorbed 书改墓碑指向福音天地、消除与新系列的重复（属灵书报 55MB 超 CF 25MB 单文件限且属未接入分类，暂不管）**bio 合并纪律（2026-10-14 用户定稿：同类别整合）**：writings 传记、文集类的书**追加在 bio 原子集之后**——旧标注按 (volume,book,chapter) 索引定位，打乱顺序会全部错位；与 bio 重复的书按 `BIO_DEDUP_KEYWORDS` 跳过保留 bio 旧版（《今时代神圣启示的先见》ezoe 16 万字/33 章 vs bio 5 万字/16 章同书异录，旧版可能已带标注）。**edification 造就类（40MB）与 church 教会与事奉类（19MB）未接入**——单辑产物超 CF Pages 25MB 单文件限制，待拆分方案（`EZOE_CATS` 注册表 + `EZOE_FIRST` 首批集合，补入即把 id 移出该集合）。**2026-10-19 灵粮全量接入**：`LEGACY_SERIES` 注册表接入 22 个 legacy 来源系列（属灵书报 4 辑 224 本 2425 章 / 特会信息 37 本 / 结晶读经 29 本 / 新约总论 8 册 / 圣经之旅 15 册 / 真理课程 8 卷 / 生命课程 4 卷 / 圣经要道 6 卷 / 圣经疑难 / 健康话语的规范 / 真理专题 / 真理的辨正 / 肯定与否定 / 解剖毒瘤 / 召会历史 / 天路历程 / 希伯来民族简史 / 荒漠甘泉 365 日 / 造就故事 / 拾零 / 职事信息 / 成全训练信息），ezoe 剩余 edification 造就类（切 2 卷 232 本）与 church 教会与事奉类（96 本）接入。**清洗在导出层**（bible 源数据不动）：`_strip_header` 剥网页页眉（重复章标题 / `书名：` 拆行 / 训练期年份拆行 / 书名碎片）、`_reflow` **按文件**碎片率 >25% 才把硬折行合回（结构行 壹/一/（一） 保持独立）、`_strip_web_noise` 删 `阅读更多＞` 与行尾 `×`、`_strip_footer` 剥爬取页脚。**去重跳过表写死**（`skip_nums`/`skip_dirs`/`skip_files`）：特会信息跳过与结晶读经逐字重复的 14 本、属灵书报跳过与倪文集重复的 6 本 + 048/059 与 133/178 两组内部重复、拾零跳过与福音天地/属灵书报重复的篇目、召会历史跳过重复纲目；同书内按归一化正文哈希精确去重。**分卷写死编号区间**（属灵书报 001–047 / 048–097 / 098–148 / 149–217；ezoe 造就类按书序切上/下卷）——上线后索引必须冻结，分卷禁止改成按体积动态计算。**不接入**：高峰真理（与已导入「传记与文集·神圣启示的高峰」14 册同源）、诗歌（歌词格式需专用排版）、图表与地图（源站只有「点击看大图」空壳）。**特会 054「对真理绝对，并被真理构成」源站全书只有标题与页脚（无正文）、042「牧养神的群羊」的 001 标语页同样只有标题，清理后为空，导入时自动丢弃**，故特会为 37 本 290 章 |
 | `scripts/export-verses.py` | 从 export.py 产物 `data/bible-text.json` 派生精选经节 → `data/verses.json`（首屏 splash 随机经节数据源，~190 节几 KB） |
-| `scripts/build-topics.py` | 专题数据装配：按 `REGISTRY` 清单从**已导出的** `data/lifereading/` 与 `data/books/` 取正文拼 → `data/topics/{id}.json`（不入库）；名字对不上直接报错。见「专题」节 |
-| `scripts/topic-test.js` | 专题（活力八）专项 e2e（8772）：首页块/专题主页/阅读屏正文与读经单/专题内划线存 `type=topic` 且刷新保持/跳回读经看到的是读经自己的标注（两边不串）/屏级笔记落盘/笔记管理「专题」来源与分类树/深链合法屏与不存在的屏号钳制/非法专题 id 回首页 |
+| `scripts/build-topics.py` | 专题（作业单）数据装配：按 `REGISTRY` 的 `weeks[]` 从**已导出的** `data/lifereading/`（篇目标题）与 `data/books/`（书报章标题）解析定位 → `data/topics/{id}.json`（不入库；只含周次与链接定位、**不含正文**）；篇号不存在/不覆盖该章/章号越界直接报错。见「专题」节 |
+| `scripts/topic-test.js` | 专题（活力八 · 作业单）专项 e2e（8772）：首页块/作业单页 8 周与五类条目/第 1 周链接（原文 + 三篇按顺序）/待填条虚化不可点/原文跳读经且 crumb 不残留/生命读经跳转/刷新保持/旧分屏深链归一/非法专题 id 回首页/移动端单列无溢出 + pill 隐藏 |
 | `scripts/export-persons.py` | 从 export-spiritual.py 产物（`data/books/bio.json` + `bio-1.json`）派生**人物词典** → `data/persons.json`（`{scope,source,blockWords,persons[]}`，每人含 name/en/years/desc/aliases/loc/locLabel/excerpt ~200 字摘录）。**原型阶段**：`scope: ['slat','ni']` 让十二篮与倪文集正文人名可点（ni 于 2026-10-15 随反馈 #26 接入），其余系列/模块不启用。收录《基督教历史人物小传》使徒时代之后的人物（章 18-48）+ `BOOK_PERSONS` 注册表里有专门传记书的人物（劳伦斯）；**排除使徒时代人物**（雅各/约翰/彼得/马太/路加/腓力…）——其名与圣经书卷简称冲突（「腓力」⊂「腓立比书」、「约翰」⊂「约翰福音」）且在正文中作圣经人物高频出现（十二篮里「保罗」464 次），纳入会大面积误链。`ALIAS_EXTRA` 补语料实测写法（**路德马丁**、**卫斯理约翰**=十二篮实际姓名顺序），`BLOCK_WORDS` 为复合词保护（加尔文主义/路德会等，防短名吃进长词） |
 | `start.bat` / `icons/` | 本地预览服务器（python http.server 8765）/ PWA 图标（icon-192/512，`resources/icon.png` 为 APK 图标源） |
 | `docs/FEATURES.md` | 功能全景文档（基于代码梳理的用户可见行为，2026-10-10 新增；与 AGENTS.md 分工：本表管工程约定，它管功能全景；同步约束见「文档同步协议」节） |
@@ -57,7 +57,7 @@
 | `data/morning/` | 听抄：index.json（期索引 trainings）+ `{期}.json`（chapters 听抄正文，无六天晨兴/纲目） |
 | `data/books/` | 书报：index.json（系列清单，顺序 = `SERIES_ORDER`）+ `{系列}.json`（元数据 volumes）+ `{系列}-{辑}.json`（按辑懒加载）+ **numbers.json（书号表，9.5KB）**。2026-10-19 全量：32 系列 / 972 本 / 15367 章 / 约 223MB；最大单文件 zj-2.json 21.8MB（CF 限 25MB）。**书号表**由 `export-spiritual.py --numbers` 单独产出（`{系列: [[辑,书,编号],…]}`，辑 1 基/书 0 基，与标注 loc 同基数）：13 系列 848 本带号——ezoe 书报号（gospel/reading/periodicals/misc/zj/jh/bio 的 ezoe 部分）、灵粮目录序号（sg/th/jd/xyzl）、倪文集册内 book_number、福音天地吸收篇的 `书报号`；**不重导内容**（gospel 等冻结系列重导会让索引位移），故与 `{系列}.json` 分离；前端 `bookNumOf` 优先读元数据 `b.num`（将来重导自带）、回落本表。APK 数据清单须单独列该文件（build-apk.yml 已加） |
 | `data/verses.json` | 精选经节 `[{ref,text}]`（~190 节，`export-verses.py` 派生，首屏 splash 随机经节源） |
-| `data/topics/` | 专题（`vitality8.json` 等，`scripts/build-topics.py` 派生，不入库；结构见「专题」节） |
+| `data/topics/` | 专题（`vitality8.json` 等，`scripts/build-topics.py` 派生，不入库；结构见「专题」节）。**APK 数据清单须单独列 `topics/{id}.json`**（build-apk.yml 已加 vitality8；新增专题时同步加） |
 | `data/persons.json` | 人物词典（~28KB，`export-persons.py` 派生，**原型**）：`scope`（启用系列白名单，现=`['slat','ni']`）+ `blockWords` + `persons[]`（含 aliases/loc 小传定位/excerpt 摘录），正文人名点开人物小传用 |
 
 ## 数据模型（核心）
@@ -106,27 +106,48 @@
 - **测试**：e2e 类测试启动后需 `enterWork()` 切回工作区（init 后台预渲染使 DOM 存在但被 body.home 隐藏，直接 page.click 隐藏元素会抛错）；`home-test.js`（直进版冒烟）/ `home-test-mobile.js` / `lr-reader-test.js`（阅读器专项：直进/切卷/切篇/纲目/笔记/折叠/划线/恢复）为首页+阅读器链路测试
 - **数据源（已落地）**：听抄 = 特会信息 epub（Notion 下载，`export-morning-epub.py <epub> --period {期}` 迁移，epub 含完整听抄 `{n}_ts.htm` + 读经 `{n}_cv.htm`；旧反编译晨读 APK 资源 detail_sections 每篇缺 18-27% 正文，已废弃不再用；当前 2026-03/04 两期 18 篇均已由 epub 导出。epub 源：mygoodland.notion.site 特会页「资源」子页的 epub&pdb.zip——zip 内文件 URL 需签名无法程序化下载，需手动下载后交给脚本）；书报 = `../bible/data/raw/spiritual_food/`（各系列目录索引 + md），`scripts/export-spiritual.py` 导出 `data/books/`（index.json 系列清单 + {id}.json 元数据 + {id}-{辑}.json 内容）；ni 源 `倪柝声文集/`（3 辑 62 本 1325 章）。**ezoe 书报合辑**（2026-10-12 bible 项目入库，即原「其他 30 个书报系列」的批量来源）：源 `ezoe书报合辑/`（源站 ezoe.work 抓取，7 分类 374 本 7394 章 93MB，已做重复移除 18 本/缺口核查留档/编号断档确认），索引 `目录索引.json`（categories→books→chapters 含 part/status/local_rel）+ `校验报告.json` + `缺口说明.md`。**2026-10-13 接入、10-14 按用户定稿调整结构**：分类平级为独立系列（类别即系列，像十二篮/传记与文集一样各占合集层块，不裹大系列切辑）——gospel 福音类 / reading 读经类 / periodicals 代售与期刊类 / misc 其他；**传记、文集类（writings）与 bio 同类别整合**并入「传记与文集」（重复书保留 bio 旧版）；edification 造就类与 church 教会与事奉类因单文件超限待拆分方案。标注 type 扩展 `'book'`/`'morning'` 已落地（向后兼容旧 verse/lr）。后续书报系列渐进加：导出脚本同构扩展 → 系列条自动多一项，前端零改动
 
-## 专题（topics，2026-10-21 活力八）
+## 专题（topics，活力八 · 作业单，2026-10-21 改版）
 
-**定位**：专题 = 把散在各模块的**内容**按一个主题清单编成一条阅读动线。三条边界（用户 2026-10-21 方案定稿「类似书报那种内嵌菜单模块」）：
-① **经文不复制**——读经单直接跳读经模块该章；② **生命读经/书报正文装配进来但不重复存**——`scripts/build-topics.py` 从**已导出的**数据取正文拼成 `data/topics/{id}.json`；③ **标注分源**——专题屏里划的线是第五种 `type: 'topic'`（坐标系与生命读经同源），跳进读经模块看到的是读经自己的标注，两边不串味。
+**定位**：专题 = 一份**作业单的链接聚合页**。每周一条任务，条目分别深链到读经模块的原文、
+生命读经模块的篇目、书报模块的章节——**正文一律不复制、页面只有跳转**（用户 2026-10-21 定稿：
+「链接聚合、像 todo list，因为这些都是活动的任务」「用路由跳转，工作量小」）。
 
-- **注册表 `TOPICS`（app.js）**：每个专题 `{id, title, icon, blurb}`（只放展示信息；书卷/屏来自数据文件，不重复硬编码）。
-- **专题清单 = 脚本里的 `REGISTRY`（唯一事实源）**：`scripts/build-topics.py` 的 `vitality8.payload` → 每卷每章 → `reads[]`（`src:'lr'` 按**篇名关键字 + 篇目覆盖本章**双条件定位，`src:'book'` 按 系列/辑/书/章 取章）。改内容 = 改脚本再重跑（**别手改 `data/topics/*.json`**）。
-  - **为什么不手写 JSON**：配套两辑篇名互相包含（「耶稣基督之灵全备的供应」⊂「…为着显大基督」），靠篇名匹配会串辑；`_find_lr` 用 `verses` 首段章号做第二条件，保证一屏只抓本篇。
-  - **产物自检**：清单名字对不上、正文 <200 字、屏内没有可跳转读经单 → 脚本非零退出，不静默少内容。
-  - **正文清洗只在首尾**：`_strip_lr_header` 去「读经：…」引文块与篇尾「来源/URL/获取时间」页脚；`_strip_book_header` 去书报章头重复的书名/章名行。**中间不重排版**——前端按源 text 算 `data-base` 偏移，改了正文标注就漂。
-  - **`TOPICS_DATA=…`** 可把数据目录指到别处（Delta worktree 里 `data/` 不入库、只读副本时用）；产物始终写回本仓库 `data/topics/`。
-- **屏幕 = `state.screen = 'topic'`**（第三种态，与 `'home'`/`'bookhub'` 一样正交）：`body.topic` + 独立 `#topicView`（`.layout` + `.topic-layout`，两列 `#topicNav` 屏列表 | `#topicTextCol` 正文 + `#topicSide` 笔记）。**不碰 `READER_MODULES` / `applyModuleBodyClass` / 移动端 pill**——专题不是阅读器模块，顶栏的动作按钮（双页/隐藏注号/研读全屏/上一章/下一章）在 `body.topic` 下隐藏。工作区的显隐按 `body.home` 门控（`body:not(.home) .layout{display:none}`），所以专题层和阅读器工作区**互斥而无须新增规则**。
-- **导航**：首页块 `活力八` → `openTopic('vitality8')`（专题主页 `#/topic/{id}`：两卷章卡）→ `openTopicScreen(id, book, screen)`（`#/topic/{id}/{卷}/{屏}`，屏 = 该书某一**章号**，不存在的章号钳制到该书第一屏）。左栏屏列表点击 = 换屏（容器内 = replace）；读经单底部两条 = 读生命读经第 N 篇（`openLrArticle`）/ 读原文（`enterModule('bible')` + 选章）。阅读历史记 `module:'topic'`，`jumpHistory` 与首页「最近阅读」都能跳回。
-- **标注（第五种 `type: 'topic'`）**：容器 `div.lr-content.topic-page[data-topic-page="${topic}:${卷}#${屏}#${条目序号}"]`——`findAnnotatable` 认出 `data-topic-page` 走 topic 分支；`handleSelection` 的 plain 取 `topicPageEntry()` 的源 text；`buildAnnotation` 存 `{topic, page, book}`；渲染走 `renderLrContent(content, text, anns, …)`（与 lr 同一条通道）+ `healAnnotations` 自愈。**`page` 键把「专题 + 卷 + 屏 + 同屏第几篇」编码进去**，因为一屏可能带多篇，同屏各篇偏移互不相干。
-- **笔记**：右栏屏级 textarea（`LS_TOPIC_NOTES` = `bible-study.topicNotes`，键 `{topic}:{卷}#{屏}`）+ 本屏划线汇总（`renderHighlights` 带「重读」，`rereadUnitScope` 增 `本屏` 分支）。**入云同步**：`sync.js` 的 `SYNC_KINDS`/`KEY_MAP` 各加 `topicNotes`，`app.js` 的 `SYNC_KEYS` 同步加——不动的话专题笔记只在本机。
-- **笔记管理**：来源 tab/分类树叶子/工具栏各加「专题」，树形 `专题 → 书卷 → 第 N 屏`（与 verse/book 同构），`annGroupLabel`/`bigNoteGroupLabel`/`groupHl`/`groupHlGlobal`/`notesFiltered` 各补 topic 分支。
-- **首页检索集成**：`SR_KIND_LABEL` 增 `topic: '专题'`（专题标注进「我的笔记」组，`hlLocText`/`navigateToAnnotation` 已有 topic 分支）。
-- **⚠️ 2026-10-21 事故留档**：本专题分支开发期间，`app.js` 被另一会话整体覆盖成旧版（统一检索模块 `SR_GROUP_LIMIT`/`SR_CAP`/`SR_KIND_LABEL`/`_homeSearchSeq`/`highlightHtml`/`collectHomeHits`/`searchXxx` 全家 + `state.bookNumbers/bookSearchIndex/…` + `ensureBookNumbers`/`bookNumOf` 全部丢失，首页搜索退化成旧版单函数 `homeSearch`）；`style.css` 同批丢掉 `.sr-*` 八条样式。已从主 checkout（唯一事实源）逐块恢复并在本分支验证（`search-test` 12 断言全绿）。**教训**：合并/改写前先 `git diff` 别人未提交的工作，别整体覆盖分支上的 `app.js`。
-- **引用点击**：专题正文里的 ref-link 弹「引用经文」并多一个 **「打开出处 ›」**（`showRefsPopup(title, refs, withOpen)` + `jumpToRefKey`）——弹窗只是预览，要划线得回读经模块。
-- **数据源现实（2026-10-21 核查）**：bible 源库/生命读经/书报/ezoe 全量 grep「活力八」**零命中**，生命读经腓/西也只有「主线 1-31 + 补充 32-62/32-65」两辑、**没有八篇的分法**——所以目前八条是按活力排「四面的生养」从主辑+补充辑人工挑的（腓 1/2/4 章 + 西 1/3 章，五屏九篇约 46KB）。用户若有既有的八篇母本（篇名清单），按 `_find_lr` 的「篇名关键字」补条目即可，代码不用动。
-- **测试**：`scripts/topic-test.js`（8772）——首页块/专题主页/屏正文与读经单/专题内划线存 `type=topic` 且刷新保持/跳原文时标注互不串/屏级笔记落盘/笔记管理「专题」来源与分类树/深链合法屏与非法屏钳制/非法 id 回首页。**8765 已被用户遗留的服务器占用**：本测试与改过的 `home-test`(8777)/`bookhub-test`(8776) 各用独立端口，避免静默跑在旧代码上。
+- **注册表 `TOPICS`（app.js）**：每个专题 `{id, title, icon, blurb}`（只放展示信息）。
+- **作业单 = 脚本里的 `REGISTRY`（唯一事实源）**：`scripts/build-topics.py` 的
+  `vitality8.weeks[]`，一周一条 `{n, book, chapter, articles:[篇号], bookRead, memory}`：
+  - `articles` 生命读经篇号（按顺序显示；脚本校验篇目存在且 `verses` 覆盖该章，标题由数据解析并剥
+    「005第五篇、」前缀）；`bookRead` 指定书报 `{series, volume, book, chapter}` 或 `None`；
+    `memory` 背经经节串或 `None`。后两者为 `None` 时页面渲染虚化的「待填」行（不可点）。
+  - 脚本自检：周次非法/重复、书卷不在 `ALLOWED_BOOKS`（腓 50 / 西 51）、章号越界、篇号不存在或不覆盖该章
+    → 非零退出，不静默少内容。产物 `data/topics/{id}.json`（`{id,title,blurb,weeks[]}`，只含标题与定位，无正文）。
+  - **默认篇号**（腓 1/2/3/4 → 3·4·5 / 9·10·11 / 17·18·19 / 26·27·28；西 1/2/3/4 → 2·3·4 / 18·19·20 /
+    27·28·29 / 31·65）按「经文整段落在该章内、按篇号取前三篇」选的，**活动作业单到手后逐周替换**；
+    西 4 章源数据只有 2 篇整段落在本章（31/65），故只挂 2 篇。
+  - **`TOPICS_DATA=…`** 可把数据目录指到别处（`data/` 不入库的 worktree 用）；产物始终写回本仓库 `data/topics/`。
+- **屏幕 = `state.screen = 'topic'`**（第三种态，与 `home`/`bookhub` 正交）：`body.topic` + 独立
+  `#topicView`（单列 `#topicTextCol > #topicMain`，没有左栏/右栏）。**不碰 `READER_MODULES` /
+  `applyModuleBodyClass`**；顶栏动作按钮（双页/隐藏注号/研读全屏/上一章/下一章）在 `body.topic` 下隐藏，
+  **移动端「读经|研读」pill 也隐藏**（作业单不是阅读视图）。
+- **导航**：首页块 `活力八` → `openTopic('vitality8')`（`#/topic/{id}`）。周卡条目是普通 hash 链接
+  （`#/bible/{卷}/{章}`、`#/lr/{卷}/{篇}`、`#/book/{系列}/{辑}/{书}/{章}`），由 popstate/hashchange →
+  `applyRoute` 就位。旧版分屏深链 `#/topic/{id}/{卷}/{屏}` 忽略多余段、归一到专题页。
+  **同专题再进入保留滚动位置**（从条目跳走再返回，`openTopic` 把旧 `scrollTop` 传给 `renderTopicPage`；
+  换专题/首次进入回顶）。阅读历史记 `module:'topic'`（`loc={topic}`），`jumpHistory` 与首页「最近阅读」都能跳回。
+- **标注/笔记：无**。作业单页没有正文，**没有专题内划线、没有屏级笔记**（旧实现的下线）。旧数据兼容：
+  `type:'topic'` 标注与 `topicNotes` 仍保留在 localStorage/云同步里，笔记管理仍能按「专题」来源查看
+  （`navigateToAnnotation` 对 topic 只回专题页，不再定位到屏）；新代码不再产生这类数据。
+- **`crumb` 刷新（回归修复，2026-10-21）**：`enterModule` 对**同模块重入**（如作业单「原文」跳回读经模块
+  当前章）也会 `renderCrumb()`——否则顶栏会残留上一个屏幕（专题）写进去的标题。`topic-test` 第 5 项锁死这条。
+- **测试**：`scripts/topic-test.js`（8772）——首页块/作业单页 8 周与五类条目/第 1 周链接（原文 + 三篇按顺序）/
+  待填条虚化不可点/原文跳读经且 crumb 不残留/生命读经跳转/刷新保持/旧分屏深链归一/非法 id 回首页/
+  返回保留滚动位置/纵向可达（滚到底能看到第 8 周，**曾因 `#topicView` 改 block 整页不可滚而全绿漏检**）/
+  移动端单列无溢出 + pill 隐藏 + 可滚到底。**8765 常被用户的遗留服务器占用**：本测试与 `home-test`(8777)/
+  `bookhub-test`(8776) 各用独立端口，避免静默跑在旧代码上。
+- **联动（未实施）**：方案见 `generated-images/vitality8-integration-plan.html`——L1 出站链接（背经→logos、
+  任务→日课，作业单数据可留外链字段）→ L2 精确落点 → L3 作业单共享数据源 → L4 进度互通（暂缓）。
+- **⚠️ 2026-10-21 事故留档（历史）**：旧专题分支开发期间 `app.js` 曾被另一会话整体覆盖成旧版（统一检索
+  模块与 `state.bookNumbers/bookSearchIndex` 全丢，`style.css` 同批丢 `.sr-*` 八条）；已逐块恢复。
+  **教训**：合并/改写前先 `git diff` 别人未提交的工作，别整体覆盖分支上的 `app.js`。
 
 ## 路由（hash，2026-10-15）
 
@@ -141,11 +162,10 @@
 | `#/book/{系列id}/{辑}/{书}/{章}` | 书报（书/章 0 基，与内部索引一致） |
 | `#/morning/{期}/{篇}` | 听抄 |
 | `#/notes` | 笔记管理 |
-| `#/topic/{专题id}` | 专题主页 |
-| `#/topic/{专题id}/{卷1-66}/{屏1-8}` | 专题阅读屏 |
+| `#/topic/{专题id}` | 专题（作业单页；旧分屏深链 `#/topic/{id}/{卷}/{屏}` 归一到此） |
 
 - **写入规则**：容器内位置变化 = replace（翻章/翻篇不堆历史，后退一步回上一级）；容器/屏幕/模块变化 = push（可逐级后退）。容器 = 模块 + 一级定位（读经按卷、生命读经按卷、书报按 系列·辑·书、听抄按期）。写入用 `pushState`/`replaceState`（不触发事件，不会回灌 onUrlChange）；`syncRoute()` 微任务合并（一次事务内多次导航只写一次）、`_routeApplying` 期间跳过（防事件环）、`_routeReady` 前跳过（防 init 的 showHome 冲掉冷启动深链）。
-- **同步点**：各导航函数尾部（与 pushHistory 同挂点）：`selectChapter` / `selectLrArticle` / `selectLrVolume` / `selectBookSeries` / `selectBookVolume` / `selectBookItem` / `selectBookChapter` / `selectMorningChapter` / `selectMorningPeriod` / `enterModule` / `showHome` / `openBookHub` / `openTopic` / `openTopicScreen`。**新增顶层导航入口必须在尾部同样调 `syncRoute()`**。
+- **同步点**：各导航函数尾部（与 pushHistory 同挂点）：`selectChapter` / `selectLrArticle` / `selectLrVolume` / `selectBookSeries` / `selectBookVolume` / `selectBookItem` / `selectBookChapter` / `selectMorningChapter` / `selectMorningPeriod` / `enterModule` / `showHome` / `openBookHub` / `openTopic`。**新增顶层导航入口必须在尾部同样调 `syncRoute()`**。
 - **就位（URL → 视图）**：popstate + hashchange（浏览器前进后退、系统返回、手动改 hash）→ `parseRoute()` 校验钳制（整数值校验、章按 books.json、书报按元数据、系列白名单；非法 → 首页并净化 URL）→ `applyRoute()` 走既有统一入口（selectChapter / openLrArticle / openBookChapter / openMorningArticle / enterModule）。**竞态守卫**：就位进行中来的 URL 变化置 `_routeRerun` 补跑（不丢）；就位完成后 URL 归一化用 replaceState（钳制后的真实位置与请求不同时修正，不加历史）；就位中途抛错兜底回首页（不留悬空态与未处理 rejection）。`#/book` 精确章号需纠偏——books enter 的「续接上次位置」只认 truthy opts（chapter 0 会被 last 顶替，既有行为），applyRoute 显式补调 selectBookChapter。
 - **冷启动深链**：init 数据就绪、splash 放行后 `initRoute()` 就位；**刷新保持位置**（reload 走深链）；非法 hash 净化回首页。
 - **Android 返回键**（`@capacitor/app` 的 `backButton` 监听 → `handleNativeBack`，仅原生注册）：层级 = 弹窗栈（设置/注脚/人物/确认框，closePopup 逐层关）→ 划词浮动工具栏 → typo/update/note 模态 → 笔记移动端编辑面板 → 移动端抽屉 → `history.back()`（canGoBack）→ `exitApp()`（首页无历史 = 退出，标准行为）。**注册监听会禁用插件的原生默认行为**（默认=canGoBack 则 webview.goBack），canGoBack 判定与退出都在 JS 侧显式实现；`_nativeBackBound` 防重复绑定（init 重试会二次调用 initNativeBack）。依赖 `@capacitor/app@^6`（在 package.json；CI `npm install` → `cap sync` 自动纳入，patch-android.mjs 与 AndroidManifest 零改动）；浏览器端无 Capacitor 全局，`initNativeBack` 直接 no-op（网页不受影响）。
@@ -198,7 +218,7 @@
 
 | 项 | 值 |
 |----|-----|
-| API | `POST /api/sync/{kind}/ops`（批量推送，逐条裁决）、`GET /api/sync/{kind}/changes?since={rev}`（增量拉取）。kind ∈ annotations / chapterNotes / lrNotes / bookNotes / morningNotes / **topicNotes**（专题屏笔记，2026-10-21 新增——**服务端按 kind 自动建列，无需改 server.py**；旧客户端不上报这个 kind 不影响其它数据）。旧 `/api/kv` 端点保留（bible-reader 项目仍在用） |
+| API | `POST /api/sync/{kind}/ops`（批量推送，逐条裁决）、`GET /api/sync/{kind}/changes?since={rev}`（增量拉取）。kind ∈ annotations / chapterNotes / lrNotes / bookNotes / morningNotes / **topicNotes**（旧版专题屏笔记，2026-10-21 新增、同日随作业单改版停止产生——**通道与旧数据保留**，服务端按 kind 自动建列，无需改 server.py）。旧 `/api/kv` 端点保留（bible-reader 项目仍在用） |
 | 服务端存储 | SQLite `items` 表（每条目一行：payload / client_updated_at / server_rev / deleted / last_op_id / device_id，索引 `(uid,kind,server_rev)`）+ `sync_state` 表（每账号每 kind 单调修订号）。**PUT 请求体上限 1MB**（2026-09-09 从 64KB 放宽——原上限导致平板 49 条划线静默滞留的事故根因；超限返回 `body_too_large`） |
 | 客户端 | `sync.js`（`window.BibleStudySync`，v2 重写）：**outbox 模式**——本地改动 diff 成条目级 op（含完整 payload + `base_server_rev` + `op_id`），持久化于 `sync:v2:outbox`；flush 分批 POST，按结果逐条清账 |
 | 裁决语义 | 服务端逐条：`op_id` 与行上 `last_op_id` 相同 → **duplicate**（幂等返回已存 rev）；`base_server_rev` == 当前 server_rev → **accepted**（分配新 rev）；不匹配 → **conflict**（附服务端当前版本，不覆盖）。`import=true` → 条目不存在才写入（设备首运行播种）；`force=true` → 跳过 base 检查（强制覆盖按钮）。**冲突自动裁决**（客户端）：按 `(client_updated_at, device_id)` 定序，本地晚→换 base 重推；服务端晚→覆盖本地；**败者全文存入冲突备份** `sync:v2:conflicts`（上限 100 条），绝不静默消失 |

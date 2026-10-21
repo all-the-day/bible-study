@@ -29,8 +29,7 @@ const LS_DRAWER_DOCKED = 'bible-study.drawerDocked'; // 桌面导航抽屉是否
 const LS_VCONSOLE = 'bible-study.vconsole';          // 调试模式（PageSpy）开关：'1'=开启，设置弹窗版本号连点 5 次切换
 const LS_TYPO = 'bible-study.typography';            // {scale, lh} 阅读排版（字号倍率 / 行距），纯本地不入云同步
 const LS_THEME = 'bible-study.theme';                // 阅读主题：classic|indigo|paper|minimal，纯本地不入云同步（index.html 头部 early script 同步读）
-const LS_TOPIC_LAST = 'bible-study.topicLast';       // {topic, book, screen} 专题上次位置（纯本地）
-const LS_TOPIC_NOTES = 'bible-study.topicNotes';     // {"{topic}:{卷}#{屏}": text} 专题屏级笔记
+const LS_TOPIC_NOTES = 'bible-study.topicNotes';     // 旧版（1.0.59）专题屏级笔记：作业单页已无正文，只保留旧数据与云同步通道
 // 阅读排版取值约束（必须在 state 初始化前声明：state.typography 依赖 normalizeTypo 读取这两个常量）
 const TYPO_DEFAULTS = { scale: 1, lh: 2 };
 const TYPO_RANGE = { scale: [0.85, 2], lh: [1.5, 2.4] };   // 字号上限 2.0：满足 WCAG 1.4.4「文字可放大 200%」
@@ -71,8 +70,6 @@ const state = {
   lrNotes: load(LS_LR_NOTES, {}),
   // 专题（topics，2026-10-21 活力八）：screen='topic' 与 home/bookhub 正交，不复用 body-mod-* 阅读器容器
   topicId: null,         // 当前专题 id（TOPICS 的键）
-  topicBook: null,       // 当前书卷序号（50 腓立比书 / 51 歌罗西书）
-  topicScreen: 1,        // 当前学习屏（1-8）
   topicData: {},         // {topicId: data/topics/{id}.json} 专题数据缓存
   topicPending: null,    // 在途去重
   topicNotes: load(LS_TOPIC_NOTES, {}),
@@ -141,14 +138,14 @@ const COLLECTIONS = [
   { id: 'bookhub', title: '书报', icon: '🗂️', entry: () => openBookHub() },
 ];
 
-/* 专题注册表（见 AGENTS.md「专题」节）：内容由 scripts/build-topics.py 从已导出数据装配成
-   data/topics/{id}.json（经互不重复、正文不复制），页面只负责展示与划线。 */
+/* 专题注册表（见 AGENTS.md「专题」节）：页面只是作业单的链接聚合，
+   周次 / 篇号 / 书报 / 背经由 scripts/build-topics.py 的 REGISTRY 装配成 data/topics/{id}.json。 */
 const TOPICS = {
   vitality8: {
     id: 'vitality8',
     title: '活力八',
     icon: '🔥',
-    blurb: '腓立比书与歌罗西书：全备的供应、活基督、基督是一切、祈求与代求、不住的祷告、同心合意、生机的联结与新生。',
+    blurb: '腓立比书与歌罗西书：按作业单逐周读原文、生命读经与注解。',
   },
 };
 
@@ -229,6 +226,7 @@ function openThemePicker() {
 /* ── 用户语言版本记录（单一来源）：① 使用帮助弹窗「最近更新」；② 更新弹窗「本次更新」。
    纪律：只记用户可见变化、不记 chore/内部改动；用户可见功能发布时在顶部补一行（AGENTS.md 发版流程）。 ── */
 const CHANGELOG = [
+  { v: '1.0.60', date: '2026-10-21', items: ['「活力八」改成作业单页：按周列出原文、三篇生命读经、指定书报、背经与注解，点条目直达对应位置，不用再自己翻卷翻篇'] },
   { v: '1.0.59', date: '2026-10-21', items: ['首页新增「活力八」专题：腓立比书、歌罗西书按一条主线串起八屏内容，经文、生命读经与书报都在一处', '专题里可以划线和写笔记，会自动归到「我的笔记」的「专题」来源', '专题里的经文引用可一键「打开出处」跳回读经原文'] },
   { v: '1.0.58', date: '2026-10-20', items: ['搜索大升级：书报一次搜遍全部合集（含倪文集），并支持按书号查找', '首页搜索现在能搜经文和注解全文，命中处直接跳转', '搜索结果显示真实命中总数，关键词高亮'] },
   { v: '1.0.57', date: '2026-10-20', items: ['24 个新合集的图标在靛蓝/暖纸/素灰主题下逐一适配（此前统一显示默认图标）', '书报数据修正：属灵书报补全 3 章源站内容，正文清洗更干净'] },
@@ -1210,19 +1208,19 @@ function showHome() {
   syncRoute();   // 回首页：URL 回根（有历史则 push，可后退返回阅读位置）
 }
 
-/* ============ 专题（topics，2026-10-21 活力八） ============
-   专题把散在各模块的**已有内容**按主题清单编成一条阅读动线（数据由 scripts/build-topics.py 从
-   已导出的 lifereading / books 装配成 data/topics/{id}.json，正文不复制、经互不重复）。
-   screen='topic' 是第三种屏幕（同 home / bookhub）：独立的 #topicView，不复用 body-mod-* 阅读器容器，
-   所以不碰 READER_MODULES / applyModuleBodyClass / 移动端 pill。划线坐标系与生命读经同源（lr-content）。 */
+/* ============ 专题（topics，活力八 · 作业单） ============
+   专题 = 一份**作业单的链接聚合**：每周一条任务，条目分别深链到读经原文 / 生命读经篇目 /
+   书报章节（正文一律不复制）。数据由 scripts/build-topics.py 从已导出数据装配成
+   data/topics/{id}.json（周次 / 篇号 / 书报 / 背经由脚本里的 REGISTRY 人工维护）。
+   screen='topic' 是第三种屏幕（同 home / bookhub）：独立的 #topicView，不复用 body-mod-* 阅读器容器；
+   页面没有正文，所以没有专题内划线 / 屏级笔记——点条目直接进各阅读器模块，标注归各模块自己。 */
 
 function openTopic(id, opts) {
   const topic = TOPICS[id];
   if (!topic) return;
+  const prevTopic = state.topicId;
   state.screen = 'topic';
   state.topicId = id;
-  state.topicBook = null;      // 专题主页态
-  state.topicScreen = 1;
   document.body.classList.add('topic');
   document.body.classList.remove('home', 'bookhub', 'mobile-study');
   [...document.body.classList].filter(c => c.startsWith('body-mod-')).forEach(c => document.body.classList.remove(c));
@@ -1230,32 +1228,34 @@ function openTopic(id, opts) {
   closeNavDrawer();
   applyDrawerDock();
   $('bookName').textContent = topic.title;
-  $('chapterLabel').textContent = '专题';
-  renderTopicHome(id);
+  $('chapterLabel').textContent = '作业单';
+  // 同专题再进入（从条目跳走再返回）保留滚动位置——八周清单逐周点开是典型用法；
+  // 换专题/首次进入回到顶部。必须在 renderTopicPage 重写 innerHTML 前取旧位置。
+  const col = $('topicTextCol');
+  const keepTop = prevTopic === id && col ? (col.scrollTop || 0) : 0;
+  renderTopicPage(id, keepTop);
+  pushHistory('topic', { topic: id }, `${topic.title} · 作业单`);
   if (!(opts && opts.silent)) syncRoute();
 }
 
-// 专题主页：书名卡片 → 各书卷各章（点即进该屏）
-async function renderTopicHome(id) {
+// 作业单页：标题 + 每周任务卡（条目全是深链，点一下直接进对应模块的目标位置）
+async function renderTopicPage(id, keepTop = 0) {
   const topic = TOPICS[id];
   const main = $('topicMain');
-  const nav = $('topicNav');
-  if (!main || !nav) return;
-  nav.innerHTML = '';
-  main.innerHTML = '<div class="loading-hint"><span class="loading-spin"></span>专题加载中…</div>';
+  if (!main) return;
+  main.innerHTML = '<div class="loading-hint"><span class="loading-spin"></span>作业单加载中…</div>';
   let data = null;
   try { data = await ensureTopicData(id); } catch (e) { data = null; }
-  if (state.screen !== 'topic' || state.topicId !== id || state.topicBook) return;   // 已离开或已进屏
+  if (state.screen !== 'topic' || state.topicId !== id) return;   // 已离开
   if (!data) {
     main.innerHTML = '<div class="empty-hint">专题数据缺失（请检查 data/topics/' + escapeHtml(id) + '.json）</div>';
     return;
   }
-  nav.innerHTML = `<div class="topic-nav-head">${escapeHtml(topic.title)}</div>` +
-    (data.books || []).map((b) => `<div class="topic-nav-book">${escapeHtml(b.name)}</div>` +
-      (b.chapters || []).map((c) =>
-        `<div class="topic-nav-item" data-topic-book="${b.book}" data-topic-screen="${c.n}"
-              title="第${c.n}章 · ${(c.reads || []).length} 篇">第 ${c.n} 章<span class="n">${(c.reads || []).length}</span></div>`).join('')
-    ).join('');
+  if (!(data.weeks || []).length) {
+    // 旧版 SW 缓存里可能是 1.0.59 的旧 schema（books/无 weeks）：stale-while-revalidate 下首次访问会拿到它
+    main.innerHTML = '<div class="empty-hint">作业单数据待更新，刷新一次即可。</div>';
+    return;
+  }
   main.innerHTML = `
     <div class="topic-home">
       <div class="topic-hero">
@@ -1263,53 +1263,57 @@ async function renderTopicHome(id) {
         <div class="topic-hero-title">${escapeHtml(topic.title)}</div>
         <div class="topic-hero-blurb">${escapeHtml(topic.blurb || data.blurb || '')}</div>
       </div>
-      ${(data.books || []).map((b) => `
-        <div class="topic-book-card">
-          <div class="topic-book-title">${escapeHtml(b.name)}</div>
-          ${(b.chapters || []).map((c) => `
-            <div class="topic-ch-row" data-topic-book="${b.book}" data-topic-screen="${c.n}" role="button" tabindex="0">
-              <span class="topic-ch-num">第 ${c.n} 章</span>
-              <span class="topic-ch-reads">${escapeHtml((c.reads || []).map((r) => r.title).join(' · ').slice(0, 64))}</span>
-              <span class="topic-ch-go">›</span>
-            </div>`).join('')}
-        </div>`).join('')}
-      <div class="topic-home-foot">专题里划的线与笔记归在「专题」来源，可在「我的笔记」里集中查看。</div>
+      ${(data.weeks || []).map(renderTopicWeek).join('')}
+      <div class="topic-home-foot">条目都指向已有内容：原文进读经、篇目进生命读经、书报进书报；书报与背经由作业单补齐后显示。</div>
     </div>`;
+  const col = $('topicTextCol');
+  if (col && keepTop) col.scrollTop = keepTop;
 }
 
-// 进某书卷某屏（阅读屏 = 该章的那几篇）
-async function openTopicScreen(id, book, screen, opts) {
-  const topic = TOPICS[id];
-  if (!topic) return;
-  // 先立即切到专题屏，再 await 数据：右上角 pill「读经|研读」依赖进屏前设好的 screen，
-  // 否则从阅读器切过来时 syncModePill 会把 pill 高亮写成「读经」，与专题视图对不上
-  state.screen = 'topic';
-  let data = null;
-  try { data = await ensureTopicData(id); } catch (e) { data = null; }
-  if (!data) { showToast('专题数据缺失'); openTopic(id); return; }
-  const b = (data.books || []).find(x => x.book === book) || (data.books || [])[0];
-  if (!b) { openTopic(id); return; }
-  // 屏 = 该书的「章」（并非 1..N 连号），钳制到现有章号，派生 URL 见 formatRoute
-  const chs = b.chapters || [];
-  const n = chs.some(c => c.n === +screen) ? +screen : (chs[0] ? chs[0].n : 1);
-  state.screen = 'topic';
-  state.topicId = id;
-  state.topicBook = b.book;
-  state.topicScreen = n;
-  document.body.classList.add('topic');
-  document.body.classList.remove('home', 'bookhub', 'mobile-study');
-  [...document.body.classList].filter(c => c.startsWith('body-mod-')).forEach(c => document.body.classList.remove(c));
-  applyDrawerDock();
-  save(LS_TOPIC_LAST, { topic: id, book: b.book, screen: n });
-  $('bookName').textContent = topic.title;
-  $('chapterLabel').textContent = `${b.name} · 第 ${n} 屏`;
-  renderTopicOutline(b, n, data);
-  renderTopicView(b, n);
-  renderTopicSide();
-  $('topicTextCol').scrollTop = 0;
-  updateReadingProgress($('readingProgress'), $('topicTextCol'));
-  pushHistory('topic', { topic: id, book: b.book, screen: n }, `${topic.title} · ${b.name} 第 ${n} 屏`);
-  if (!(opts && opts.silent)) syncRoute();
+// 一周任务卡：周次 + 所学章 + 五类条目（原文 / 生命读经 ×N / 书报 / 背经 / 注释）
+function renderTopicWeek(w) {
+  const book = Number(w.book) || 0;
+  const ch = Number(w.chapter) || 0;
+  const arts = w.articles || [];
+  const rows = [topicRow('bible', '原文', `${escapeHtml(w.bookName || '')} 第 ${ch} 章`, `#/bible/${book}/${ch}`, '经文')];
+  arts.forEach((a, i) => {
+    rows.push(topicRow('lr', '生命读经', `<span class="n">${i + 1}/${arts.length}</span>${escapeHtml(a.title || '')}`, `#/lr/${book}/${Number(a.id) || 0}`));
+  });
+  const br = w.bookRead;
+  if (br && br.series) {
+    const series = String(br.series).replace(/[^a-z0-9_-]/gi, '');
+    rows.push(topicRow('book', '书报', escapeHtml(br.title || ''), `#/book/${series}/${Number(br.volume) || 1}/${Number(br.book) || 0}/${Number(br.chapter) || 0}`));
+  } else {
+    rows.push(topicRowPending('book', '书报', '指定书报待填'));
+  }
+  rows.push(w.memory
+    ? topicRow('mem', '背经', escapeHtml(w.memory), `#/bible/${book}/${ch}`)
+    : topicRowPending('mem', '背经', '背经经节待填'));
+  rows.push(topicRow('fn', '注释', `${escapeHtml(w.bookName || '')} ${ch} 章 注解`, `#/bible/${book}/${ch}`, '读两遍'));
+  return `<section class="topic-week">
+    <div class="topic-week-head">
+      <span class="topic-week-no">第 ${Number(w.n) || 1} 周</span>
+      <span class="topic-week-title">${escapeHtml(w.bookName || '')} ${ch} 章</span>
+      <span class="topic-week-meta">${arts.length} 篇生命读经</span>
+    </div>
+    ${rows.join('')}
+  </section>`;
+}
+
+function topicRow(kind, label, text, href, badge) {
+  return `<a class="topic-row" href="${href}">
+    <span class="topic-kind ${kind}">${label}</span>
+    <span class="topic-row-t">${text}${badge ? `<span class="topic-badge">${badge}</span>` : ''}</span>
+    <span class="topic-row-x">›</span>
+  </a>`;
+}
+
+function topicRowPending(kind, label, text) {
+  return `<div class="topic-row pending">
+    <span class="topic-kind ${kind}">${label}</span>
+    <span class="topic-row-t">${text}</span>
+    <span class="topic-row-x">›</span>
+  </div>`;
 }
 
 // 专题数据懒加载（在途去重；失败置 null 由调用方降级）
@@ -1324,103 +1328,6 @@ function ensureTopicData(id) {
   return p;
 }
 
-// 左栏：书卷分组 + 各章（屏），当前屏高亮
-function renderTopicOutline(b, n, data) {
-  const nav = $('topicNav');
-  if (!nav) return;
-  nav.innerHTML = (data.books || []).map((bk) =>
-    `<div class="topic-nav-book">${escapeHtml(bk.name)}</div>` +
-    (bk.chapters || []).map((c) =>
-      `<div class="topic-nav-item${bk.book === b.book && c.n === n ? ' cur' : ''}"
-            data-topic-book="${bk.book}" data-topic-screen="${c.n}"
-            title="第${c.n}章 · ${(c.reads || []).length} 篇">第 ${c.n} 章<span class="n">${(c.reads || []).length}</span></div>`).join('')
-  ).join('');
-}
-
-// 主区：书名/章号 + 那几篇（篇名 + 导语 + 正文），读经单列在尾部
-function renderTopicView(b, n) {
-  const main = $('topicMain');
-  if (!main) return;  const ch = (b.chapters || []).find(c => c.n === n);
-  if (!ch) { main.innerHTML = '<div class="empty-hint">本屏暂无内容</div>'; return; }
-  const topic = TOPICS[state.topicId] || {};
-  main.innerHTML = '';
-  const head = document.createElement('div');
-  head.className = 'topic-page-head';
-  head.innerHTML = `<div class="topic-page-book">${escapeHtml(b.name)}</div>` +
-    `<div class="topic-page-title">第 ${n} 屏 · ${(ch.reads || []).length} 篇</div>`;
-  main.appendChild(head);
-  (ch.reads || []).forEach((r, i) => {
-    const wrap = document.createElement('section');
-    wrap.className = 'topic-read';
-    const h = document.createElement('h3');
-    h.className = 'topic-read-title';
-    h.textContent = r.title || '';
-    wrap.appendChild(h);
-    const src = document.createElement('div');
-    src.className = 'topic-read-src';
-    src.textContent = r.src === 'book' ? '书报' : '生命读经';
-    wrap.appendChild(src);
-    const content = document.createElement('div');
-    content.className = 'lr-content topic-page';
-    const page = topicPageKey(topic.id, b.book, n, i);
-    content.dataset.topicPage = page;         // 标注容器（findAnnotatable 分支）
-    content.dataset.topic = topic.id;
-    content.dataset.book = b.book;
-    // 标注与 lr 走同一通道：按源 text 偏移在 renderLrContent 里铺 mark；先自愈再渲染
-    const anns = state.annotations.filter(a => a.type === 'topic' && a.page === page);
-    if (anns.length && healAnnotations(anns, r.text || '')) save(LS_ANNOTATIONS, state.annotations);
-    renderLrContent(content, r.text || '', anns, `tw-${b.acronym}${n}-${i}`, b.acronym);
-    wrap.appendChild(content);
-    main.appendChild(wrap);
-  });
-  // 读经单：原书入口 + 生命读经入口（专题只做入口，不复制原文）
-  const refs = ch.refs || [];
-  if (refs.length) {
-    const list = document.createElement('div');
-    list.className = 'topic-refs';
-    list.innerHTML = `<div class="topic-refs-head">本章读经单</div>` +
-      refs.map((r) => `<div class="topic-ref" data-topic-tw="${r.tw}">` +
-        `<span class="t">生命读经 第 ${r.tw} 篇</span><span class="go">›</span></div>`).join('') +
-      `<div class="topic-ref topic-ref-bible" data-topic-bible="${b.book}" data-topic-ch="${n}">` +
-        `<span class="t">读原文 · ${escapeHtml(b.name)} 第 ${n} 章</span><span class="go">›</span></div>`;
-    main.appendChild(list);
-  }
-}
-
-// 专题页容器键：{topic}:{卷}#{屏}#{条目序号}（同屏多篇各自一页，偏移互不相干）
-function topicPageKey(topicId, book, screen, idx) {
-  return `${topicId}:${book}#${screen}#${idx}`;
-}
-
-// 右栏：本屏笔记（屏级 textarea）+ 本屏划线汇总
-function renderTopicSide() {
-  const side = $('topicSide');
-  if (!side) return;
-  side.innerHTML = '';
-  const body = document.createElement('div');
-  body.className = 'lr-side-body';
-  const key = `${state.topicId}:${state.topicBook}#${state.topicScreen}`;
-  const ta = document.createElement('textarea');
-  ta.className = 'lr-note-ta';
-  ta.placeholder = '写点本屏的领受…';
-  ta.value = state.topicNotes[key] || '';
-  ta.addEventListener('input', () => {
-    state.topicNotes[key] = ta.value;
-    save(LS_TOPIC_NOTES, state.topicNotes);
-  });
-  body.appendChild(ta);
-  const anns = state.annotations.filter(a => a.type === 'topic' && a.topic === state.topicId &&
-    a.book === state.topicBook && String(a.page || '').startsWith(`${state.topicId}:${state.topicBook}#${state.topicScreen}#`));
-  body.appendChild(renderHighlights(anns, undefined, { hideGroupHeader: true, hideItemLoc: true, reread: true }));
-  side.appendChild(body);
-}
-
-// 关闭专题态（回首页 / 进阅读器模块时调）
-function closeTopic() {
-  document.body.classList.remove('topic');
-  if (state.screen === 'topic') state.screen = 'work';
-  state.topicBook = null;
-}
 /* ============ 书报二级合集层（2026-10-12） ============ */
 // 书报首页块进入：展示小书报合集块网格（数据驱动自 books 系列清单，排除倪文集）。
 // 点合集块 enterModule('books', {series}) 直进该系列阅读器；⌂/搜索跳转照常。
@@ -1434,7 +1341,6 @@ function openBookHub() {
   applyDrawerDock();
   const grid = $('bookHubGrid');
   if (grid) grid.dataset.epoch = String(Number(grid.dataset.epoch || '0') + 1);   // 使旧补渲染失效
-  state.topicBook = null;
   renderBookHub();
   syncRoute();
 }
@@ -1538,9 +1444,7 @@ function routeContainer() {
 function formatRoute() {
   if (state.screen === 'home') return '';
   if (state.screen === 'bookhub') return '#/hub';
-  if (state.screen === 'topic') {
-    return state.topicBook ? `#/topic/${state.topicId}/${state.topicBook}/${state.topicScreen}` : `#/topic/${state.topicId}`;
-  }
+  if (state.screen === 'topic') return `#/topic/${state.topicId}`;
   const m = state.activeModule;
   if (m === 'bible') return (state.currentBook && state.currentChapter)
     ? `#/bible/${state.currentBook.index}/${state.currentChapter}` : null;
@@ -1585,15 +1489,8 @@ async function parseRoute() {
   if (seg === 'topic') {
     const id = parts[1];
     if (!id || !TOPICS[id]) return null;
-    if (parts.length < 3) return { kind: 'topic', id };          // 专题主页
-    const book = +parts[2], screen = +parts[3];
-    if (!Number.isInteger(book) || !Number.isInteger(screen) || screen < 1) return null;
-    const loaded = await ensureTopicData(id).catch(() => null);
-    if (!loaded) return { kind: 'topic', id };                     // 数据缺失 → 专题主页（不报错不留悬空）
-    const b = (loaded.books || []).find(x => x.book === book);
-    if (!b) return null;
-    const chs = b.chapters || [];
-    return { kind: 'topic', id, book, screen: chs.some(c => c.n === screen) ? screen : (chs[0] ? chs[0].n : 1) };
+    // 作业单是单页：旧版分屏深链（#/topic/{id}/{卷}/{屏}）忽略多余段，归一到专题页
+    return { kind: 'topic', id };
   }
   if (seg === 'bible') {
     const book = +parts[1], chapter = +parts[2];
@@ -1644,11 +1541,7 @@ async function applyRoute(r) {
     if (r.kind === 'home') { showHome(); return; }
     if (r.kind === 'hub') { openBookHub(); return; }
     if (r.kind === 'notes') { await enterModule('notes'); return; }
-    if (r.kind === 'topic') {
-      if (r.book) await openTopicScreen(r.id, r.book, r.screen);
-      else await openTopic(r.id);
-      return;
-    }
+    if (r.kind === 'topic') { await openTopic(r.id); return; }
     if (r.kind === 'bible') {
       await enterModule('bible');
       if (!state.currentBook || state.currentBook.index !== r.book) await selectBook(r.book, r.chapter);
@@ -2023,6 +1916,10 @@ async function enterModule(id, opts) {
     await mod.enter(opts);
     await Promise.all([mod.renderNav(), mod.renderMain(), mod.renderSide(), mod.renderCrumb()]);
     applyDrawerDock();   // 模块切换后重估停靠态（notes 隐藏停靠列，其他模块恢复）
+  } else {
+    // 同模块重入：位置可能没变（不触发 select*），但顶栏可能被别的屏幕（专题作业单）写过，
+    // 必须无条件刷一次 crumb——「读原文」跳回本模块当前章时标题残留专题标签的根因
+    await mod.renderCrumb();
   }
   syncRoute();   // 模块进入/切换落定后同步 URL（首页块/搜索/全局笔记跳转共用此入口）
 }
@@ -2062,32 +1959,7 @@ function bindHomeEvents() {
     const c = COLLECTIONS.find(x => x.id === tile.dataset.entry);
     if (c && c.entry) c.entry();
   });
-  // 专题：屏列表/主页行 → 进屏；读经单 → 原文 / 生命读经篇目（专题只做入口，不复制原文）
-  $('topicNav').addEventListener('click', (e) => {
-    const it = e.target.closest('[data-topic-screen]');
-    if (!it) return;
-    openTopicScreen(state.topicId, +it.dataset.topicBook, +it.dataset.topicScreen);
-  });
-  $('topicMain').addEventListener('click', (e) => {
-    const it = e.target.closest('[data-topic-screen]');
-    if (it) { openTopicScreen(state.topicId, +it.dataset.topicBook, +it.dataset.topicScreen); return; }
-    const tw = e.target.closest('[data-topic-tw]');
-    if (tw) {
-      const book = state.topicBook;
-      const id = +tw.dataset.topicTw;
-      openLrArticle(book, { id });
-      return;
-    }
-    const bib = e.target.closest('[data-topic-bible]');
-    if (bib) {
-      const book = +bib.dataset.topicBible, ch = +bib.dataset.topicCh;
-      enterModule('bible').then(() => {
-        if (!state.currentBook || state.currentBook.index !== book) return selectBook(book, ch);
-        if (state.currentChapter !== ch) return selectChapter(ch);
-        return null;
-      });
-    }
-  });
+  // 专题（topics，作业单）：条目是普通 hash 链接，由 popstate/hashchange → applyRoute 就位
   // 书报合集层：块点击 → series 直进阅读器；搜索 → 跨合集检索（篇目标题，数据来自各系列元数据缓存）
   $('bookHubGrid').addEventListener('click', (e) => {
     const tile = e.target.closest('.home-block');
@@ -4547,16 +4419,10 @@ function jumpToLr(articleId) {
 // 模块感知：生命读经/书报模块内点击 → 就地切篇/章并滚动；否则回读经模块走原文定位
 async function navigateToAnnotation(a) {
   if (a.type === 'topic') {
-    // 专题标注：page = "{topic}:{卷}#{屏}#{条目}"，就地切屏（专题内）或开专题（模块外）
-    const m = String(a.page || '').match(/^([^:]+):(\d+)#(\d+)#/);
+    // 旧版专题标注（1.0.59 的阅读屏已下线）：只能回到专题页，原文已不在页面里
+    const m = String(a.page || '').match(/^([^:]+):(\d+)#/);
     const topicId = a.topic || (m && m[1]);
-    const book = a.book || (m && +m[2]);
-    const screen = m ? +m[3] : 1;
-    if (state.screen !== 'topic' || state.topicId !== topicId || state.topicBook !== book || state.topicScreen !== screen) {
-      await openTopicScreen(topicId, book, screen);
-    }
-    const mark = document.querySelector(`#topicMain mark[data-ann-id="${a.id}"]`);
-    if (mark) mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (topicId && TOPICS[topicId]) await openTopic(topicId);
     return;
   }
   if (a.type === 'lr' && state.activeModule === 'lifereading') {
@@ -5659,7 +5525,7 @@ async function jumpHistory(h) {
   closeNavDrawer();
   if (!h) return;
   if (h.module === 'topic') {
-    await openTopicScreen(h.loc.topic, h.loc.book, h.loc.screen);
+    await openTopic(h.loc.topic);
     return;
   }
   enterWork();
@@ -6478,15 +6344,7 @@ function rerenderAnn(ann) {
     renderNotesPanel();
     return;
   }
-  // 专题屏内：重渲染本屏（正文高亮）+ 右栏划线汇总
-  if (ann.type === 'topic' && state.screen === 'topic' && state.topicBook) {
-    withScrollPreserved(['#textCol'], () => {
-      const b = topicBookOf(state.topicId, state.topicBook);
-      if (b) renderTopicView(b, state.topicScreen);
-      renderTopicSide();
-    });
-    return;
-  }
+  // 旧版专题标注（1.0.59）：正文已下线，重渲染走通用通道；这里只需避免访问已移除的专题屏
   if (ann.type === 'verse') {
     withScrollPreserved(['#textCol', '#studyBody', '.lr-full-content'], () => {
       renderChapter();
@@ -6734,11 +6592,7 @@ function rereadUnitScope() {
     return { label: '本篇', anns: state.annotations.filter(a =>
       a.type === 'morning' && a.period === state.morningPeriod && a.chapterId === state.morningChapterId) };
   }
-  if (state.screen === 'topic' && state.topicBook) {
-    return { label: '本屏', anns: state.annotations.filter(a =>
-      a.type === 'topic' && a.topic === state.topicId && a.book === state.topicBook &&
-      String(a.page || '').startsWith(`${state.topicId}:${state.topicBook}#${state.topicScreen}#`)) };
-  }
+  if (state.screen === 'topic') return null;   // 作业单页没有正文，无「本屏」可重读
   return null;
 }
 
