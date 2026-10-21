@@ -1,7 +1,7 @@
 /* 首页补充验证：移动端(375px) + 全局笔记跨书卷跳转 */
 const { spawn } = require('child_process');
 const ROOT = require('path').resolve(__dirname, '..');
-const PORT = 8765;
+const PORT = 8780;   // 测试专用端口：不碰用户遗留的 8765
 
 async function main() {
   const server = spawn('python', ['-m', 'http.server', String(PORT)], { cwd: ROOT, stdio: 'ignore' });
@@ -79,6 +79,11 @@ async function main() {
   await new Promise((r) => setTimeout(r, 1200));
   const srCount = await page2.$$eval('#homeSearchResults .sr-group[data-g="ann"] .home-sr-item', els => els.length);
   if (srCount) {
+    // 结果分域列表比视口高（生命读经组在上）：先滚到可见再点，否则 puppeteer 点不到
+    // 搜「基督」命中的「我的笔记」组（本用例预置的罗马书标注）
+    await page2.evaluate(() => document.querySelector('#homeSearchResults .sr-group[data-g="ann"] .home-sr-item')
+      .scrollIntoView({ block: 'center' }));
+    await new Promise((r) => setTimeout(r, 200));
     await page2.click('#homeSearchResults .sr-group[data-g="ann"] .home-sr-item');
     await new Promise((r) => setTimeout(r, 2000));
     const jumped = await page2.evaluate(() => ({

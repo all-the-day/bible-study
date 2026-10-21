@@ -2,7 +2,7 @@
    末尾含「首页最近阅读」（反馈 #16）：最多 5 条 / 位于合集块下方 / 点击跳原文并置顶 / 全部›首页历史弹窗（就地浏览）/ 空历史整块隐藏 */
 const { spawn } = require('child_process');
 const ROOT = require('path').resolve(__dirname, '..');
-const PORT = 8765;
+const PORT = 8777;   // 测试专用端口：不碰用户遗留的 8765
 
 async function main() {
   const server = spawn('python', ['-m', 'http.server', String(PORT), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
@@ -232,7 +232,7 @@ async function main() {
   }));
   const r12ok = r12.home && r12.popupShown && r12.popupTitle === '阅读历史' && r12.rows === 6 && r12.firstRow &&
     r12c.popupHidden && !r12c.home && r12c.ch &&
-    r12b.html === '' && r12b.blocks === 6;
+    r12b.html === '' && r12b.blocks === 7;   // 7 块：2026-10-21 增「活力八」专题块
   console.log('12. 全部›历史弹窗(就地浏览)+空历史隐藏:', r12ok ? '✓' : '✗',
     '| 留在首页:', r12.home, '| 弹窗行数:', r12.rows, '| 首行:', r12.firstRow, '| 点条目跳转:', r12c.ch, '| 清空后首页块:', r12b.blocks, 'HTML空:', r12b.html === '');
 

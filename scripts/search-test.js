@@ -6,7 +6,7 @@
  */
 const { spawn } = require('child_process');
 const ROOT = require('path').resolve(__dirname, '..');
-const PORT = 8765;
+const PORT = 8788;   // 测试专用端口：不碰用户遗留的 8765（否则会静默跑在旧代码上）
 
 async function main() {
   const server = spawn('python', ['-m', 'http.server', String(PORT), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });

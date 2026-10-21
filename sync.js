@@ -33,14 +33,15 @@
   var LS_STATUS = "bible-study.sync:v2:status";
   var LS_LASTLOCAL = "bible-study.sync:v2:lastlocal";
 
-  var SYNC_KINDS = ["annotations", "chapterNotes", "lrNotes", "bookNotes", "morningNotes"];
-  var KIND_IS_ARRAY = { annotations: true, chapterNotes: false, lrNotes: false, bookNotes: false, morningNotes: false };
+  var SYNC_KINDS = ["annotations", "chapterNotes", "lrNotes", "bookNotes", "morningNotes", "topicNotes"];
+  var KIND_IS_ARRAY = { annotations: true, chapterNotes: false, lrNotes: false, bookNotes: false, morningNotes: false, topicNotes: false };
   var KEY_MAP = {
     "bible-study.annotations": "annotations",
     "bible-study.chapterNotes": "chapterNotes",
     "bible-study.lrNotes": "lrNotes",
     "bible-study.bookNotes": "bookNotes",
     "bible-study.morningNotes": "morningNotes",
+    "bible-study.topicNotes": "topicNotes",
   };
   var KIND_TO_KEY = {};
   Object.keys(KEY_MAP).forEach(function (k) { KIND_TO_KEY[KEY_MAP[k]] = k; });

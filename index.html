@@ -137,6 +137,18 @@
     </div>
   </div>
 
+  <!-- 专题屏（2026-10-21 活力八）：首页块进入，两列 = 屏列表 + 屏正文。
+       与 .layout 一样是工作区布局，显示由 body.topic 控制（与 home / bookhub 正交，不进 body-mod-*） -->
+  <div class="layout topic-layout" id="topicView">
+    <aside class="topic-nav" id="topicNav"></aside>
+    <main class="text-col" id="topicTextCol">
+      <div id="topicMain" class="topic-main"></div>
+    </main>
+    <aside class="study-col" id="topicStudyCol">
+      <div class="topic-side" id="topicSide"></div>
+    </aside>
+  </div>
+
   <div id="floatTool" class="floattool" hidden></div>
   <div id="markTool" class="marktool" hidden></div>
   <div id="noteModal" class="notemodal" hidden>
