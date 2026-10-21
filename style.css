@@ -1105,7 +1105,10 @@ body.scroll-locked { overflow: hidden; }
 
 /* ── 首页（合集块）── 启动默认视图，与工作区正交：body.home 时隐藏 .layout */
 body:not(.home) #homeView { display: none; }   /* 工作区时隐藏首页 */
-body:not(.home) .layout { display: none; }     /* 书报合集层/专题屏隐藏阅读器工作区（专题布局也带 .layout，故按 body.home 门控） */
+/* 阅读器工作区只在「工作区态」显示：书报合集层与专题屏各有自己的屏幕，工作区让位。
+   注意：① 用 body.bookhub/.topic 正向命中，别用 body:not(.home)——那会连工作区一起藏掉；
+   ② 必须排除专题自己的 #topicView（它也带 .layout），否则专题会把自己的布局一起隐藏。 */
+body.bookhub .layout, body.topic .layout:not(#topicView) { display: none; }
 body:not(.bookhub) #bookHubView { display: none; }   /* 非书报合集层时隐藏 */
 body.home .layout { display: none; }
 body.home .crumb { display: none; }                    /* 首页不显示章节 crumb */
