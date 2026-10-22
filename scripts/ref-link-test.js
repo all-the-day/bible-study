@@ -351,6 +351,75 @@ async function main() {
   check('18h. 听抄 2026-04 篇3：四10～13 → 林后4:10～13', fbRefs.includes('林后4:10～13'), JSON.stringify(fbRefs.slice(0, 20)));
   check('18i. 听抄 2026-04 篇3：罗马八章（28）→ 罗8:28', fbRefs.includes('罗8:28'), JSON.stringify(fbRefs.slice(0, 20)));
 
+  // 19. 反馈 #29/#30/#31（2026-10-22）
+  // 19a. #29 腓立比书生命读经篇3：「腓立比书一章七至八节，十二至十四节，十六至十七节，
+  //      二十八至三十节」——「，」分隔的裸节范围列举此前只命中第一项
+  r = await refsOf('腓立比书一章七至八节，十二至十四节，十六至十七节，二十八至三十节。', '腓');
+  check('19a. 节范围列举（一章七至八节，十二至十四节…）全部命中',
+    JSON.stringify(r) === JSON.stringify(['腓立比书一章七至八节', '腓1:12～14', '腓1:16～17', '腓1:28～30']), JSON.stringify(r));
+  // 19b. #30 同篇：「…赞同主耶稣在启示录里所用的辞；乃是祂用了『撒但会堂』这个辞。（二9。）」
+  //      分号不判跨句 + 正文引号（“”/‘’）剥除 → 二9/24/三20 归启示录（原被归腓立比书）
+  r = await refsOf('不过就是赞同主耶稣在启示录里所用的辞；乃是祂用了『撒但会堂』这个辞。（二9。）', '腓');
+  check('19b. 分号不断弱上下文（二9 → 启2:9）', JSON.stringify(r) === JSON.stringify(['启2:9']), JSON.stringify(r));
+  r = await refsOf('不过就是赞同主耶稣在启示录里所用的辞；乃是祂用了『撒但会堂』这个辞。（二9。）这个说法岂不指明…？再看推雅推喇，主说到『撒但深奥之事』。（24。）论到老底嘉，基督正站在召会的门外。（三20。）', '腓');
+  check('19b-2. 后续裸节号沿用（（二9）→启2:9，24 → 启2:24，三20 → 启3:20）',
+    JSON.stringify(r) === JSON.stringify(['启2:9', '启2:24', '启3:20']), JSON.stringify(r));
+  // 19c. #31 听抄「马太十三章撒种的比喻里，五至六节说，“…”日头…（21）」
+  //      裸节序列建上下文 + 引文里的句号不判跨句 → 太13:5～6、太13:21（原错链 创8:21）
+  r = await page.evaluate(() => {
+    const carry = { acronym: '创', chapter: 8 };
+    return detectRefs('在马太十三章撒种的比喻里，五至六节说，“有的落在土浅石头地上…就枯干了。”日头及其炙热象征患难或逼迫（21）。', null, carry)
+      .map(x => x.refText);
+  });
+  check('19c. 裸节序列 + 引文句号（五至六节 → 太13:5～6，（21）→ 太13:21）',
+    JSON.stringify(r) === JSON.stringify(['太13:5～6', '太13:21']), JSON.stringify(r));
+  // 19d. 守卫：节序列不跨句、不跨行继承章号（「…加拉太四章十九节。…在十三至二十七节」
+  //      的十三至二十七节仍属约壹，无本行同句章上下文时不链，避免给出 加4 错链）
+  r = await page.evaluate(() => {
+    const carry = { acronym: '加', chapter: 4 };
+    return detectRefs('这称呼用在约壹二章十二节。年老的使徒把受信者看作孩子。因此，一至十二节是写给一般的受信者。', null, carry)
+      .map(x => x.refText);
+  });
+  check('19d. 节序列不跨行继承章号（无同句上下文 → 不链）',
+    JSON.stringify(r) === JSON.stringify(['约壹二章十二节']), JSON.stringify(r));
+  // 19e. 诗篇的章称「篇」（「诗篇一百零七篇二至六节」）→ 诗107:2～6，后续裸节号沿用该章
+  r = await page.evaluate(() => {
+    const carry = { acronym: '罗', chapter: 5 };
+    return detectRefs('诗篇一百零七篇二至六节说，“愿耶和华的赎民说这话…”（13、19、28）。', null, carry).map(x => x.refText);
+  });
+  check('19e. 诗篇「N篇」作章提及（二至六节 → 诗107:2～6，（13）→ 诗107:13）',
+    JSON.stringify(r) === JSON.stringify(['诗107:2～6', '诗107:13', '诗107:19', '诗107:28']), JSON.stringify(r));
+  // 19f. 诗篇目录式列举省略「诗篇」前缀：后续裸「N篇」按诗篇语境作章提及
+  //      （「诗篇七十三篇…，七十四篇二至三节」——不能沿用 73 章）
+  r = await refsOf('诗篇七十三篇一至三节，十二至十七节，七十四篇二至三节，七至八节，七十五篇二节，四至七节。', '诗');
+  check('19f. 诗篇目录式列举（七十四篇二至三节 → 诗74:2～3）',
+    JSON.stringify(r) === JSON.stringify(['诗73:1～3', '诗73:12～17', '诗74:2～3', '诗74:7～8', '诗75:4～7']), JSON.stringify(r));
+  // 19g. 跨章范围之后的续节按末章（「撒上一章一节至二章十一节，十八至二十一节」= 撒上2）
+  r = await refsOf('撒母耳记上一章一节至二章十一节，十八至二十一节，二十六节。', '撒上');
+  check('19g. 跨章范围续节按末章（十八至二十一节 → 撒上2:18～21）',
+    JSON.stringify(r) === JSON.stringify(['撒母耳记上一章一节至二章十一节', '撒上2:18～21']), JSON.stringify(r));
+  // 19h. 中文数字「零」（诗一百零二16）：检测与解析都必须成立，否则是「未收录」死链
+  r = await refsOf('锡安是耶路撒冷城的中心，（诗一百零二16，21，）预表召会。（太十六18～19。）', '诗');
+  check('19h. 零含引用可包裹（诗一百零二16）',
+    JSON.stringify(r) === JSON.stringify(['诗一百零二16', '诗102:21', '太十六18～19']), JSON.stringify(r));
+  const zeroKeys = await page.evaluate(() => [resolveRefString('诗一百零二24～27'), resolveRefString('诗一零三5'), resolveRefString('诗一一零1')]);
+  check('19h-2. 零含引用可解析（诗102:24～27 / 诗103:5 / 诗110:1）',
+    JSON.stringify(zeroKeys) === JSON.stringify([['诗102:24', '诗102:25', '诗102:26', '诗102:27'], ['诗103:5'], ['诗110:1']]),
+    JSON.stringify(zeroKeys));
+  // 19i. 跨章范围后的续节「就近边界」：可8:27～9:1 后的（27）（28）（29）仍属第 8 章
+  //      （一律取末章会把它们错链成 可9:27～29，基线原本正确）
+  r = await refsOf('八章二十七节至九章一节所揭示的，就是承认耶稣是基督。（27。）祂说（28。）又说（29。）', '可');
+  check('19i. 跨章范围续节就近取章（可8:27～9:1 后 → 可8:27/8:28/8:29）',
+    JSON.stringify(r) === JSON.stringify(['可八章二十七节至九章一节', '可8:27', '可8:28', '可8:29']), JSON.stringify(r));
+  // 19j. 引文内的句末句号在「引文后另起论述」时仍终止弱上下文（只对“…”紧贴引用才忽略）：
+  //      「马太十章…乃是爱情；这里十六章…人的“私我。”我们若读…（22，旧译本）」应归 太十六
+  r = await page.evaluate(() => {
+    const t = '主耶稣在马太十六章二十四到二十六节说到魂的生命。但是马太十章所注重魂生命的部分，乃是爱情；这里十六章所注重魂生命的部分，乃是人的“私我。”我们若读上文，就知道主耶稣告诉门徒以祂将来在十字架上所要受的苦；彼得因为爱主心切的缘故，就对主说，“主阿，可怜你的自己！”（22，旧译本）';
+    return detectRefs(t, null).map(x => x.refText);
+  });
+  check('19j. 引文后另起论述仍判跨句（马太十章旁及 → 归太十六，不沿用十章）',
+    JSON.stringify(r) === JSON.stringify(['马太十六章二十四到二十六节', '太16:22']), JSON.stringify(r));
+
   console.log(`\n${pass} passed, ${fail} failed`);
   console.log('JS 错误:', errors.length ? errors : '无');
   await browser.close();

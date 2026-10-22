@@ -226,6 +226,7 @@ function openThemePicker() {
 /* ── 用户语言版本记录（单一来源）：① 使用帮助弹窗「最近更新」；② 更新弹窗「本次更新」。
    纪律：只记用户可见变化、不记 chore/内部改动；用户可见功能发布时在顶部补一行（AGENTS.md 发版流程）。 ── */
 const CHANGELOG = [
+  { v: '1.0.63', date: '2026-10-22', items: ['经文引用认得更全：像「一章七至八节，十二至十四节，十六至十七节」这样的后续节范围也能点开了', '括号里的节号不再跟错书卷：「（二9。）」这类引用会归到正文正在讲的卷（如启示录）而不是上一篇的卷', '诗篇按「篇」写的引用（如「诗篇一百零七篇二至六节」）现在也能识别，后面的裸节号跟着它走'] },
   { v: '1.0.61', date: '2026-10-21', items: ['书报正文修正：属灵书报、特会信息、结晶读经等合集里的乱码与错字改对了，与源一致', '重复收录的几篇正文改为「已并入」指引，不再重复阅读', '书号查找覆盖新约总论、造就类、教会与事奉类等合集'] },
   { v: '1.0.60', date: '2026-10-21', items: ['「活力八」改成作业单页：按周列出原文、三篇生命读经、指定书报、背经与注解，点条目直达对应位置，不用再自己翻卷翻篇'] },
   { v: '1.0.59', date: '2026-10-21', items: ['首页新增「活力八」专题：腓立比书、歌罗西书按一条主线串起八屏内容，经文、生命读经与书报都在一处', '专题里可以划线和写笔记，会自动归到「我的笔记」的「专题」来源', '专题里的经文引用可一键「打开出处」跳回读经原文'] },
@@ -6783,7 +6784,12 @@ function cnToInt(s) {
   let total = 0, rest = s;
   if (rest.includes('百')) { const i = rest.indexOf('百'); total += (CN_DIGITS[rest[i-1]] ?? 1) * 100; rest = rest.slice(i+1); }
   if (rest.includes('十')) { const i = rest.indexOf('十'); total += (i > 0 ? (CN_DIGITS[rest[i-1]] ?? 1) : 1) * 10; rest = rest.slice(i+1); }
-  if (rest) total += CN_DIGITS[rest[0]] ?? 0;
+  // 余数按位拼接（「一百零七」的 零七 = 7——旧实现只取首位、把 零 当 0 丢掉 7）
+  if (rest) {
+    let v = 0;
+    for (const c of rest) { if (!(c in CN_DIGITS)) return null; v = v * 10 + CN_DIGITS[c]; }
+    total += v;
+  }
   return total;
 }
 
@@ -6845,7 +6851,7 @@ function resolveRefString(raw) {
       // 相对引用：纯数字节（2）或 中文章+阿拉伯节（三9 / 十七5下，半节后缀保留交由 pushKey 归一）
       const m = token.match(/^(\d+)$/);
       if (m && curChapter) { pushKey(`${curAcronym}${curChapter}:${m[1]}`); continue; }
-      const m2 = token.match(/^([一二三四五六七八九十百〇○]+)(\d+)([上下])?$/);
+      const m2 = token.match(/^([一二三四五六七八九十百零〇○]+)(\d+)([上下])?$/);
       if (m2) {
         const ch = cnToInt(m2[1]);
         if (ch) { pushKey(`${curAcronym}${ch}:${m2[2]}${m2[3] || ''}`); curChapter = ch; }
@@ -6865,7 +6871,7 @@ function resolveRefString(raw) {
 // 节序列解析（「章」之后的部分）：一至三节 / 一、二节 / 三十七和三十八节 / 一至三节、五至七节。
 // 返回展开后的节号数组（如 [1,2,3,5,6,7]），非法返回 null
 function parseVerseSeq(seq) {
-  const cn = '一二三四五六七八九十百〇○';
+  const cn = '一二三四五六七八九十百零〇○';
   const raw = (seq || '').replace(/节/g, '');
   if (!raw) return null;
   const parts = raw.split(new RegExp('([、和与])')).filter(Boolean);
@@ -6896,7 +6902,7 @@ function parseRefTail(acronym, rest, defChapter) {
   rest = (rest || '').trim();
   if (!rest) return null;
   // 上下半节范围（一4下～5上 / 4下～5上）：按整节范围处理，弹窗逐节展开（反馈 #22）
-  let m = rest.match(/^([一二三四五六七八九十百〇○]+)?(\d+)[上下]?[-~～](\d+)[上下]?$/);
+  let m = rest.match(/^([一二三四五六七八九十百零〇○]+)?(\d+)[上下]?[-~～](\d+)[上下]?$/);
   if (m) {
     const ch = m[1] ? cnToInt(m[1]) : defChapter;
     return ch ? { range: [+m[2], +m[3]], chapter: ch } : null;
@@ -6912,7 +6918,7 @@ function parseRefTail(acronym, rest, defChapter) {
     return { key: `${acronym}${ch}:${m[2]}${half}`, chapter: +ch };
   }
   // 中文章 + 阿拉伯节（十二1 / 十二1-3，支持全角波浪号 ～）
-  m = rest.match(/^([一二三四五六七八九十百〇○]+)(\d+)(?:[-~～](\d+))?$/);
+  m = rest.match(/^([一二三四五六七八九十百零〇○]+)(\d+)(?:[-~～](\d+))?$/);
   if (m) {
     const ch = cnToInt(m[1]);
     if (ch) {
@@ -6922,11 +6928,11 @@ function parseRefTail(acronym, rest, defChapter) {
   }
   // 中文章节式（三章十九节 / 二章六至九节 / 三章一、二节 / 七章三十七和三十八节）
   // 跨章范围（十章二十八节至十二章二十四节）→ chunks（首章起节、末章止节，中间整章）
-  if (/^第?[一二三四五六七八九十百〇○\d]+章/.test(rest)) {
+  if (/^第?[一二三四五六七八九十百零〇○\d]+章/.test(rest)) {
     const chunks = [];
     let ok = true;
-    for (const part of rest.split(/[-~～至到](?=第?[一二三四五六七八九十百〇○\d]+章)/)) {
-      const mm = part.match(/^第?([一二三四五六七八九十百〇○\d]+)章(.+)$/);
+    for (const part of rest.split(/[-~～至到](?=第?[一二三四五六七八九十百零〇○\d]+章)/)) {
+      const mm = part.match(/^第?([一二三四五六七八九十百零〇○\d]+)章(.+)$/);
       const ch = mm ? cnToInt(mm[1]) : null;
       const verses = ch ? parseVerseSeq(mm[2]) : null;
       if (!verses || !verses.length) { ok = false; break; }
@@ -6938,7 +6944,13 @@ function parseRefTail(acronym, rest, defChapter) {
         if (c.verses.length === 1) return { key: `${acronym}${c.chapter}:${c.verses[0]}${half}`, chapter: c.chapter };
         return { verses: c.verses, chapter: c.chapter };
       }
-      return { chunks, chapter: chunks[0].chapter };
+      // chapter 保持首章（基线；解析侧与章数上限校验都不受影响）。
+      // 跨章范围之后的续节归属由 detectRefs 的 rangeCtx「就近边界」判定：
+      // 「一章一节至二章十一节，十八至二十一节」= 撒上2:18（近末章 11），
+      // 「八章二十七节至九章一节…（27）（28）」= 可8（近首章 27）
+      return { chunks, chapter: chunks[0].chapter,
+        span: { firstCh: chunks[0].chapter, firstV: chunks[0].verses[0],
+          lastCh: chunks[chunks.length - 1].chapter, lastV: chunks[chunks.length - 1].verses[0] } };
     }
   }
   // 纯章号（约一1 → 约壹 第1章，节由后续 token 提供）
@@ -6950,7 +6962,7 @@ function parseRefTail(acronym, rest, defChapter) {
     if (maxCh && n > maxCh && verseKeyExists(`${acronym}1:${n}`)) return { key: `${acronym}1:${n}`, chapter: 1 };
     return { key: null, chapter: n };
   }
-  m = rest.match(/^([一二三四五六七八九十百〇○]+)$/);
+  m = rest.match(/^([一二三四五六七八九十百零〇○]+)$/);
   if (m) { const ch = cnToInt(m[1]); if (ch) return { key: null, chapter: ch }; }
   return null;
 }
@@ -6959,7 +6971,7 @@ function parseRefTail(acronym, rest, defChapter) {
 function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 
 function buildRefRegex() {
-  const cn = '一二三四五六七八九十百〇○';
+  const cn = '一二三四五六七八九十百零〇○';
   const aliasAlt = _refAliasesSorted.map(escapeRegex).join('|');
   // 只识别带节号/范围/「章…节」的引用；不识别裸「书卷+中文数字」（如 利百、雅各一、
   // 创世记十一、创世记二十五），避免人名/描述性章节范围被误判为经文引用
@@ -6984,7 +6996,7 @@ function buildRefRegex() {
 // 中文章+阿拉伯节（二五11 / 二六15～22 / 三9上）+ 纯阿拉伯节（33，需已有章上下文）。
 // 与 resolveRefString 的相对引用规则一致。
 function buildRelativeRefRegex() {
-  const cn = '一二三四五六七八九十百〇○';
+  const cn = '一二三四五六七八九十百零〇○';
   // 范围两端均可带上下半节（一4下～5上 / 4下～5上，反馈 #22）
   return new RegExp('(?:[' + cn + ']+\\d+[上下]?(?:[-~～]\\d+[上下]?)?|\\d{1,3}[上下]?(?:[-~～]\\d{1,3}[上下]?)?)', 'g');
 }
@@ -6992,12 +7004,27 @@ function buildRelativeRefRegex() {
 // 相对章节式（无书卷前缀）：三章十九节 / 三章一、二节 / 三章一至三节、五至七节 /
 // 十章二十八节至十二章二十四节（跨章）。与全书式 tail 同构，另配左右边界守卫
 function buildRelativeChapterRefRegex() {
-  const cn = '一二三四五六七八九十百〇○';
+  const cn = '一二三四五六七八九十百零〇○';
   const cnDigits = '[' + cn + '\\d]+';
   const item = cnDigits + '节?(?:[-~～至到](?!' + cnDigits + '章)' + cnDigits + '节?)?';
   return new RegExp('第?' + cnDigits + '章' + item
     + '(?:[、和与](?!' + cnDigits + '章)' + item + ')*'
     + '(?:[-~～至到]第?' + cnDigits + '章' + item + ')?', 'g');
+}
+
+// 相对节序列（无书卷、无「章」）：五至六节 / 十二至十四节 / 一、二节——承接当前章上下文
+// （反馈 #29 「腓立比书一章七至八节，十二至十四节，十六至十七节」的后续项、
+//  #31 「马太十三章撒种的比喻里，五至六节说…」）。
+// 只认范围/列举（必须带 至～- 或 、和与），**不认单个裸节号**（「二节」）：
+// 单个裸「X节」在行文里常指代别处（「但一章一节…二节」的上下文可能是错的），
+// 全量实测会多出 2600+ 行改动、其中不少是错链，收益不值这个风险
+function buildRelativeVerseSeqRegex() {
+  const cn = '一二三四五六七八九十百零〇○';
+  const one = '[' + cn + ']+';
+  const range = one + '[-~～至到]' + one;
+  const body = '(?:' + range + '(?:[、和与]' + range + ')*'
+    + '|' + one + '(?:[、和与]' + one + ')+)';
+  return new RegExp(body + '节', 'g');
 }
 
 // 正文裸书名/裸「书卷+章」提及（「哥林多后书」「罗马八章」——不带节号，故不成引用）：
@@ -7013,17 +7040,54 @@ function buildRelativeChapterRefRegex() {
 let _bareMentionRe = null;
 function buildBareMentionRegex() {
   if (_bareMentionRe) return _bareMentionRe;
-  const cn = '一二三四五六七八九十百〇○';
+  const cn = '一二三四五六七八九十百零〇○';
   const aliasAlt = _refAliasesSorted.map(escapeRegex).join('|');
   const nameAlt = _refAliasesSorted.filter(a => a.length >= 2 && /[书记篇音传录]$/.test(a)).map(escapeRegex).join('|');
-  const bareChap = '(?:' + aliasAlt + ')第?[' + cn + ']+章(?![0-9' + cn + '])';
-  const bareName = '(?:' + nameAlt + ')(?![0-9' + cn + '章:：])';
-  _bareMentionRe = new RegExp(bareChap + '|' + bareName, 'g');
+  // 「书卷+章」：诗篇的章习惯称「篇」（「诗篇一百零七篇二至六节」）——只给诗篇开「篇」，
+  // 其他书卷不认（「但第八篇」的「但」是连词，认了会错当但以理书第八章）
+  const bareChap = '(?:诗篇|诗)第?[' + cn + ']+篇(?![0-9])'
+    + '|(?:' + aliasAlt + ')第?[' + cn + ']+章(?![0-9' + cn + '])';
+  // 裸「N篇」：诗篇目录式列举常省略前缀（「诗篇七十三篇…，七十四篇二至三节」），
+  // 由处理端按当前上下文限定为诗篇（其他书卷里「第八篇」是篇目编号，不是章提及）
+  const barePian = '第?[' + cn + ']+篇(?![0-9])';
+  // 裸书名：后面直接跟中文数字时通常是别的东西（「罗马八章」的八章），
+  // 但「约翰二书七节」「犹大书二十节」这类单章书卷的裸节号要认（cn 后紧跟「节」才放行）
+  const bareName = '(?:' + nameAlt + ')(?![0-9章:：])(?![' + cn + '](?!节))';
+  _bareMentionRe = new RegExp(bareChap + '|' + barePian + '|' + bareName, 'g');
   return _bareMentionRe;
+}
+
+// 引文剥离：正文引号用 “”/‘’/「」/『』，中英引号都剥——引文里的句号不是正文句末，
+// 不剥会把「说，“…。”」当成本句结束（反馈 #31 的 马太十三章…（21））
+const QUOTE_STRIP_RE = /“[^”]*”|‘[^’]*’|「[^」]*」|『[^』]*』|"[^"]*"|'[^']*'/g;
+function stripQuoteText(s) { return (s || '').replace(QUOTE_STRIP_RE, ''); }
+
+// 提及与引用之间是否隔着正文句子（已剥引号）：
+// 。！？ 且其后不跟左括号（「…蒙拣选。（弗一4，）」是句末+括注式引用，仍属该句）。
+// 分号本身不断（反馈 #30 的「…所用的辞；乃是祂用了『撒但会堂』这个辞。（二9。）」）；
+// 但分号后若还接着成段论述（>20 字），说明已经换了话题，照旧判跨句
+// （「马太十章…乃是爱情；这里十六章…（22，旧译本）」应归十六章，不能沿用十章）
+function hasSentenceBreak(s) {
+  // 分号后紧跟左括号（「…泉源；（14；）」）属分号+括注引用，与句末+括注同理，不拆
+  const parts = (s || '').split(/[；;](?![（(])/);
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (parts[i].replace(/\s/g, '').length > 20) return true;
+    if (/[。！？](?![（(])/.test(parts[i])) return true;
+  }
+  return /[。！？](?![（(])/.test(parts[parts.length - 1]);
 }
 
 // 纯阿拉伯节相对引用要求右边界为分隔符/句末标点，防误匹配词中/日期数字（如 1920年、25章）
 const REL_DIGIT_RIGHT = /[\s，,、;；。！？）)」』》…]/;
+
+// 跨章范围（八章二十七节至九章一节）之后的裸节号按「就近边界」归章（同距取首章）：
+// 可8:27～9:1 后的（27）（28）→ 可8；撒上1:1～2:11 后的十八至二十一节 → 撒上2
+function rangeChapterFor(span, v) {
+  if (!span) return 0;
+  const dFirst = Math.abs(v - span.firstV);
+  const dLast = Math.abs(v - span.lastV);
+  return dLast < dFirst ? span.lastCh : span.firstCh;
+}
 
 // 书卷缩写 → 章数（books.json），用于过滤书卷推断错误的相对引用（如「弗32:28」弗只有6章）
 let _bookChaptersMap = null;
@@ -7085,6 +7149,7 @@ function detectRefs(text, defaultAcronym, carry) {
   const fullRe = buildRefRegex();
   const relRe = buildRelativeRefRegex();
   const relChapRe = buildRelativeChapterRefRegex();
+  const relSeqRe = buildRelativeVerseSeqRegex();
   const bareRe = buildBareMentionRegex();
   const refs = [];
   // 本行内裸书名/裸章弱上下文（供其后相对引用归属；全书引用处理后清除，不写回 carry）。
@@ -7092,6 +7157,14 @@ function detectRefs(text, defaultAcronym, carry) {
   // 引用（相对或全书），章号以最新那个为准，防「但以理七章…（二32，39上）」的
   // 39上 被后面那句裸章提及抢成 7:39。weakEnd：弱上下文生效范围的起点（不跨句）
   let weakAcr = null, weakCh = null, weakChFresh = false, weakEnd = -1;
+  // 章上下文的建立位置（供相对节序列用）：必须来自本行且同句——
+  // 跨行（carry）或跨句的旧章号与当前话题未必同卷（「…加拉太四章十九节。…在十三至二十七节」
+  // 里的十三至二十七节其实仍在讲约壹），宁可少链也不给错链
+  let chapEnd = -1, chapFromLine = false;
+  // 跨章范围（「八章二十七节至九章一节」）之后的裸节号归属：按「就近边界」判定——
+  // 续节离首章起节近取首章、离末章止节近取末章（两种真实语料都覆盖：
+  // 可8:27～9:1 后续（27）（28）→ 可8；撒上1:1～2:11 后续十八至二十一节 → 撒上2）
+  let rangeCtx = null;
   let curAcronym = (carry && carry.acronym) || defaultAcronym || null,
     curChapter = (carry && carry.chapter) || null;
   fullRe.lastIndex = 0;
@@ -7112,6 +7185,9 @@ function detectRefs(text, defaultAcronym, carry) {
       relRe.lastIndex = 0;
       let rm;
       while ((rm = relRe.exec(seg)) !== null) cands.push({ i: rm.index, body: rm[0], chap: false });
+      relSeqRe.lastIndex = 0;
+      let sm;
+      while ((sm = relSeqRe.exec(seg)) !== null) cands.push({ i: sm.index, body: sm[0], seq: true });
       bareRe.lastIndex = 0;
       let bm;
       while ((bm = bareRe.exec(seg)) !== null) cands.push({ i: bm.index, body: bm[0], bare: true });
@@ -7125,14 +7201,28 @@ function detectRefs(text, defaultAcronym, carry) {
           // 裸书名/裸章：只建弱上下文、不包链接；章号越界（「罗马六十章」）不采信
           let hitAlias = null;
           for (const a of _refAliasesSorted) if (cand.body.startsWith(a)) { hitAlias = a; break; }
-          const acr = hitAlias ? REF_ALIASES[hitAlias] : null;
+          // 裸「N篇」（无书卷前缀）只在当前话题是诗篇时认作章提及——诗篇目录式列举
+          // 常省略「诗篇」（「诗篇七十三篇…，七十四篇二至三节」）
+          const barePianOnly = !hitAlias && /^第?[一二三四五六七八九十百零〇○]+篇$/.test(cand.body);
+          if (barePianOnly && weakAcr !== '诗' && curAcronym !== '诗') continue;
+          const acr = hitAlias ? REF_ALIASES[hitAlias] : (barePianOnly ? '诗' : null);
           const rest = cand.body.slice(hitAlias ? hitAlias.length : 0);
-          const chM = rest.match(/^第?([一二三四五六七八九十百〇○]+)章$/);
+          const chM = rest.match(/^第?([一二三四五六七八九十百零〇○]+)(?:章|篇)$/);
           const ch = chM ? cnToInt(chM[1]) : null;
           const maxCh = acr ? bookChapterCount(acr) : 0;
           if (!acr || (ch && maxCh && ch > maxCh)) continue;
           weakAcr = acr;
-          if (ch) { weakCh = ch; weakChFresh = true; }
+          // 不带章号的裸书名（「哥林多后书」「约翰福音」）说明话题换了卷，此前记录的章号
+          // 属于别的书卷，不能再给裸节号用（「诗篇三十六篇…。…约翰福音…一章四节」）
+          if (ch) { weakCh = ch; weakChFresh = true; chapEnd = absEnd; chapFromLine = true; rangeCtx = null; }
+          else if (bookChapterCount(acr) === 1) {
+            // 单章书卷（约贰/约参/犹/门/俄）只有书名时章号唯一：「约翰二书七节，九至十一节」→ 第 1 章
+            weakCh = 1; weakChFresh = true; chapEnd = absEnd; chapFromLine = true;
+          } else {
+            // 只有书名没有章（「约翰二书七节」「哥林多后书」）：话题换了卷且章号未知，
+            // 此前的章上下文（多为上一卷）不能再给裸节范围用
+            weakCh = null; weakChFresh = false; chapFromLine = false; chapEnd = -1;
+          }
           weakEnd = absEnd;
           coveredUntil = absEnd;
           continue;
@@ -7141,17 +7231,56 @@ function detectRefs(text, defaultAcronym, carry) {
         // 说明该提及只是行文顺带旁及（「彼前三章二十节追溯创世记中洪水所预表的浸水」
         // ——后面的（十三3）仍属出埃及记），不跨句则旁及的别卷会把本卷引用劫走。
         // 句末标点后紧跟左括号属「句末+括注」引用式（「…蒙拣选。（弗一4，）」「（10，）…；（14；）」），
-        // 引用仍属该句，不算跨句
+        // 引用仍属该句，不算跨句。分号不判跨句：分号连接的并列分句仍是同一论述
+        // （「…赞同主耶稣在启示录里所用的辞；乃是祂用了『撒但会堂』这个辞。（二9。）」，
+        //  反馈 #30——分号处断开会把 二9 掉回上一段的书卷）
+        // 正文引号用 “”/‘’/「」/『』，中英引号都剥，否则引文里的句号会被当正文句末
         if (weakAcr && weakEnd >= 0) {
-          const between = text.slice(weakEnd, absStart).replace(/『[^』]*』|"[^"]*"|'[^']*'|「[^」]*」/g, '');
-          if (/[。！？；](?![（(])/.test(between)) { weakAcr = null; weakCh = null; weakChFresh = false; }
+          const between = stripQuoteText(text.slice(weakEnd, absStart));
+          if (hasSentenceBreak(between)) { weakAcr = null; weakCh = null; weakChFresh = false; }
+        }
+        if (cand.seq) {
+          // 相对节序列：章上下文取「本行裸章提及（新鲜）」→「最近引用的章」→「裸章」
+          const before = text[absStart - 1];
+          if (before && /[一二三四五六七八九十百零〇○\d章第]/.test(before)) continue;
+          if (!chapFromLine || chapEnd < 0) continue;
+          if (hasSentenceBreak(stripQuoteText(text.slice(chapEnd, absStart)))) continue;
+          const verses = parseVerseSeq(cand.body);
+          if (!verses || !verses.length) continue;
+          const ch = weakChFresh ? weakCh : (rangeChapterFor(rangeCtx, verses[0]) || curChapter || weakCh);
+          if (!ch) continue;
+          // 章号来自本行裸章提及时，书卷也优先用它（马太十三章…五至六节 = 太13:5～6）
+          const tryList = [];
+          if (weakChFresh && weakAcr) tryList.push(weakAcr);
+          for (const t of [curAcronym, defaultAcronym]) if (t && tryList.indexOf(t) < 0) tryList.push(t);
+          let acr = null;
+          for (const tryAcr of tryList) {
+            const maxCh = bookChapterCount(tryAcr);
+            if (maxCh && ch > maxCh) continue;
+            if (!verseKeyExists(`${tryAcr}${ch}:${verses[0]}`)) continue;
+            if (!verseKeyExists(`${tryAcr}${ch}:${verses[verses.length - 1]}`)) continue;
+            acr = tryAcr; break;
+          }
+          if (!acr) continue;
+          const consecutive = verses.every((v, i) => i === 0 || v === verses[i - 1] + 1);
+          const refText = consecutive && verses.length > 1
+            ? `${acr}${ch}:${verses[0]}～${verses[verses.length - 1]}`
+            : `${acr}${ch}:${verses.join('、')}`;
+          refs.push({ start: absStart, end: absEnd, refText });
+          // 只刷新弱上下文，不提升为 curAcronym/curChapter——节序列是「沿用本章」，
+          // 升级成强上下文会把后面别的书卷的相对引用劫走（「诗篇三十六篇八至九节…
+          // …一章四节」的后者其实是本篇所属的约翰福音）
+          weakAcr = acr; weakCh = ch; weakChFresh = true; weakEnd = absEnd;
+          chapEnd = absEnd; chapFromLine = true; rangeCtx = null;
+          coveredUntil = absEnd;
+          continue;
         }
         if (cand.chap) {
           // 左边界：前面不能是数字/章/第（防从「…十二章」中段截出）；
           // 右边界：匹配须以「节/上/下」收尾，或以标点/空白/文末收尾
           //（防「第三章第二段」的「二」被当节号）
           const before = text[absStart - 1];
-          if (before && /[一二三四五六七八九十百〇○\d章第]/.test(before)) continue;
+          if (before && /[一二三四五六七八九十百零〇○\d章第]/.test(before)) continue;
           const after = text[absEnd];
           if (!/[节上下]$/.test(cand.body) && after && !REL_DIGIT_RIGHT.test(after)) continue;
           // 书卷归属：优先「最近上下文书卷」，其章越界/节不存在时回退 defaultAcronym
@@ -7175,6 +7304,8 @@ function detectRefs(text, defaultAcronym, carry) {
           refs.push({ start: absStart, end: absEnd, refText: acr + cand.body });
           curAcronym = acr;
           curChapter = parsed.chapter;
+          rangeCtx = parsed.span || null;
+          chapEnd = absEnd; chapFromLine = true;
           weakChFresh = false;   // 带章号的引用已建立章上下文，优先于此前的裸章提及
           coveredUntil = absEnd;
           continue;
@@ -7196,11 +7327,12 @@ function detectRefs(text, defaultAcronym, carry) {
         const half = /[上下]$/.test(body) ? body.slice(-1) : '';
         const core = half ? body.slice(0, -1) : body;
         // 上下半节范围（一4下～5上 / 4下～5上）：按整节范围，key 不带半节（verseKeyExists 按首节校验）
-        const mr = body.match(/^([一二三四五六七八九十百〇○]+)?(\d+)[上下]?[-~～](\d+)[上下]?$/);
-        const mm = mr ? null : core.match(/^([一二三四五六七八九十百〇○]+)?(\d+)(?:[-~～](\d+))?$/);
+        const mr = body.match(/^([一二三四五六七八九十百零〇○]+)?(\d+)[上下]?[-~～](\d+)[上下]?$/);
+        const mm = mr ? null : core.match(/^([一二三四五六七八九十百零〇○]+)?(\d+)(?:[-~～](\d+))?$/);
         if (!mr && !mm) continue;
         const ch = (mr ? mr[1] : mm[1]) ? cnToInt(mr ? mr[1] : mm[1])
-          : (weakChFresh ? weakCh : (curChapter || weakCh));
+          : (weakChFresh ? weakCh
+            : (rangeChapterFor(rangeCtx, +(mr ? mr[2] : mm[2])) || curChapter || weakCh));
         if (!ch) continue;
         // 章越界 → 书卷推断错误（如 弗 的文章里裸写「一一九66」实为诗篇），不包裹以免给出错误链接；
         // 带显式章号的写法（二五11）在最近上下文不成立时回退 defaultAcronym（同章节式相对引用）
@@ -7221,7 +7353,7 @@ function detectRefs(text, defaultAcronym, carry) {
         if (!key) continue;
         refs.push({ start: absStart, end: absEnd, refText: key });
         curAcronym = acr;
-        if (cnPrefix) { curChapter = ch; weakChFresh = false; }
+        if (cnPrefix) { curChapter = ch; weakChFresh = false; chapEnd = absEnd; chapFromLine = true; rangeCtx = null; }
       }
     }
     if (!nextFull) break;
@@ -7230,10 +7362,11 @@ function detectRefs(text, defaultAcronym, carry) {
     const aliasBook = alias ? REF_ALIASES[alias] : null;
     // 章数越界 → 书卷别名是被后缀误匹配的（如「路加十七章」别名缺失时把「加」当加拉太书，
     // 加仅 6 章却有 17 章）→ 死链：不包裹，也不建立引用上下文（防污染后续相对引用）
-    let fullChapter = null;
+    let fullChapter = null, fullSpan = null;
     if (aliasBook) {
       const fr = parseRefTail(aliasBook, nextFull[2], null);
       if (fr && fr.chapter) fullChapter = fr.chapter;
+      if (fr && fr.span) fullSpan = fr.span;
     }
     const aliasMaxCh = aliasBook ? bookChapterCount(aliasBook) : 0;
     if (fullChapter && aliasMaxCh && fullChapter > aliasMaxCh) {
@@ -7249,7 +7382,10 @@ function detectRefs(text, defaultAcronym, carry) {
     // （如「约一14」实际是 约 + 一14），用 startsWith 反查会取到最长别名而错判书卷
     if (aliasBook) {
       curAcronym = aliasBook;
-      if (fullChapter) curChapter = fullChapter;
+      if (fullChapter) {
+        curChapter = fullChapter; rangeCtx = fullSpan;
+        chapEnd = end; chapFromLine = true;
+      }
     }
     segStart = end;
     weakAcr = null; weakCh = null; weakChFresh = false;   // 全书引用是最强上下文，覆盖此前的裸书名弱上下文
@@ -7289,7 +7425,7 @@ function detectLrHeading(line) {
   if (/^[０-９]+[\u3000 ]+/.test(t)) return { level: 3 };
   if (/^[ａ-ｚ][\u3000 ]+/.test(t)) return { level: 4 };
   // 括号格式：（一）（１）（ａ）（level 5-7）
-  if (/^（[一二三四五六七八九十百〇○]+）[\u3000 ]+/.test(t)) return { level: 5 };
+  if (/^（[一二三四五六七八九十百零〇○]+）[\u3000 ]+/.test(t)) return { level: 5 };
   if (/^（[０-９]+）[\u3000 ]+/.test(t)) return { level: 6 };
   if (/^（[ａ-ｚ]）[\u3000 ]+/.test(t)) return { level: 7 };
   // 书名号格式：《一》《１》《ａ》（level 8-10）
