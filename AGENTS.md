@@ -218,7 +218,7 @@
 
 | 项 | 值 |
 |----|-----|
-| API | `POST /api/sync/{kind}/ops`（批量推送，逐条裁决）、`GET /api/sync/{kind}/changes?since={rev}`（增量拉取）。kind ∈ annotations / chapterNotes / lrNotes / bookNotes / morningNotes / **topicNotes**（旧版专题屏笔记，2026-10-21 新增、同日随作业单改版停止产生——**通道与旧数据保留**，服务端按 kind 自动建列，无需改 server.py）。旧 `/api/kv` 端点保留（bible-reader 项目仍在用） |
+| API | `POST /api/sync/{kind}/ops`（批量推送，逐条裁决）、`GET /api/sync/{kind}/changes?since={rev}`（增量拉取）。kind ∈ annotations / chapterNotes / lrNotes / bookNotes / morningNotes / **topicNotes**（旧版专题屏笔记，2026-10-21 新增、同日随作业单改版停止产生——**通道与旧数据保留**）。**服务端 kind 是硬编码白名单**（`../server-ops/files/bible-reader/server.py` 的 `SYNC_KINDS`，不是按 kind 自动建表）：客户端 `sync.js` 的 `SYNC_KINDS` 加一项必须同步改服务端并重启 bible-kv，否则该项每次拉取 `400 invalid_kind` → 客户端整轮 `pullAll` 判失败（`remoteOk=false`）→ **所有设备的状态行常显「离线」**，而其它 kind 其实已同步（2026-10-21 加 topicNotes 漏改服务端，10-22 实测撞上、已修）。旧 `/api/kv` 端点保留（bible-reader 项目仍在用） |
 | 服务端存储 | SQLite `items` 表（每条目一行：payload / client_updated_at / server_rev / deleted / last_op_id / device_id，索引 `(uid,kind,server_rev)`）+ `sync_state` 表（每账号每 kind 单调修订号）。**PUT 请求体上限 1MB**（2026-09-09 从 64KB 放宽——原上限导致平板 49 条划线静默滞留的事故根因；超限返回 `body_too_large`） |
 | 客户端 | `sync.js`（`window.BibleStudySync`，v2 重写）：**outbox 模式**——本地改动 diff 成条目级 op（含完整 payload + `base_server_rev` + `op_id`），持久化于 `sync:v2:outbox`；flush 分批 POST，按结果逐条清账 |
 | 裁决语义 | 服务端逐条：`op_id` 与行上 `last_op_id` 相同 → **duplicate**（幂等返回已存 rev）；`base_server_rev` == 当前 server_rev → **accepted**（分配新 rev）；不匹配 → **conflict**（附服务端当前版本，不覆盖）。`import=true` → 条目不存在才写入（设备首运行播种）；`force=true` → 跳过 base 检查（强制覆盖按钮）。**冲突自动裁决**（客户端）：按 `(client_updated_at, device_id)` 定序，本地晚→换 base 重推；服务端晚→覆盖本地；**败者全文存入冲突备份** `sync:v2:conflicts`（上限 100 条），绝不静默消失 |

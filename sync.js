@@ -658,7 +658,7 @@
             if (it.deleted) { stats.tombstones++; return; }
             stats.live++;
             if (kind === "annotations") {
-              if (!stats.types) stats.types = { verse: [0, 0], lr: [0, 0], book: [0, 0], morning: [0, 0] };
+              if (!stats.types) stats.types = { verse: [0, 0], lr: [0, 0], book: [0, 0], morning: [0, 0], topic: [0, 0] };
               var p = it.payload || {};
               var t = stats.types[p.type];
               if (t) { t[0]++; if (p.note) t[1]++; }

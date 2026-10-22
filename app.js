@@ -339,6 +339,9 @@ function applySyncedState() {
   state.lrNotes = load(LS_LR_NOTES, {});
   state.bookNotes = load(LS_BOOK_NOTES, {});
   state.morningNotes = load(LS_MORNING_NOTES, {});
+  // 专题笔记虽已停止产生，通道仍在同步：不重载会让笔记管理用旧内存整体回写，
+  // 把刚拉下来的条目判成「本地删除」并推成墓碑（连带删掉其它设备上的）
+  state.topicNotes = load(LS_TOPIC_NOTES, {});
   renderChapter();
   renderStudy();
 }
