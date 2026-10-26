@@ -1,4 +1,4 @@
-/* 书报合集层专项（2026-10-12）：首页 7 块（倪文集/书报拆分 + 2026-10-21 活力八）→ 书报二级层 → 合集块直进 → 搜索 */
+/* 书报合集层专项（2026-10-12）：首页 8 块（倪文集/书报拆分 + 2026-10-21 活力八）→ 书报二级层 → 合集块直进 → 搜索 */
 const { spawn } = require('child_process');
 const ROOT = require('path').resolve(__dirname, '..');
 const PORT = 8776;   // 测试专用端口：不碰用户遗留的 8765（否则会静默跑在旧代码上）
@@ -24,8 +24,8 @@ async function main() {
 
     // 1. 首页 7 块且含 倪文集/书报/活力八
     const r1 = await page.evaluate(() => [...document.querySelectorAll('#homeGrid .home-block')].map(b => b.dataset.entry));
-    const ok1 = r1.length === 7 && r1.includes('ni') && r1.includes('bookhub') && r1.includes('vitality8');
-    console.log('1. 首页 7 块（含活力八）:', ok1 ? '✓' : '✗', '|', r1.join(','));
+    const ok1 = r1.length === 8 && r1.includes('ni') && r1.includes('bookhub') && r1.includes('vitality8') && r1.includes('audio');
+    console.log('1. 首页 8 块（含活力八/听书）:', ok1 ? '✓' : '✗', '|', r1.join(','));
     if (!ok1) fail = 1;
 
     // 2. 点倪文集 → 直达 ni 阅读器

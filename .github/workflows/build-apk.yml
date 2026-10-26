@@ -135,7 +135,15 @@ jobs:
             $CURL "$BASE/morning/$pid.json" -o "www/data/morning/$pid.json"
             check_json "www/data/morning/$pid.json"
           done
-          echo "lifereading: $(ls www/data/lifereading/ | wc -l) | books: $(ls www/data/books/ | wc -l) | morning: $(ls www/data/morning/ | wc -l)"
+          # 听书：合集索引 → 各合集元数据（音频本体在 OSS，APK 只带几十 KB 元数据）
+          mkdir -p www/data/audio
+          $CURL "$BASE/audio/index.json" -o "www/data/audio/index.json"
+          check_json "www/data/audio/index.json"
+          for aid in $(python3 -c "import json; print(' '.join(c['id'] for c in json.load(open('www/data/audio/index.json'))['collections']))"); do
+            $CURL "$BASE/audio/$aid.json" -o "www/data/audio/$aid.json"
+            check_json "www/data/audio/$aid.json"
+          done
+          echo "lifereading: $(ls www/data/lifereading/ | wc -l) | books: $(ls www/data/books/ | wc -l) | morning: $(ls www/data/morning/ | wc -l) | audio: $(ls www/data/audio/ | wc -l)"
           du -sh www/data
 
       - name: 安装依赖

@@ -1287,7 +1287,7 @@ mark.sr-hit {
 /* ── 阅读器模块容器切换（默认 bible；body-mod-lifereading / body-mod-books / body-mod-morning / body-mod-notes 切换） ── */
 /* 层级导航已统一走停靠抽屉 #navDrawer：左栏仅剩笔记管理分类树（.nav-col 默认 display:none） */
 #lrMain, #lrSide, #bookMain, #bookSide, #morningMain, #morningSide,
-#notesMain, #notesSide { display: none; }
+#audioMain, #notesMain, #notesSide { display: none; }
 .body-mod-notes .nav-col { display: flex; }
 .body-mod-lifereading #chapterTheme, .body-mod-lifereading #verseContainer { display: none; }
 .body-mod-lifereading #studyTabs, .body-mod-lifereading #studyBody { display: none; }
@@ -1301,6 +1301,16 @@ mark.sr-hit {
 .body-mod-morning #studyTabs, .body-mod-morning #studyBody { display: none; }
 .body-mod-morning #morningMain { display: block; }
 .body-mod-morning #morningSide { display: flex; flex-direction: column; min-height: 0; }
+/* 听书：单列（没有正文可标注、没有笔记要写，右栏整个不要） */
+.body-mod-audio #chapterTheme, .body-mod-audio #verseContainer { display: none; }
+.body-mod-audio #studyTabs, .body-mod-audio #studyBody { display: none; }
+.body-mod-audio #audioMain { display: block; }
+.body-mod-audio .layout { grid-template-columns: minmax(0, 1fr); }
+.body-mod-audio .text-col { grid-column: 1; }
+.body-mod-audio .study-col { display: none; }
+.body-mod-audio #viewModeBtn, .body-mod-audio #hideMarksBtn, .body-mod-audio #studyFullBtn,
+.body-mod-audio #typographyBtn { display: none !important; }
+.body-mod-audio .crumb-nav { display: none; }
 /* 生命读经/书报/晨兴模块：顶栏留 ⚙️ + 反馈（双页/隐藏注号/研读全屏/笔记隐藏；翻章按钮无意义） */
 .body-mod-lifereading #viewModeBtn, .body-mod-lifereading #hideMarksBtn, .body-mod-lifereading #studyFullBtn { display: none !important; }
 .body-mod-lifereading .crumb-nav { display: none; }
@@ -1378,6 +1388,82 @@ mark.sr-hit {
 .morning-head.lr-h8, .morning-head.lr-h9, .morning-head.lr-h10 {
   font-size: .97em; font-weight: 450; margin: 7px 0 5px; margin-left: 32px;
 }
+
+/* ── 听书模块（audio，2026-10-26）：单列主区 = 讲次标题 + 自绘播放器 + 分段列表 ──
+   自绘控件而非原生 <audio controls>：各平台外观不一、跟不了主题，且高度吃版面。
+   <audio> 元素本身不在 DOM 里（state.audioEl 单例），所以重渲染不打断播放。 */
+.audio-main { padding: 20px 24px 40px; max-width: 720px; }
+.au-eyebrow { font-size: var(--fs-12); color: var(--text-muted); letter-spacing: .5px; margin-bottom: 6px; }
+.au-title { font-size: var(--fs-20); font-weight: 700; color: var(--heading); line-height: 1.35; margin: 0 0 6px; }
+.au-meta { font-size: var(--fs-13); color: var(--text-muted); margin-bottom: 18px; }
+
+.au-player {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+  box-shadow: var(--shadow-sm); padding: 16px 18px 14px; margin-bottom: 24px;
+}
+.au-pg-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.au-time {
+  flex: none; width: 46px; font-size: var(--fs-12); color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.au-time.right { text-align: right; }
+.au-pg {
+  flex: 1; height: 4px; border-radius: 2px; background: var(--slider-track);
+  position: relative; cursor: pointer;
+}
+/* 键盘可聚焦（role=slider + tabindex=0）：给出可见焦点环，否则纯键盘用户看不到当前焦点 */
+.au-pg:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; }
+.au-track:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.au-pg-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--brand); border-radius: 2px; }
+.au-pg-knob {
+  position: absolute; top: 50%; left: 0; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--brand); border: 2px solid var(--panel); transform: translate(-50%, -50%);
+  box-shadow: 0 1px 4px rgba(var(--brand-rgb), .5);
+}
+.au-pg:hover .au-pg-knob { transform: translate(-50%, -50%) scale(1.15); }
+
+.au-ctrl { display: flex; align-items: center; justify-content: center; gap: 22px; position: relative; }
+.au-side {
+  width: 46px; height: 46px; border: 0; background: transparent; cursor: pointer;
+  color: var(--text-soft); font-family: inherit; font-size: var(--fs-11); font-weight: 700;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  border-radius: 50%; letter-spacing: -.3px;
+}
+.au-side .g { font-size: var(--fs-15); line-height: 1; font-weight: 400; }
+.au-side:hover { background: var(--hover); color: var(--brand); }
+.au-play {
+  width: 54px; height: 54px; border-radius: 50%; border: 0; cursor: pointer; flex: none;
+  background: var(--brand); color: var(--on-brand); font-size: var(--fs-20);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 14px rgba(var(--brand-rgb), .4);
+}
+.au-play:hover { background: var(--brand-dark); }
+.au-speed {
+  position: absolute; right: 0; min-width: 46px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-soft);
+  font-family: inherit; font-size: var(--fs-12); font-weight: 600;
+  padding: 4px 9px; border-radius: var(--radius-pill); cursor: pointer;
+}
+.au-speed:hover { border-color: var(--brand); color: var(--brand); }
+
+.au-sec-head { font-size: var(--fs-12); font-weight: 600; letter-spacing: .5px; color: var(--text-muted); margin: 0 0 8px 2px; }
+.au-track {
+  display: flex; align-items: center; gap: 10px; padding: 11px 12px;
+  border: 1px solid transparent; border-radius: var(--radius-md);
+  font-size: var(--fs-15); color: var(--text); cursor: pointer;
+}
+.au-track:hover { background: var(--surface-alt); }
+.au-track.cur {
+  background: var(--panel); border-color: var(--border);
+  box-shadow: var(--shadow-sm); color: var(--brand); font-weight: 600;
+}
+.au-track .ic { flex: none; width: 16px; text-align: center; font-size: var(--fs-12); color: var(--text-muted); }
+.au-track.cur .ic { color: var(--brand); }
+.au-track .name { flex: 1; min-width: 0; }
+.au-track .dur { flex: none; font-size: var(--fs-12); color: var(--text-muted); font-weight: 400; font-variant-numeric: tabular-nums; }
+/* 抽屉右栏的讲次序号（窄栏里比前缀标题更省字） */
+.au-dw-num { flex: none; width: 20px; text-align: right; font-size: var(--fs-11); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.dw-item.cur .au-dw-num { color: var(--brand); opacity: .8; }
 
 /* ── 笔记管理模块：左栏分类树 / 主区工具条+列表+批量 / 右栏编辑面板 ── */
 .notes-nav { padding: 8px 6px; overflow-y: auto; }
@@ -1523,6 +1609,9 @@ mark.sr-hit {
   /* 该模块不使用「读经|研读」pill：列表 → 编辑改由「点条目 push + 返回条」承担
      （Material 3：窄屏 pane 切换走返回栈；NN/g：长时停留/复杂内容不用 overlay） */
   body.body-mod-notes #modePill { display: none; }
+  /* 听书没有「研读」视图（单列播放器），pill 无意义 */
+  body.body-mod-audio #modePill { display: none; }
+  body.body-mod-audio .audio-main { padding: 16px 16px 32px; }
   /* 分类树改由统一导航抽屉承担（桌面仍用左栏 #navCol 树） */
   body.body-mod-notes .nav-col { display: none; }
   /* 编辑面板顶部返回条（仅移动端 notes 显示） */
@@ -1596,6 +1685,8 @@ mark.sr-hit {
     overflow: hidden;   /* 超窄屏标题省略 */
     cursor: pointer;   /* 移动端点击弹章节选择 */
   }
+  /* 听书没有 pill/Aa（下图已隐藏），把右侧让位收回给标题；否则长讲次名被无谓截断 */
+  body.body-mod-audio .crumb { right: 56px; }
   .crumb .crumb-nav { display: none; }   /* 翻页移至底部导航 */
   .topbar-actions { gap: 2px; margin-left: auto; position: relative; z-index: 2; }   /* crumb 绝对定位后：推到最右 + 盖在其上层避免拦截点击 */
   #menuBtn { width: 44px; height: 44px; margin-left: -6px; }

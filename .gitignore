@@ -60,3 +60,6 @@ docs/*.har
 
 # 专题产物（scripts/build-topics.py 生成，与其它 data/* 一样不入库）
 data/topics/
+
+# 听书元数据（scripts/export-audio.py 生成，音频本体在 OSS）
+data/audio/

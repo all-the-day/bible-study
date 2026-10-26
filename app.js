@@ -30,6 +30,7 @@ const LS_VCONSOLE = 'bible-study.vconsole';          // 调试模式（PageSpy�
 const LS_TYPO = 'bible-study.typography';            // {scale, lh} 阅读排版（字号倍率 / 行距），纯本地不入云同步
 const LS_THEME = 'bible-study.theme';                // 阅读主题：classic|indigo|paper|minimal，纯本地不入云同步（index.html 头部 early script 同步读）
 const LS_TOPIC_NOTES = 'bible-study.topicNotes';     // 旧版（1.0.59）专题屏级笔记：作业单页已无正文，只保留旧数据与云同步通道
+const LS_AUDIO_LAST = 'bible-study.audioLast';       // {collection, lecture, track, time} 听书断点（纯本地，不进云同步）
 // 阅读排版取值约束（必须在 state 初始化前声明：state.typography 依赖 normalizeTypo 读取这两个常量）
 const TYPO_DEFAULTS = { scale: 1, lh: 2 };
 const TYPO_RANGE = { scale: [0.85, 2], lh: [1.5, 2.4] };   // 字号上限 2.0：满足 WCAG 1.4.4「文字可放大 200%」
@@ -124,6 +125,18 @@ const state = {
   notesGroup: null,           // 左栏树选中的叶子分组（过滤主区）
   notesSelectedItem: null,    // 右栏编辑目标：{kind:'ann',id} | {kind:'note',dict,key}
   notesListScroll: 0,         // 移动端：打开全屏编辑面板前的列表滚动位置（返回时恢复）
+  // 听书阅读器（audio）：音频本体在 OSS，本仓库只放元数据（data/audio/）
+  audioIndex: null,          // data/audio/index.json（合集清单）
+  audioData: {},             // {collectionId: {baseUrl, groups, lectures}} 合集元数据缓存
+  audioPending: {},          // 在途去重
+  audioAllDone: false,       // 全合集已加载（首页检索用）
+  audioColl: null,           // 当前合集 id
+  audioLecture: null,        // 当前讲次号（合集内 1 基顺序号，不是书卷号）
+  audioTrack: 0,             // 当前分片索引（0 基）
+  audioResume: 0,            // 进模块时要恢复的秒数（仅同一讲同一分片）
+  audioEl: null,             // 单例 <audio>：自绘控件驱动，重渲染不重建（保留播放状态）
+  audioSpeed: 1,             // 倍速（纯本地偏好，随 audioLast 一起落盘）
+  audioLastSave: 0,          // 播放位置落盘节流时间戳
 };
 
 /* 合集注册表（数据驱动）：首页块列表，点击 = 直接进入对应阅读器模块。
@@ -134,6 +147,7 @@ const COLLECTIONS = [
   { id: 'vitality8', title: '活力八', icon: '🔥', entry: () => openTopic('vitality8') },
   { id: 'notes', title: '我的笔记', icon: '📝', entry: () => enterModule('notes') },
   { id: 'morning', title: '听抄', icon: '🌅', entry: () => enterModule('morning') },
+  { id: 'audio', title: '听书', icon: '🎧', entry: () => enterModule('audio') },
   { id: 'ni', title: '倪文集', icon: '📚', entry: () => enterModule('books', { series: 'ni' }) },
   { id: 'bookhub', title: '书报', icon: '🗂️', entry: () => openBookHub() },
 ];
@@ -166,6 +180,7 @@ const THEME_ICONS = {
   lifereading: _thSvg('<path d="M6 3.5h12v17l-6-3.5-6 3.5z"/><path d="M9.5 3.5v7l2.5-1.8 2.5 1.8v-7"/>'),
   notes: _thSvg('<rect x="5" y="4" width="14" height="16" rx="2"/><path d="M8.5 9h7M8.5 13h7M8.5 17h4"/>'),
   morning: _thSvg('<path d="M4.5 13.5a7.5 7.5 0 0 1 15 0"/><rect x="3.5" y="13.5" width="4" height="6.5" rx="1.6"/><rect x="16.5" y="13.5" width="4" height="6.5" rx="1.6"/>'),
+  audio: _thSvg('<path d="M7.5 14.5V9a4.5 4.5 0 0 1 9 0v5.5"/><rect x="4.5" y="13" width="3.5" height="6" rx="1.5"/><rect x="16" y="13" width="3.5" height="6" rx="1.5"/>'),
   ni: _thSvg('<path d="M5 6.5h11M7 10h11M9 13.5h11"/><path d="M4 17.5l3.2-11h2"/>'),
   bookhub: _thSvg('<path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>'),
   vitality8: _thSvg('<path d="M12 3.5c1.6 2.8 1.2 4.4-.2 5.8-1.2 1.2-2.3 2.4-2.3 4.2a4.5 4.5 0 0 0 9 0c0-1.7-.8-2.7-1.6-3.6"/><path d="M12 20.5a3 3 0 0 1-3-3c0-1.8 1.6-2.4 1.6-4.4"/>'),
@@ -226,6 +241,7 @@ function openThemePicker() {
 /* ── 用户语言版本记录（单一来源）：① 使用帮助弹窗「最近更新」；② 更新弹窗「本次更新」。
    纪律：只记用户可见变化、不记 chore/内部改动；用户可见功能发布时在顶部补一行（AGENTS.md 发版流程）。 ── */
 const CHANGELOG = [
+  { v: '1.0.64', date: '2026-10-26', items: ['首页新增「听书」：鸟瞰圣经 41 讲，可边听边标记进度，下次进来接着听', '听书支持倍速、±15 秒快进快退，同一讲的各段会自动接续播放'] },
   { v: '1.0.63', date: '2026-10-22', items: ['经文引用认得更全：像「一章七至八节，十二至十四节，十六至十七节」这样的后续节范围也能点开了', '括号里的节号不再跟错书卷：「（二9。）」这类引用会归到正文正在讲的卷（如启示录）而不是上一篇的卷', '诗篇按「篇」写的引用（如「诗篇一百零七篇二至六节」）现在也能识别，后面的裸节号跟着它走'] },
   { v: '1.0.61', date: '2026-10-21', items: ['书报正文修正：属灵书报、特会信息、结晶读经等合集里的乱码与错字改对了，与源一致', '重复收录的几篇正文改为「已并入」指引，不再重复阅读', '书号查找覆盖新约总论、造就类、教会与事奉类等合集'] },
   { v: '1.0.60', date: '2026-10-21', items: ['「活力八」改成作业单页：按周列出原文、三篇生命读经、指定书报、背经与注解，点条目直达对应位置，不用再自己翻卷翻篇'] },
@@ -258,7 +274,7 @@ function openHelpPopup() {
     ${e.items.map(i => `<div class="help-up-item">${escapeHtml(i)}</div>`).join('')}`).join('');
   openPopup('使用帮助', `
     <div class="help-h"><span class="n">1</span>从这里开始</div>
-    <div class="help-li">首页六个方块就是六个模块，点进去直接用</div>
+    <div class="help-li">首页的方块就是各模块入口，点进去直接用</div>
     <div class="help-li">顶部搜索：输 <span class="help-k">创24</span> 直达创世记 24 章；也能搜篇目和你自己的笔记</div>
     <div class="help-h"><span class="n">2</span>阅读</div>
     <div class="help-li">经文里橙色小数字 = 注解，蓝色字母 = 串珠，点开看</div>
@@ -1195,8 +1211,18 @@ function renderHomeHistory() {
 }
 
 // 进首页：body.home 隐藏工作区（CSS 驱动），清掉研读 overlay 残留与弹窗
+// 离开工作区（首页/合集层/专题）时停掉听书：这些屏幕没有任何播放控件，
+// 继续播用户既看不见也停不下来（只能靠锁屏卡片或回模块）
+function pauseAudioForScreen() {
+  const a = state.audioEl;
+  if (!a || a.paused) return;
+  if (state.audioLecture && audioLectureData()) audioSavePos(true);
+  a.pause();
+}
+
 function showHome() {
   state.screen = 'home';
+  pauseAudioForScreen();
   document.body.classList.add('home');
   document.body.classList.remove('mobile-study', 'topic');   // 专题是第三种屏幕，回首页一并退出
   closeBookHub();
@@ -1225,6 +1251,7 @@ function openTopic(id, opts) {
   if (!topic) return;
   const prevTopic = state.topicId;
   state.screen = 'topic';
+  pauseAudioForScreen();
   state.topicId = id;
   document.body.classList.add('topic');
   document.body.classList.remove('home', 'bookhub', 'mobile-study');
@@ -1338,6 +1365,7 @@ function ensureTopicData(id) {
 // 点合集块 enterModule('books', {series}) 直进该系列阅读器；⌂/搜索跳转照常。
 function openBookHub() {
   state.screen = 'bookhub';
+  pauseAudioForScreen();
   document.body.classList.add('bookhub');
   document.body.classList.remove('home', 'mobile-study', 'topic');
   [...document.body.classList].filter(c => c.startsWith('body-mod-')).forEach(c => document.body.classList.remove(c));
@@ -1441,6 +1469,7 @@ function routeContainer() {
   if (m === 'lifereading') return state.lrBookIndex ? `lr:${state.lrBookIndex}` : null;
   if (m === 'books') return state.bookSeries ? `books:${state.bookSeries}:${state.bookVolume}:${state.bookBook}` : null;
   if (m === 'morning') return state.morningPeriod ? `morning:${state.morningPeriod}` : null;
+  if (m === 'audio') return state.audioColl ? `audio:${state.audioColl}` : null;
   if (m === 'notes') return 'notes';
   return null;
 }
@@ -1459,6 +1488,8 @@ function formatRoute() {
     ? `#/book/${state.bookSeries}/${state.bookVolume}/${state.bookBook || 0}/${state.bookChapter || 0}` : null;
   if (m === 'morning') return (state.morningPeriod && state.morningChapterId)
     ? `#/morning/${state.morningPeriod}/${state.morningChapterId}` : null;
+  if (m === 'audio') return (state.audioColl && state.audioLecture)
+    ? `#/audio/${state.audioColl}/${state.audioLecture}` : null;
   if (m === 'notes') return '#/notes';
   return null;
 }
@@ -1536,6 +1567,19 @@ async function parseRoute() {
     if (!((idx.trainings || []).some(t => t.id === period))) return null;
     return { kind: 'morning', period, chapter };
   }
+  if (seg === 'audio') {
+    const coll = parts[1], lecture = +parts[2];
+    if (!coll || !/^[a-z0-9_-]+$/i.test(coll)) return null;
+    if (!Number.isInteger(lecture) || lecture < 1) return null;
+    const idx = await ensureAudioIndex();
+    if (!((idx.collections || []).some(c => c.id === coll))) return null;
+    const d = await ensureAudioCollection(coll);
+    const lecs = (d && d.lectures) || [];
+    if (!lecs.length) return null;
+    // 讲次号越界钳制到最近存在的讲次（与 bible 章号钳制同语义）
+    const hit = lecs.find(l => l.n === lecture) || lecs[lecs.length - 1];
+    return { kind: 'audio', collection: coll, lecture: hit.n };
+  }
   return null;
 }
 
@@ -1565,6 +1609,7 @@ async function applyRoute(r) {
       return;
     }
     if (r.kind === 'morning') { await openMorningArticle(r.period, r.chapter); return; }
+    if (r.kind === 'audio') { await openAudioLecture(r.collection, r.lecture); return; }
   } finally {
     _routeApplying = false;
     _routeLastContainer = routeContainer();
@@ -1863,6 +1908,55 @@ const READER_MODULES = {
     onMenu() { toggleDrawerDock(); },
     onCrumbClick() { openNavDrawer(); },
   },
+  audio: {
+    id: 'audio',
+    title: '听书',
+    // 直接进上次收听位置（LS_AUDIO_LAST）；位置只在「同一讲同一分片」时恢复播放秒数
+    async enter(opts) {
+      setMobileView('read');   // 移动端研读视图进听书会是白屏（textCol+studyCol 都隐藏且 pill 已隐藏）
+      await ensureAudioIndex();
+      const last = load(LS_AUDIO_LAST, null) || {};
+      const colls = (state.audioIndex && state.audioIndex.collections) || [];
+      state.audioColl = (opts && opts.collection) || last.collection || (colls[0] || {}).id || null;
+      if (!colls.some(c => c.id === state.audioColl)) state.audioColl = (colls[0] || {}).id || null;
+      if (!state.audioSpeed) state.audioSpeed = 1;
+      const d = await ensureAudioCollection(state.audioColl);
+      if (!d) { showToast('听书合集数据缺失'); return; }
+      const lecs = d.lectures || [];
+      let n = (opts && opts.lecture) || last.lecture;
+      if (!lecs.some(l => l.n === n)) n = (lecs[0] || {}).n;
+      state.audioLecture = n;
+      const lec = lecs.find(l => l.n === n);
+      // 断点只在「同一合集 + 同一讲 + 同一分片」时恢复秒数——否则深链到另一合集的同号讲次
+      // 会带着上个合集的播放位置去 seek
+      const sameTrack = last.collection === state.audioColl && last.lecture === n
+        && Number.isInteger(last.track);
+      state.audioTrack = sameTrack ? Math.min(last.track, Math.max(0, (lec.tracks || []).length - 1)) : 0;
+      state.audioResume = sameTrack ? (last.time || 0) : 0;
+      if (last.speed) state.audioSpeed = +last.speed || 1;
+      state.studyFull = false;
+      state.viewMode = 'default';
+      applyLayout();
+    },
+    async renderNav() { await ensureAudioIndex(); renderDrawer(); },
+    renderMain() { renderAudioMain(); },
+    renderSide() { /* 单列模块，无右栏 */ },
+    renderCrumb() {
+      const d = audioCollection(), lec = audioLectureData();
+      $('bookName').textContent = (d && d.name) || '听书';
+      $('chapterLabel').textContent = lec ? `第${lec.n}讲 ${lec.title}` : '';
+    },
+    onMenu() { toggleDrawerDock(); },
+    onCrumbClick() { openNavDrawer(); },
+    // 离开模块：暂停 + 落盘（网页版不保证后台播放，APK 也只在 WebView 存活时继续）
+    // 只在位置有效时落盘：enter 失败（合集数据缺失）时 state.audioLecture 可能为空，
+    // 无条件写会把有效断点覆盖成 {lecture:null}
+    onLeave() {
+      if (!state.audioEl) return;
+      if (state.audioLecture && audioLectureData()) audioSavePos(true);
+      state.audioEl.pause();
+    },
+  },
   notes: {
     id: 'notes',
     title: '笔记管理',
@@ -1899,7 +1993,7 @@ const READER_MODULES = {
 
 // body-mod-{id} 类控制三列容器归属（bible 容器默认显示，其他模块容器由 CSS 切换）
 function applyModuleBodyClass(id) {
-  document.body.classList.remove('body-mod-bible', 'body-mod-lifereading', 'body-mod-books', 'body-mod-morning', 'body-mod-notes');
+  document.body.classList.remove('body-mod-bible', 'body-mod-lifereading', 'body-mod-books', 'body-mod-morning', 'body-mod-audio', 'body-mod-notes');
   if (id) document.body.classList.add('body-mod-' + id);
 }
 
@@ -2430,7 +2524,7 @@ function parseBookChapterQuery(q) {
 /* ---- 首页检索：分组收集 + 渲染 ---- */
 const SR_KIND_LABEL = {
   bible: '读经', books: '书报', lr: '生命读经',
-  verse: '经文', fn: '注解', ann: '我的笔记', morning: '听抄', topic: '专题',
+  verse: '经文', fn: '注解', ann: '我的笔记', morning: '听抄', audio: '听书', topic: '专题',
 };
 
 function collectHomeHits(q) {
@@ -2444,6 +2538,7 @@ function collectHomeHits(q) {
   push('fn', searchFootnotes(q, SR_GROUP_LIMIT));
   push('ann', searchAnnotations(q, SR_GROUP_LIMIT));
   push('morning', searchMorningTitles(q, SR_GROUP_LIMIT));
+  push('audio', searchAudioTitles(q, SR_GROUP_LIMIT));
   return groups;
 }
 
@@ -2454,6 +2549,7 @@ function searchByKind(kind, q, limit) {
   if (kind === 'fn') return searchFootnotes(q, limit);
   if (kind === 'ann') return searchAnnotations(q, limit);
   if (kind === 'morning') return searchMorningTitles(q, limit);
+  if (kind === 'audio') return searchAudioTitles(q, limit);
   return { items: [], total: 0 };
 }
 
@@ -2498,6 +2594,7 @@ async function runHomeSearch(q) {
   if (!state.bookSearchIndex || state.bookSearchNeedsNumbers) pending.push(ensureBookSearchIndex().catch(() => null));
   if (!state.lrTitleIndex) pending.push(ensureLrTitleIndex().catch(() => null));
   if (!state.morningAllDone) pending.push(ensureMorningAll().catch(() => null));
+  if (!state.audioAllDone) pending.push(ensureAudioAll().catch(() => null));
   if (!pending.length) return;
   await Promise.all(pending);
   if (my !== _homeSearchSeq) return;
@@ -5131,9 +5228,420 @@ async function openMorningArticle(periodId, chapterId) {
   }
 }
 
+/* ============ 听书（audio，2026-10-26） ============
+   音频本体在阿里云 OSS，仓库只放元数据（data/audio/index.json + {合集}.json，由
+   scripts/export-audio.py 从源目录导出）。模块形态与书报/听抄同构：抽屉左=合集、右=讲次、
+   底部分组切换；主区单列（讲次标题 + 播放器 + 分段列表），**没有正文所以没有标注/笔记**，
+   也因此没有右栏——不存在索引稳定性包袱，增删讲次不会坏任何用户数据。
+   新增合集 = export-audio.py 的 SOURCES 加一条 + 跑脚本，前端零改动。 */
+
+// 时长文案：「86 小时 12 分」/「145 分钟」；null（ffprobe 缺失）时给占位
+function audioDurText(sec) {
+  if (!sec) return '时长未知';
+  const h = Math.floor(sec / 3600), m = Math.round((sec % 3600) / 60);
+  return h ? `${h} 小时 ${m} 分` : `${m} 分钟`;
+}
+// 播放器时钟：「1:24:11」/「24:11」
+function audioClock(sec) {
+  sec = Math.max(0, Math.floor(sec || 0));
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s).padStart(2, '0');
+}
+
+async function ensureAudioIndex() {
+  if (state.audioIndex) return state.audioIndex;
+  try { state.audioIndex = await fetchJSON('data/audio/index.json'); }
+  catch (e) { state.audioIndex = { collections: [] }; }
+  return state.audioIndex;
+}
+
+async function ensureAudioCollection(id) {
+  if (!id) return null;
+  if (state.audioData[id]) return state.audioData[id];
+  if (state.audioPending[id]) return state.audioPending[id];   // 在途去重（同 bookVolPending）
+  // 加载占位只许写进「用户正在看的那个合集」的主区：本函数还会被首页检索预取、
+  // 抽屉搜索、抽屉左栏浏览调用——无条件写会把正在播放的播放器顶成一个 spinner，
+  // 且加载完成后没有任何代码重绘主区（第二个合集上线即踩）。
+  const onScreen = () => state.activeModule === 'audio' && state.screen === 'work' && state.audioColl === id;
+  const p = (async () => {
+    if (onScreen()) showLoadingHint($('audioMain'), '听书加载中…');
+    try {
+      const d = await fetchJSON(`data/audio/${id}.json`);
+      state.audioData[id] = d;
+      return d;
+    } catch (e) {
+      if (onScreen()) showLoadingError($('audioMain'), '听书数据加载失败', () => {
+        ensureAudioCollection(id).then(() => {
+          if (state.activeModule === 'audio') READER_MODULES.audio.renderMain();
+        });
+      });
+      return null;
+    } finally {
+      delete state.audioPending[id];
+    }
+  })();
+  state.audioPending[id] = p;
+  return p;
+}
+
+// 全合集约 20KB/个：首页检索要能搜到所有合集讲次
+async function ensureAudioAll() {
+  const idx = await ensureAudioIndex();
+  const list = await Promise.all(((idx && idx.collections) || []).map(c => ensureAudioCollection(c.id)));
+  state.audioAllDone = list.every(Boolean);
+  return idx;
+}
+
+function audioCollection() { return state.audioData[state.audioColl] || null; }
+function audioLectureData() {
+  const d = audioCollection();
+  return (d && (d.lectures || []).find(l => l.n === state.audioLecture)) || null;
+}
+function audioTrackUrl(t) {
+  const d = audioCollection();
+  if (!d || !t) return '';
+  // OSS 对象 key 可能含中文（其它合集）：逐段编码，保留路径分隔符
+  return d.baseUrl + String(t.path).split('/').map(encodeURIComponent).join('/');
+}
+// 按分组过滤讲次（groups 为空 = 平铺）
+function audioLecturesOf(data, groupId) {
+  const lecs = (data && data.lectures) || [];
+  const gs = (data && data.groups) || [];
+  if (!gs.length) return lecs;
+  return lecs.filter(l => (l.group || gs[0].id) === groupId);
+}
+
+/* 单例 <audio>：自绘控件驱动，重渲染不重建（保留播放位置与播放状态）。
+   不用原生 controls：各平台外观不一、跟不了主题，且高度吃版面。 */
+function ensureAudioEl() {
+  if (state.audioEl) return state.audioEl;
+  const a = new Audio();
+  a.preload = 'metadata';
+  a.addEventListener('loadedmetadata', () => {
+    if (a._resumeAt > 0) {
+      try { a.currentTime = Math.min(a._resumeAt, (a.duration || a._resumeAt)); } catch (e) { /* 忽略 */ }
+      a._resumeAt = 0;
+    }
+    audioSyncProgress();
+  });
+  a.addEventListener('play', audioSyncControls);
+  a.addEventListener('pause', audioSyncControls);
+  a.addEventListener('timeupdate', () => { audioSyncProgress(); audioSavePos(); });
+  a.addEventListener('ended', () => {
+    const lec = audioLectureData();
+    if (lec && state.audioTrack + 1 < lec.tracks.length) playAudioTrack(state.audioTrack + 1, true);
+    else { audioSyncControls(); showToast('本讲已听完'); }
+  });
+  a.addEventListener('error', () => {
+    audioSyncControls();
+    if (state.activeModule === 'audio' && a.dataset.auUrl) showToast('音频加载失败（检查网络，或该讲尚未上传）');
+  });
+  // 锁屏/耳机按键（网页版尽力而为，APK 后台播放不保证）
+  if ('mediaSession' in navigator) {
+    try {
+      navigator.mediaSession.setActionHandler('play', () => audioTogglePlay());
+      navigator.mediaSession.setActionHandler('pause', () => audioTogglePlay());
+      navigator.mediaSession.setActionHandler('seekbackward', () => audioSeekBy(-15));
+      navigator.mediaSession.setActionHandler('seekforward', () => audioSeekBy(15));
+    } catch (e) { /* 老浏览器不支持 */ }
+  }
+  state.audioEl = a;
+  return a;
+}
+
+function audioUpdateMediaSession() {
+  if (!('mediaSession' in navigator) || !window.MediaMetadata) return;
+  const lec = audioLectureData(), d = audioCollection();
+  if (!lec || !d) return;
+  try {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: `第${lec.n}讲 ${lec.title}`,
+      artist: d.speaker || d.name,
+      album: d.name,
+    });
+  } catch (e) { /* 忽略 */ }
+}
+
+// 设源（url 未变则不重设，避免打断播放）；autoplay=true 时随即播放
+function audioSetSource(autoplay) {
+  const lec = audioLectureData();
+  if (!lec) return;
+  const a = ensureAudioEl();
+  const t = lec.tracks[state.audioTrack];
+  if (!t) return;
+  const url = audioTrackUrl(t);
+  if (a.dataset.auUrl !== url) {
+    a.dataset.auUrl = url;
+    a.src = url;
+    a._resumeAt = state.audioResume > 0 ? state.audioResume : 0;
+    state.audioResume = 0;
+  }
+  a.playbackRate = state.audioSpeed;
+  audioUpdateMediaSession();
+  if (autoplay) a.play().catch(() => showToast('播放失败（网络或浏览器策略）'));
+  audioSyncControls();
+  audioSyncProgress();
+}
+
+function audioTogglePlay() {
+  const a = ensureAudioEl();
+  if (!a.dataset.auUrl) { audioSetSource(true); return; }
+  if (a.paused) a.play().catch(() => showToast('播放失败（网络或浏览器策略）'));
+  else a.pause();
+}
+
+function audioSeekBy(delta) {
+  const a = ensureAudioEl();
+  if (!a.dataset.auUrl) return;
+  const dur = a.duration || 0;
+  a.currentTime = Math.max(0, Math.min(dur || Infinity, (a.currentTime || 0) + delta));
+  audioSyncProgress();
+}
+
+function audioCycleSpeed() {
+  const steps = [1, 1.25, 1.5, 2, 0.75];
+  state.audioSpeed = steps[(steps.indexOf(state.audioSpeed) + 1) % steps.length];
+  if (state.audioEl) state.audioEl.playbackRate = state.audioSpeed;
+  const b = $('auSpeed');
+  if (b) b.textContent = `${String(state.audioSpeed).replace(/0$/, '')}×`;
+  audioSavePos(true);
+}
+
+// 播放位置落盘（节流 5s；force=true 用于切讲/切段/离开模块）
+function audioSavePos(force) {
+  const now = Date.now();
+  if (!force && now - state.audioLastSave < 5000) return;
+  state.audioLastSave = now;
+  save(LS_AUDIO_LAST, {
+    collection: state.audioColl,
+    lecture: state.audioLecture,
+    track: state.audioTrack,
+    time: state.audioEl ? Math.floor(state.audioEl.currentTime || 0) : 0,
+    speed: state.audioSpeed,
+  });
+}
+
+function audioSyncControls() {
+  const b = $('auPlay');
+  if (!b) return;
+  const a = state.audioEl;
+  b.textContent = (a && !a.paused) ? '❚❚' : '▶';
+  b.setAttribute('aria-label', (a && !a.paused) ? '暂停' : '播放');
+}
+
+function audioSyncProgress() {
+  const fill = $('auFill'), knob = $('auKnob'), cur = $('auCur'), total = $('auTotal');
+  if (!fill) return;
+  const lec = audioLectureData();
+  const a = state.audioEl;
+  const fallback = lec && lec.tracks[state.audioTrack] ? (lec.tracks[state.audioTrack].durationSec || 0) : 0;
+  const dur = (a && a.duration) || fallback;
+  const pos = (a && a.dataset.auUrl) ? (a.currentTime || 0) : 0;
+  const p = dur ? Math.min(1, pos / dur) : 0;
+  fill.style.width = (p * 100) + '%';
+  knob.style.left = (p * 100) + '%';
+  if (cur) cur.textContent = audioClock(pos);
+  if (total) total.textContent = dur ? audioClock(dur) : '—:—';
+  const pg = $('auPg');
+  if (pg) {   // 读屏与键盘可感知进度
+    pg.setAttribute('aria-valuenow', String(Math.round(p * 100)));
+    pg.setAttribute('aria-valuetext', `${audioClock(pos)} / ${dur ? audioClock(dur) : '—:—'}`);
+  }
+}
+
+function renderAudioMain() {
+  const main = $('audioMain');
+  if (!main) return;
+  const d = audioCollection(), lec = audioLectureData();
+  if (!d || !lec) { main.innerHTML = '<div class="loading-hint">听书数据缺失</div>'; return; }
+  const g = (d.groups || []).find(x => x.id === lec.group);
+  const multi = lec.tracks.length > 1;
+  main.innerHTML = `
+    <div class="au-eyebrow">第 ${lec.n} 讲${g ? ` · ${escapeHtml(g.name)}` : ''}</div>
+    <h1 class="au-title">${escapeHtml(lec.title)}</h1>
+    <div class="au-meta">${audioDurText(lec.durationSec)} · ${lec.tracks.length} 段${d.speaker ? ` · ${escapeHtml(d.speaker)}` : ''}</div>
+
+    <div class="au-player">
+      <div class="au-pg-row">
+        <span class="au-time" id="auCur">0:00</span>
+        <div class="au-pg" id="auPg" role="slider" tabindex="0" aria-label="播放进度"
+             aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0:00">
+          <div class="au-pg-fill" id="auFill"></div>
+          <div class="au-pg-knob" id="auKnob"></div>
+        </div>
+        <span class="au-time right" id="auTotal">—:—</span>
+      </div>
+      <div class="au-ctrl">
+        <button class="au-side" data-aseek="-15" aria-label="后退 15 秒"><span class="g">↺</span>15</button>
+        <button class="au-play" id="auPlay" data-aplay aria-label="播放">▶</button>
+        <button class="au-side" data-aseek="15" aria-label="前进 15 秒"><span class="g">↻</span>15</button>
+        <button class="au-speed" id="auSpeed" data-aspeed aria-label="播放速度">${String(state.audioSpeed).replace(/0$/, '')}×</button>
+      </div>
+    </div>
+
+    ${multi ? `<div class="au-sec-head">分段</div>
+      ${lec.tracks.map((t, i) => `
+        <div class="au-track${i === state.audioTrack ? ' cur' : ''}" data-atrack="${i}" role="button" tabindex="0">
+          <span class="ic">${i === state.audioTrack ? '▶' : '·'}</span>
+          <span class="name">第${cnNum(i + 1)}段</span>
+          <span class="dur">${t.durationSec ? audioClock(t.durationSec) : ''}</span>
+        </div>`).join('')}`
+      : ''}
+  `;
+  audioSetSource(false);
+  audioSyncProgress();
+  audioSyncControls();
+}
+
+async function selectAudioCollection(id) {
+  if (id === state.audioColl && audioCollection()) return;
+  const wasPlaying = state.audioEl && !state.audioEl.paused;
+  if (state.audioEl) state.audioEl.pause();
+  state.audioColl = id;
+  const d = await ensureAudioCollection(id);
+  if (!d) { showToast('听书合集数据缺失'); return; }
+  const first = (d.lectures || [])[0];
+  if (!first) return;
+  state.audioLecture = first.n;
+  state.audioTrack = 0;
+  state.audioResume = 0;
+  renderAudioMain();
+  if (wasPlaying) audioSetSource(true);
+  renderDrawer();
+  READER_MODULES.audio.renderCrumb();
+  $('textCol').scrollTop = 0;
+  syncRoute();
+}
+
+async function selectAudioLecture(n, opts) {
+  const wasPlaying = state.audioEl && !state.audioEl.paused;
+  state.audioLecture = n;
+  state.audioTrack = (opts && Number.isInteger(opts.track)) ? opts.track : 0;
+  state.audioResume = (opts && opts.time) || 0;
+  const lec = audioLectureData();
+  if (!lec) return;
+  if (state.audioTrack >= lec.tracks.length) state.audioTrack = 0;
+  renderAudioMain();
+  if (wasPlaying) audioSetSource(true);
+  audioSavePos(true);
+  const d = audioCollection();
+  pushHistory('audio', { collection: state.audioColl, lecture: n },
+    `${(d && d.name) || '听书'} · 第${n}讲 ${lec.title}`);
+  renderDrawer();
+  READER_MODULES.audio.renderCrumb();
+  $('textCol').scrollTop = 0;
+  syncRoute();
+}
+
+// 切分片（同一讲内）：点击分段 = 播该段
+function playAudioTrack(i, autoplay) {
+  const lec = audioLectureData();
+  if (!lec) return;
+  const idx = Math.max(0, Math.min(i, lec.tracks.length - 1));
+  if (idx === state.audioTrack && state.audioEl && state.audioEl.dataset.auUrl) {
+    if (autoplay) audioSetSource(true);
+    return;
+  }
+  state.audioTrack = idx;
+  state.audioResume = 0;
+  audioSetSource(!!autoplay);
+  audioSavePos(true);
+  const main = $('audioMain');
+  if (main) {
+    main.querySelectorAll('.au-track').forEach((el) => {
+      const on = +el.dataset.atrack === idx;
+      el.classList.toggle('cur', on);
+      const ic = el.querySelector('.ic');
+      if (ic) ic.textContent = on ? '▶' : '·';
+    });
+  }
+}
+
+// 统一入口（首页搜索 / 阅读历史 / 路由深链 / 抽屉）
+async function openAudioLecture(collId, lecture) {
+  if (state.activeModule === 'audio' && state.screen === 'work') {
+    if (collId !== state.audioColl) await selectAudioCollection(collId);
+    if (state.audioLecture !== lecture) await selectAudioLecture(lecture);
+    return;
+  }
+  const sameModule = state.activeModule === 'audio';
+  await enterModule('audio', { collection: collId, lecture });
+  if (sameModule && state.screen === 'work') {
+    if (collId !== state.audioColl) await selectAudioCollection(collId);
+    if (state.audioLecture !== lecture) await selectAudioLecture(lecture);
+  }
+}
+
+// 讲次检索（首页统一检索 + 抽屉模块级搜索共用）
+function searchAudioTitles(q, limit) {
+  const terms = searchTerms(q);
+  const out = { items: [], total: 0 };
+  if (!terms.length) return out;
+  const hits = [];
+  Object.keys(state.audioData).forEach((cid) => {
+    const d = state.audioData[cid] || {};
+    (d.lectures || []).forEach((l) => {
+      const hay = `${l.title} 第${l.n}讲 ${l.n} ${d.name || ''}`.toLowerCase();
+      if (!matchAllTerms(hay, terms)) return;
+      out.total++;
+      if (hits.length < (limit || SR_CAP)) hits.push({ cid, n: l.n, title: l.title, cname: d.name || cid });
+    });
+  });
+  out.items = hits.map(h => ({
+    key: `au:${h.cid}:${h.n}`,
+    c: h.cid,
+    n: h.n,
+    loc: `${h.cname} · 听书`,
+    label: `第${h.n}讲 ${h.title}`,
+    go: () => openAudioLecture(h.cid, h.n),
+  }));
+  return out;
+}
+
+// 播放器交互（事件委托绑一次，主区重渲染不丢）
+function bindAudioEvents() {
+  const main = $('audioMain');
+  if (!main) return;
+  main.addEventListener('click', (e) => {
+    if (e.target.closest('[data-aplay]')) { audioTogglePlay(); return; }
+    const sk = e.target.closest('[data-aseek]');
+    if (sk) { audioSeekBy(+sk.dataset.aseek); return; }
+    if (e.target.closest('[data-aspeed]')) { audioCycleSpeed(); return; }
+    const tr = e.target.closest('[data-atrack]');
+    if (tr) { playAudioTrack(+tr.dataset.atrack, true); return; }
+    const pg = e.target.closest('#auPg');
+    if (pg) {
+      const a = ensureAudioEl();
+      if (!a.dataset.auUrl || !a.duration) return;
+      const r = pg.getBoundingClientRect();
+      const p = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+      a.currentTime = a.duration * p;
+      audioSyncProgress();
+    }
+  });
+  // 键盘：进度条左右键 ±5 秒、分段行 Enter/Space 播放（div 不会自己产生 click）
+  main.addEventListener('keydown', (e) => {
+    const pg = e.target.closest('#auPg');
+    if (pg) {
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        audioSeekBy(e.key === 'ArrowLeft' ? -5 : 5);
+      }
+      return;
+    }
+    const tr = e.target.closest('[data-atrack]');
+    if (tr && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault();
+      playAudioTrack(+tr.dataset.atrack, true);
+    }
+  });
+  // 播放中离开模块：暂停并落盘（后台播放不保证，见 AGENTS.md）
+  window.addEventListener('pagehide', () => audioSavePos(true));
+}
+
 /* ============ 统一导航抽屉（WeBible 模式：双栏主从 + Segment 浏览/历史 + 阅读历史 + 模块级搜索） ============ */
 const LS_HISTORY = 'bible-study.history';   // [{module, loc, title, t}] 阅读历史（纯本地，上限 50）
-const HISTORY_LABELS = { bible: '读经', lifereading: '生命读经', books: '书报', morning: '听抄', topic: '专题' };   // 历史条目模块名（首页块与抽屉历史段共用）
+const HISTORY_LABELS = { bible: '读经', lifereading: '生命读经', books: '书报', morning: '听抄', audio: '听书', topic: '专题' };   // 历史条目模块名（首页块与抽屉历史段共用）
 const HOME_HIST_MAX = 5;   // 首页「最近阅读」展示条数（反馈 #16）
 
 // 抽屉内浏览态：left=左栏选中（bible/lr=书卷 index、books=辑内书 0 基、morning 未用）、
@@ -5254,6 +5762,16 @@ function renderDrawer(sync = true) {
     else if (mod === 'lifereading') dwState.left = state.lrBookIndex;
     else if (mod === 'books') { dwState.vol = state.bookVolume; dwState.left = state.bookBook; }
     else if (mod === 'morning') dwState.vol = state.morningPeriod;
+    else if (mod === 'audio') {
+      dwState.left = state.audioColl;
+      // 分组跟随当前讲次（同 bible 的旧约/新约 tab 随当前书卷同步）：否则深链/跳转进新约的讲次时，
+      // 右栏仍按旧约过滤，当前讲次既不高亮也不在列表里。用户手点分组走 renderDrawer(false) 不覆盖。
+      const d = audioCollection();
+      const gs = (d && d.groups) || [];
+      const lec = audioLectureData();
+      if (lec && lec.group && gs.some(g => g.id === lec.group)) dwState.testament = lec.group;
+      else if (gs.length && !gs.some(g => g.id === dwState.testament)) dwState.testament = gs[0].id;
+    }
   }
   // 搜索条：placeholder 按模块、回填搜索词、非空渲染结果层
   // 笔记管理：抽屉只承担层级导航（搜索在列表工具条、无阅读历史）→ 隐藏搜索条与 Segment，
@@ -5273,7 +5791,10 @@ function renderDrawer(sync = true) {
     return;
   }
   const inp = $('dwSearchInput');
-  inp.placeholder = { bible: '搜索书卷 / 章（如 创24）…', lifereading: '搜索全部篇目…', books: '搜索全部系列书卷/章节/书号…', morning: '搜索全部篇目…' }[mod] || '';
+  inp.placeholder = {
+    bible: '搜索书卷 / 章（如 创24）…', lifereading: '搜索全部篇目…',
+    books: '搜索全部系列书卷/章节/书号…', morning: '搜索全部篇目…', audio: '搜索讲次…',
+  }[mod] || '';
   if (document.activeElement !== inp) inp.value = dwState.query || '';
   renderDrawerSearch(mod);
   const seg = $('dwSeg');
@@ -5299,6 +5820,15 @@ function renderDrawer(sync = true) {
     const flat = vols.length > 1 && vols.every(v => (v.books || []).length === 1);
     foot.innerHTML = (vols.length > 1 && !flat) ? `<div class="dw-foot-seg">
       ${vols.map((v, i) => `<div data-vol="${i + 1}"${dwState.vol === i + 1 ? ' class="sel"' : ''}>${escapeHtml(v.title)}</div>`).join('')}
+    </div>` : '';
+  } else if (mod === 'audio') {
+    // 分组切换由数据驱动（合集 JSON 的 groups）：单组平铺时不渲染。
+    // 取「抽屉左栏正在浏览的合集」而非正在播放的合集——否则切到另一个合集时
+    // 底部分组条仍是上个合集的（点哪都救不回来）
+    const d = state.audioData[dwState.left] || audioCollection();
+    const gs = (d && d.groups) || [];
+    foot.innerHTML = gs.length > 1 ? `<div class="dw-foot-seg">
+      ${gs.map(g => `<div data-t="${escapeHtml(g.id)}"${dwState.testament === g.id ? ' class="sel"' : ''}>${escapeHtml(g.name)}</div>`).join('')}
     </div>` : '';
   } else {
     foot.innerHTML = '';
@@ -5408,6 +5938,33 @@ async function renderDrawerBrowse(mod) {
       `<div class="dw-item${cur === state.morningPeriod && c.number === state.morningChapterId ? ' cur' : ''}" data-r="${c.number}"><span class="t" title="${escapeHtml(c.title)}">${escapeHtml(c.title)}</span></div>`).join('')
       || '<div class="dw-hint">无篇目</div>';
     scrollDrawerCur();
+    return;
+  }
+  if (mod === 'audio') {
+    // 左栏=合集、右栏=该集讲次（点左栏只刷右栏，点右栏才跳）
+    await ensureAudioIndex();
+    if (dwState.seg !== 'browse') return;
+    const colls = (state.audioIndex && state.audioIndex.collections) || [];
+    let cur = dwState.left;
+    if (!cur || !colls.some(c => c.id === cur)) cur = dwState.left = state.audioColl || (colls[0] || {}).id || null;
+    body.innerHTML = `<div class="dw-cols">
+      <div class="dw-col">${colls.map(c =>
+        `<div class="dw-item${c.id === cur ? ' cur' : ''}" data-ac="${escapeHtml(c.id)}"><span class="t" title="${escapeHtml(c.name)}">${escapeHtml(c.name)}</span></div>`).join('')
+        || '<div class="dw-hint">无合集</div>'}
+      </div>
+      <div class="dw-col"><div class="dw-hint">讲次加载中…</div></div>
+    </div>`;
+    scrollDrawerCur();
+    const data = await ensureAudioCollection(cur);
+    if (dwState.left !== cur || dwState.seg !== 'browse') return;   // 期间已切换，丢弃过期渲染
+    const col = $('dwBody').querySelectorAll('.dw-col')[1];          // await 期间 dwBody 可能被重绘
+    if (!col) return;
+    if (!data) { col.innerHTML = '<div class="dw-hint">该合集数据缺失</div>'; return; }
+    const lecs = audioLecturesOf(data, dwState.testament);
+    col.innerHTML = lecs.map(l =>
+      `<div class="dw-item${cur === state.audioColl && l.n === state.audioLecture ? ' cur' : ''}" data-r="${l.n}"><span class="au-dw-num">${l.n}</span><span class="t" title="${escapeHtml(l.title)}">${escapeHtml(l.title)}</span></div>`).join('')
+      || '<div class="dw-hint">无讲次</div>';
+    scrollDrawerCur();
   }
 }
 
@@ -5490,6 +6047,15 @@ async function renderDrawerSearch(mod) {
     }
     total = items.length;
     items = items.slice(0, 50);
+  } else if (mod === 'audio') {
+    await ensureAudioAll();
+    if (my !== _dwSearchSeq) return;
+    const r = searchAudioTitles(q, 50);
+    total = r.total;
+    items = r.items.map(x => ({
+      label: x.label, loc: x.loc,
+      attrs: `data-sr="audio" data-ac="${escapeHtml(x.c)}" data-n="${x.n}"`,
+    }));
   } else if (mod === 'bible') {
     const bc = parseBookChapterQuery(q);
     if (bc) {
@@ -5520,6 +6086,7 @@ async function jumpDrawerSearchResult(it) {
   if (kind === 'lr') await openLrArticle(+it.dataset.bk, { id: +it.dataset.id });
   else if (kind === 'books') await openBookChapter(+it.dataset.v, +it.dataset.b, +it.dataset.c, it.dataset.s);
   else if (kind === 'morning') await openMorningArticle(it.dataset.p, +it.dataset.n);
+  else if (kind === 'audio') await openAudioLecture(it.dataset.ac, +it.dataset.n);
   else if (kind === 'bible-ch') { await selectBook(+it.dataset.b, +it.dataset.c); setMobileView('read'); }
   else if (kind === 'bible') { await selectBook(+it.dataset.b, 1); setMobileView('read'); }
   renderDrawer();
@@ -5546,6 +6113,8 @@ async function jumpHistory(h) {
     await openBookChapter(h.loc.volume, h.loc.book, h.loc.chapter, h.loc.series);
   } else if (h.module === 'morning') {
     await openMorningArticle(h.loc.period, h.loc.chapterId);
+  } else if (h.module === 'audio') {
+    await openAudioLecture(h.loc.collection, h.loc.lecture);
   }
 }
 
@@ -5601,6 +6170,10 @@ async function jumpDrawerBrowse(mod, r) {
     }
   } else if (mod === 'morning') {
     await openMorningArticle(vol, +r);
+  } else if (mod === 'audio') {
+    // r = 讲次号；left = 左栏选中的合集（点右栏时左栏=目标合集，见 dwBody 的 data-ac 分支）
+    if (left !== state.audioColl) await selectAudioCollection(left);
+    if (state.audioLecture !== +r) await selectAudioLecture(+r);
   }
 }
 
@@ -5650,6 +6223,20 @@ function bindDrawerEvents() {
     }
     const h = e.target.closest('.dw-hist-item');
     if (h) { jumpHistory(load(LS_HISTORY, [])[+h.dataset.h]); return; }
+    const ac = e.target.closest('.dw-item[data-ac]');
+    if (ac) {                       // 听书：左栏点合集 = 只刷右栏（与其它模块左栏一致）
+      const id = ac.dataset.ac;
+      dwState.left = id;
+      // 目标合集的分组可能与当前不同（组名/组数都随合集走）：先等它的数据，
+      // 当前 testament 不在其 groups 内就回落到首组，再整抽屉重画（含底部条）。
+      (async () => {
+        const d = await ensureAudioCollection(id);
+        const gs = (d && d.groups) || [];
+        if (gs.length && !gs.some(g => g.id === dwState.testament)) dwState.testament = gs[0].id;
+        renderDrawer(false);        // sync=false：保留左栏选中（不被同步回正在播放的合集）
+      })();
+      return;
+    }
     const fv = e.target.closest('.dw-item[data-vol]');
     if (fv && state.activeModule === 'books') {
       dwState.vol = +fv.dataset.vol;
@@ -5676,6 +6263,7 @@ function bindEvents() {  // 首页：合集块点击 + 顶部搜索 + ⌂ 回首
   bindHomeEvents();
   bindReadingProgress();
   bindDrawerEvents();
+  bindAudioEvents();
   // 隐藏/显示注号
   $('hideMarksBtn').addEventListener('click', () => {
     state.hideMarks = !state.hideMarks;

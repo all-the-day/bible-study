@@ -121,6 +121,22 @@ async function main() {
   const r11 = await page.evaluate(() => ({ hash: location.hash, period: state.morningPeriod }));
   console.log('11. 听抄深链:', (r11.hash === '#/morning/2026-03/3' && r11.period === '2026-03') ? '✓' : '✗', JSON.stringify(r11));
 
+  // 11b. 听书深链 + 越界讲次钳制到最后一讲
+  await page.goto(base + '#/audio/niaokan/35', { waitUntil: 'networkidle0', timeout: 30000 });
+  await waitSplashGone();
+  await page.waitForFunction(() => state.activeModule === 'audio' && state.audioLecture === 35, { timeout: 30000 });
+  await waitRouteIdle();
+  const r11b = await page.evaluate(() => ({ hash: location.hash, coll: state.audioColl, lec: state.audioLecture }));
+  await page.goto(base + '#/audio/niaokan/999', { waitUntil: 'networkidle0', timeout: 30000 });
+  await waitSplashGone();
+  await page.waitForFunction(() => state.activeModule === 'audio' && state.audioLecture === 41, { timeout: 30000 });
+  await waitRouteIdle();
+  const r11c = await page.evaluate(() => ({ hash: location.hash, lec: state.audioLecture }));
+  console.log('11b. 听书深链 + 讲次钳制:',
+    (r11b.hash === '#/audio/niaokan/35' && r11b.coll === 'niaokan' && r11b.lec === 35
+      && r11c.lec === 41 && r11c.hash === '#/audio/niaokan/41') ? '✓' : '✗',
+    JSON.stringify({ r11b, r11c }));
+
   // 12. 笔记模块 + 书报合集层深链
   await page.goto(base + '#/notes', { waitUntil: 'networkidle0', timeout: 30000 });
   await waitSplashGone();

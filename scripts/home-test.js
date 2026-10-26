@@ -232,7 +232,7 @@ async function main() {
   }));
   const r12ok = r12.home && r12.popupShown && r12.popupTitle === '阅读历史' && r12.rows === 6 && r12.firstRow &&
     r12c.popupHidden && !r12c.home && r12c.ch &&
-    r12b.html === '' && r12b.blocks === 7;   // 7 块：2026-10-21 增「活力八」专题块
+    r12b.html === '' && r12b.blocks === 8;   // 8 块：2026-10-21 活力八 + 2026-10-26 听书
   console.log('12. 全部›历史弹窗(就地浏览)+空历史隐藏:', r12ok ? '✓' : '✗',
     '| 留在首页:', r12.home, '| 弹窗行数:', r12.rows, '| 首行:', r12.firstRow, '| 点条目跳转:', r12c.ch, '| 清空后首页块:', r12b.blocks, 'HTML空:', r12b.html === '');
 
