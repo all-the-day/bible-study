@@ -20,7 +20,9 @@ async function main() {
 
   await page.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'networkidle0', timeout: 30000 });
   await page.waitForSelector('#homeGrid .home-block', { timeout: 15000 });
-  await new Promise((r) => setTimeout(r, 1500));
+  // 等 init 收尾再点首页块：并发全量跑时启动数据处理变慢，固定 sleep 兜不住——
+  // init 尾部的 selectBook 会覆写 crumb（本步恰断言 crumb），2026-10-27 notes-module 实测踩过
+  await page.waitForFunction(() => document.getElementById('splash').classList.contains('hidden'), { timeout: 30000 });
 
   // 1. 点晨兴块 → 直进（默认第 1 期第 1 篇，听抄层级标题渲染）
   await page.click('#homeGrid .home-block[data-entry="morning"]');

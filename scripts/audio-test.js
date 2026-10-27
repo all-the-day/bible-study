@@ -77,7 +77,9 @@ async function main() {
 
   await page.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'networkidle0', timeout: 30000 });
   await page.waitForSelector('#homeGrid .home-block', { timeout: 15000 });
-  await sleep(800);
+  // 等 init 收尾再点首页块：并发全量跑时启动数据处理变慢，固定 sleep 后就点击的话
+  // init 尾部的 selectBook/initRoute（覆写 crumb、重渲染）会掀掉刚进的模块态（2026-10-27 notes-module 实测踩过）
+  await page.waitForFunction(() => document.getElementById('splash').classList.contains('hidden'), { timeout: 30000 });
 
   // 1. 首页有听书块
   const blocks = await page.evaluate(() =>

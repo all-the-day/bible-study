@@ -20,6 +20,9 @@ async function main() {
 
   await page.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'networkidle0', timeout: 30000 });
   await page.waitForSelector('#homeGrid .home-block', { timeout: 15000 });
+  // 等 init 收尾再点首页块：并发全量跑时启动数据处理变慢，不等的话 init 尾部的
+  // selectBook/initRoute 会掀掉刚进的模块态（2026-10-27 notes-module 实测踩过）
+  await page.waitForFunction(() => document.getElementById('splash').classList.contains('hidden'), { timeout: 30000 });
 
   // 1. 直进生命读经模块（创世记第1篇）
   await page.click('#homeGrid .home-block[data-entry="lifereading"]');

@@ -44,12 +44,35 @@ async function main() {
   });
   await page.reload({ waitUntil: 'networkidle0' });
   await page.waitForSelector('#homeGrid .home-block', { timeout: 15000 });
-  await wait(800);
+  // 等 init 收尾（splash 隐藏）再点：并发全量跑时启动数据处理变慢，wait(800) 不够就点击的话
+  // init 尾部的 selectBook/initRoute（覆写 crumb、重渲染）会掀掉刚进的模块态（2026-10-27 实测）
+  await page.waitForFunction(() => document.getElementById('splash').classList.contains('hidden'), { timeout: 30000 });
 
   // 1. 直进笔记模块
+  // 竞态探针（2026-10-27 排查并发 flake）：记录 crumb 变更 / 路由写入 / selectBook 调用序列，
+  // 失败时随第 1 步一起打印，用于定位是谁在模块进入后覆写了 UI 状态
+  await page.evaluate(() => {
+    window.__dbg = [];
+    const rec = (tag, extra) => window.__dbg.push(Object.assign({ t: Math.round(performance.now()), tag }, extra || {}));
+    rec('install', { routeReady: _routeReady, active: state.activeModule, screen: state.screen, hash: location.hash });
+    const bn = document.querySelector('#bookName');
+    new MutationObserver(() => rec('crumb', { v: bn.textContent, hash: location.hash }))
+      .observe(bn, { childList: true, characterData: true, subtree: true });
+    const pw = history.pushState.bind(history);
+    history.pushState = (...a) => { rec('push', { url: String(a[2]) }); return pw(...a); };
+    const rw = history.replaceState.bind(history);
+    history.replaceState = (...a) => { rec('replace', { url: String(a[2]) }); return rw(...a); };
+    const sb = window.selectBook;
+    window.selectBook = (...a) => { rec('selectBook', { args: a }); return sb(...a); };
+  });
   await page.click('#homeGrid .home-block[data-entry="notes"]');
-  // 轮询等列表渲染就绪（固定等待在全量高负载下曾不足：条目 0、tab 找不到误报失败）
-  await page.waitForSelector('.notes-item', { timeout: 10000 }).catch(() => {});
+  // 等模块完全就绪再断言：进模块链路 enter() 要拉书报索引/元数据/听抄索引，高负载下可能 >10s；
+  // 期间书报元数据预取补渲染（app.js ensureBookSeriesIndex 的 .then 回调）会先把树/列表渲染出来，
+  // 所以「条目出现」≠「enter 完成、crumb 已写」——必须等 crumb 一起到位（2026-10-27 实证：
+  // 失败现场事件日志零 crumb 变更、零路由写入，树/条目却已由预取回调渲染）
+  await page.waitForFunction(() =>
+    document.querySelector('#bookName').textContent === '笔记管理' &&
+    document.querySelectorAll('.notes-item').length > 0, { timeout: 30000 }).catch(() => {});
   await wait(300);
   const r1 = await page.evaluate(() => ({
     mod: document.body.classList.contains('body-mod-notes'),
@@ -57,10 +80,17 @@ async function main() {
     main: document.querySelector('#notesMain') && getComputedStyle(document.querySelector('#notesMain')).display !== 'none',
     side: document.querySelector('#notesSide') && getComputedStyle(document.querySelector('#notesSide')).display !== 'none',
     crumb: document.querySelector('#bookName').textContent,
+    hash: location.hash,
+    routeReady: _routeReady,
+    active: state.activeModule,
+    screen: state.screen,
+    dbg: window.__dbg,
     treeNodes: [...document.querySelectorAll('#notesNav .notes-tree-node')].map(n => n.textContent),
   }));
   console.log('1. 直进:', r1.mod && r1.nav && r1.main && r1.side && r1.crumb === '笔记管理' ? '✓' : '✗',
-    '| 树节点:', r1.treeNodes.join(','));
+    '| 树节点:', r1.treeNodes.join(','),
+    '| 详情:', JSON.stringify({ mod: r1.mod, nav: r1.nav, main: r1.main, side: r1.side, crumb: r1.crumb, hash: r1.hash, routeReady: r1.routeReady, active: r1.active, screen: r1.screen }),
+    r1.mod && r1.nav && r1.main && r1.side && r1.crumb === '笔记管理' ? '' : '| 事件: ' + JSON.stringify(r1.dbg));
 
   // 2. 全部列表：3 条带笔记标注 + 2 大段笔记 = 5 条目；纯划线 t4（十字架的道）应被排除
   const r2 = await page.evaluate(() => ({
@@ -215,7 +245,8 @@ async function main() {
   await page.evaluate(() => history.replaceState(null, '', location.pathname));
   await page.reload({ waitUntil: 'networkidle0' });
   await page.waitForSelector('#homeGrid .home-block', { timeout: 15000 });
-  await wait(800);
+  // 等 init 收尾（splash 隐藏）再点：同上，防并发负载下 init 尾部掀掉模块态
+  await page.waitForFunction(() => document.getElementById('splash').classList.contains('hidden'), { timeout: 30000 });
   await page.click('#homeGrid .home-block[data-entry="notes"]');
   await wait(1500);
   const r11 = await page.evaluate(() => ({

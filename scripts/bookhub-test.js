@@ -20,7 +20,9 @@ async function main() {
     await page.evaluateOnNewDocument(() => { window.BIBLE_SKIP_UPDATE = true; });
     await page.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'networkidle0', timeout: 30000 });
     await page.waitForSelector('#homeGrid .home-block', { timeout: 15000 });
-    await new Promise((r) => setTimeout(r, 1000));
+    // 等 init 收尾再点首页块：并发全量跑时启动数据处理变慢，固定 sleep 兜不住——
+    // init 尾部的 selectBook 会覆写 crumb（第 2 步恰断言 crumb），2026-10-27 notes-module 实测踩过
+    await page.waitForFunction(() => document.getElementById('splash').classList.contains('hidden'), { timeout: 30000 });
 
     // 1. 首页 7 块且含 倪文集/书报/活力八
     const r1 = await page.evaluate(() => [...document.querySelectorAll('#homeGrid .home-block')].map(b => b.dataset.entry));
