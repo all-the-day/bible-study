@@ -1,8 +1,72 @@
 # bible-study — 读经研读笔记 PWA
 
+## ZCode 快速指南（先读本节）
+
+后续章节保留详细数据契约、历史事故与平台约束，**不必每次通读**；修改某一敏感区域前，再读对应章节和真实代码。用户可见行为另见 `docs/FEATURES.md`。
+
+### 常用命令
+
+```bash
+# 本地预览（仓库根目录）
+python -m http.server 8765 --bind 127.0.0.1
+
+# 快速质量门
+node --check app.js
+node --check sync.js
+node --check update.js
+node --check sw.js
+node scripts/sync2-test.js
+
+# 单个浏览器测试（按需替换测试名）
+cd scripts && node ref-link-test.js
+
+# 全量回归 / 安装 Git 钩子
+bash scripts/run-all-tests.sh
+bash scripts/install-hooks.sh
+
+# 部署干跑，不拷贝、不部署
+node scripts/deploy.mjs --check
+```
+
+- 这是原生 JavaScript 静态 PWA，**没有前端 build、lint、typecheck 或 `npm test`**；APK 由 GitHub Actions + Capacitor 6 云构建。
+- `pre-commit` 检查全部 JS/JSON 并运行 `sync2-test.js`；`pre-push` 顺序运行全部测试。测试输出含 `✗`、`FAIL ` 或 `JS 错误: [` 也算失败，不能只看退出码。
+- 数据导出脚本均在 `scripts/` 内运行：`export.py`（经文等）→ `export-verses.py`；`export-spiritual.py`（书报）→ `export-persons.py`；`export-morning-epub.py <epub> --period <期>`（听抄）；`build-topics.py`（专题）；`export-audio.py`（听书元数据）。详见「数据导出」与各脚本表项。
+
+### 架构与数据边界
+
+- 单页运行时为 `index.html` + `style.css` + `app.js` + `sync.js` + `update.js` + `sw.js`；无框架、无打包步骤。`config/android/` 是 CI 注入的原生插件源码，本地不维护 `android/`。
+- `data/` 大多是生成产物且不入库。经文/生命读经来自兄弟项目 `../bible`，经 `scripts/export*.py` 导出；**不得在 `app.js` 硬编码圣经或书报正文，也不得绕过导出脚本直接改数据库**。
+- 阅读器统一经 `enterModule()` 和 `READER_MODULES` 进入；首页、书报合集层、专题页是独立屏幕。新顶层导航入口必须在尾部调用 `syncRoute()`，不要另写 `location.hash`/`history`。
+- 标注按源文本偏移定位，并带 `text`/`prefix`/`suffix` 自愈信息。修改渲染器时必须保持文本与 `data-base` 坐标一致；书报的 `(series,volume,book,chapter)` 索引上线后必须稳定，去重/清洗用墓碑或保留条目，**不得重排、压缩或删除索引项**。
+- localStorage 删除采用墓碑，云同步采用 outbox + 增量游标 + 冲突备份。新增同步 kind 必须同步修改 `app.js` 的 `SYNC_KEYS`、`sync.js` 的 `SYNC_KINDS`/`KEY_MAP`、远端 `server.py` 白名单及内存态重载；布局与阅读偏好不入云。
+- 听书只有元数据在 `data/audio/`，音频在阿里云 OSS；当前无正文、标注或笔记，新增合集只改 `scripts/export-audio.py` 的 `SOURCES`，不要复制前端模块。
+
+### UI、PWA 与 APK 约束
+
+- 新样式使用 `:root` 设计 token，禁止新增裸色值/裸字号；主题差异只放 `:root[data-theme=…]` 覆盖块。经典主题是零回归基线，五色标注语义不可改。
+- 移动断点为 `900px`，移动规则只放对应媒体查询。顶栏右侧增加按钮时同步调整移动端 `.crumb` 的 `right`；正文缩放只作用于白名单，不缩放 UI。
+- 首屏 splash 关键样式同时存在于 `index.html` 内联 CSS 与 `style.css`，修改时两处同步。SW 对核心代码网络优先、`/data/*` 使用 stale-while-revalidate，**跨域请求不代理不缓存**。
+- APK 下载必须走 `ApkInstallerPlugin` 原生 HTTP，不要退回 WebView fetch（CORS 会失败）。`package.json` 与 `manifest.json` 版本必须一致；固定 debug keystore 不可随意更换，否则覆盖安装会失败。
+
+### 测试与本地环境坑
+
+- 浏览器测试依赖本地静态服务器和 Puppeteer；进入工作区前先 `enterWork()`，测试里设置 `window.BIBLE_SKIP_UPDATE=true`。
+- 测试统一使用 `127.0.0.1`，不要用可能解析到 IPv6 的 `localhost`。8765 常被遗留服务器占用；测试前确认它服务的是当前工作区，否则会在旧代码上假通过。`home-test` 8777、`bookhub-test` 8776、`topic-test` 8772、`audio-test` 8778 等独立端口不要改回 8765。
+- `audio-test.js` 的真实播放项需要访问 OSS，离线失败属于环境依赖。书报数据可用 `cd scripts && node books-data-test.js` 直接验收。
+- 检查用户反馈必须先 `npm run feedback:pull`，`scripts/feedback/inbox.md` 只是可能过期的本地快照。
+
+### 发布与文档纪律
+
+- **未经用户明确许可，不 commit、push、deploy、升版本或触发 APK 构建**；完成修改后汇报并等待确认。
+- 唯一生产部署是 Cloudflare Pages：`node scripts/deploy.mjs`；Vercel 已退役。改了 `data/` 必须先部署再 push，因为 APK 从 CF Pages 拉数据。新增顶层 `data/*.json`、专题或听书数据时，同步检查 `.github/workflows/build-apk.yml` 的数据清单。
+- 用户可见功能发布时更新 `app.js` 顶部 `CHANGELOG`；版本发布链详见「APK 打包」和「部署（Cloudflare Pages）」。
+- 用户可见行为变化同步 `docs/FEATURES.md`；长期架构、数据契约、测试或发布约束变化同步本文件。不要只追加历史，需删除过时描述。agent 生成的图片统一放 `generated-images/`。
+
+---
+
 ## 项目定位
 
-**读经研读/预习草稿工具**：启动进首页合集块（读经/生命读经/**专题（活力八）**/我的笔记/听抄/倪文集/书报）→ 聚合查看原文、注解、相关生命读经 → 在材料上划线、标记、写笔记 → 笔记按章累积；标注/笔记可选云同步，APK 支持 App 内更新。
+**读经研读/预习草稿工具**：启动进首页合集块（读经/生命读经/**专题（活力八）**/我的笔记/听抄/听书/倪文集/书报）→ 聚合查看原文、注解、相关生命读经 → 在材料上划线、标记、写笔记 → 笔记按章累积；标注/笔记可选云同步，APK 支持 App 内更新。
 
 与兄弟项目的边界：
 - **bible**（`../bible`）— 数据源，通过 `query_api.py` 提供经文/注解/串珠/生命读经。本项目的 `scripts/export.py` 从它导出静态 JSON，**不直接读 bible.db**；书报系列数据也来自 `../bible/data/raw/spiritual_food/`
@@ -45,7 +109,7 @@
 | **PageSpy 远程调试**（`PAGE_SPY_API = pagespy.duoban.xyz`，SDK 由该服务自托管，无本地文件）。**调试模式默认关闭**：设置弹窗底部版本号 3 秒内连点 5 次切换（`toggleDebugMode`，LS_VCONSOLE 键持久化、重启自动恢复），开启后数据远传 PC 面板（Network/Console/Storage 可复制）。PageSpy 服务端：aliyun-rike `pm2:pagespy`（127.0.0.1:6752，Caddy 反代 pagespy.duoban.xyz，面板 basic_auth、/api/ 与 /page-spy/ 放行供 SDK 连接），凭据存 server-ops。Storage 面板含同步令牌等敏感信息，用完关闭 |
 | `scripts/patch-android.mjs` | CI 帮手：注入原生插件 + AndroidManifest 权限/FileProvider（幂等） |
 | `scripts/deploy.mjs` | 部署帮手：按白名单同步 staging（md5 比对，只拷差异）+ 检测 staging 残留 + 调 wrangler 部署 CF Pages；`--check` 干跑。见「部署（Cloudflare Pages）」节 |
-| `scripts/*-test.js` | puppeteer 端到端测试（e2e / 标注 / 复制出处 / 生命读经标注 / 生命读经模块内标注）；`copy-citation-test.js` 复制出处专项（`selectionCitation` 跨模块出处文案：读经/生命读经/书报/听抄 各自正确 + 半节后缀；「复制」payload = 正文 + 换行 + `—— 出处`；「引用到笔记」括号式同源）；`download-sim-test.js` 验证 WebView fetch 下载被 CORS 拦截（根因留档），`update-logic-test.js` mock 原生插件验证 download() fallback/进度/监听清理，`lr-heading-test.js` 纲目标题提取，`home-test.js` / `home-test-mobile.js` 首页+合集链路冒烟（含 splash 经节断言；`home-test.js` 末尾含首页「最近阅读」：5 条上限/在合集块下方/点击跳原文并置顶/「全部 ›」首页历史弹窗（就地浏览全量 50 条、不跳工作区，点条目才跳原文）/空历史整块隐藏），`lr-reader-test.js` 生命读经阅读器专项，`lr-module-annotation-test.js` 生命读经模块内划线回归（rerenderAnn 主区重渲染 + 跨卷 book 字段），`reread-test.js` 重读专项（划线汇总头部「重读」按钮：无笔记划线删除+墓碑、带笔记原样保留、跨单元隔离（关联生命读经/邻章不动）、无标注章无按钮、生命读经右栏冒烟、移动端 390px 研读视图——Chrome 切 isMobile 设备模拟会重载页面，先等重载再重新进工作区；另：节号选择按数字匹配，创1:2 等拆半节 vnum 带「上/下」后缀），`book-reader-test.js` 书报阅读器专项（倪文集：直进/抽屉切章切书切辑/划线/笔记模块/在途去重），`slat-reader-test.js` 十二篮专项（系列清单/直进/抽屉扁平双栏：左栏全辑且无序号无篇数副标、无底部辑切换条、右栏篇标题经 `dwChapterLabel` 剥「第N篇/一/壹/（一）」序号、左栏点辑不反弹回当前阅读辑/划线标注/笔记树分组），`ezoe-reader-test.js` ezoe书报合辑专项（2026-10-13/14：分类=独立系列平级进书报合集层，用户定稿不裹大系列切辑；gospel/reading/periodicals/misc 四类各 1 辑，writings 已并入 bio。系列清单/直进福音类/正文 markdown 剥离（无 #/**/元数据残留、书名篇名二行式不重复渲染）与标题行识别（`一 神的意义`式裸编号成 bk-head）/抽屉双栏（单辑系列无底部辑切换条、左=书列表含「书·部」折叠条目 16 个、点左栏刷右栏）/多部书条目直进/划线 series=gospel/LS_BOOK_LAST 恢复/笔记树书名真名无兜底+列表完整 label/bio 合并验证（名=传记与文集、book 0 仍是基督教历史人物小传保旧标注索引、含神圣启示的高峰、重复书只 1 份）；三连跑稳定——enter 与抽屉刷新并发拉元数据的竞态已由 ensureBookMeta 守卫修复），`bookhub-test.js` 书报二级合集层专项（首页 6 块/倪文集直达/书报合集层 6 块 bio·gospel·misc·periodicals·reading·slat 无 ni/十二篮直进/合集层搜索跨系列同列（misc+十二篮）+ 搜索点击直进 misc）；`search-test.js` 统一检索专项（2026-10-20：书报跨系列分组结果/书号 `1001` 精确命中且带 `#1001` 并直进该书/经文全文「起初神创造」命中创1:1 并跳转定位/注解全文命中带「注N」/真实总数与「查看全部」弹窗/命中高亮 `<mark>`/空态/抽屉书报跨系列 + 「共 N 条，显示前 50 条」计数/抽屉「创24」直达第 24 章；8765 同其他 e2e），`morning-reader-test.js` 听抄阅读器专项（直进/切期/切篇/层级标题渲染/笔记/划线/全局笔记跳转/恢复）；`typography-test.js` 排版面板专项（默认 1.0x 与改造前逐项一致/字号与行距滑杆即时生效/正文内部层级与研读列跟随而 UI 不跟随/跨模块基准（经文18·生命读经17·书报15）/上下限与脏数据钳制/刷新持久化/2.0x 无横向溢出/标注数据不受排版影响/移动端底部 sheet）；`sync2-test.js` sync.js 条目级同步（v2 协议）node 单测，mock 与 server.py 同契约的服务端（无浏览器；播种 import-if-absent/outbox 编辑推送/幂等重放/conflict 裁决双向（服务端胜覆盖本地+败者备份、本地胜换 base 重推）/push 不推进拉取游标+flush 后补拉/pull 跳过在途条目/删除墓碑/笔记 dict 同构/forcePush+forcePull/lastError-lastSuccess 状态记录）；`notes-module-test.js` 笔记管理模块专项（直进/分类树/来源tab/颜色过滤/搜索/排序/选中进面板/编辑笔记/改色/删除单条/大段笔记编辑删除/批量删除/偏好恢复）；`drawer-test.js` 统一导航抽屉专项（桌面停靠列常驻/☰ 收起展开/四模块双栏渲染/高亮同步/旧约新约与辑切换/右栏跳转/模块级搜索/阅读历史记录去重跳转清空空态/notes 停靠隐藏/移动端浮层视口）；`ref-link-test.js` 经文引用识别专项（相对引用/上下文/误判防护/章越界过滤/别名切分回退/章…节至…节范围/列举式范围（、和与、节只在末尾、不跨章吞并）/相对章节式与跨章范围/书卷归属回退/简称补漏/串珠前缀格式/听抄正文跨行上下文（carry 段首相对引用，反馈 #20）/篇63 DOM 渲染/正文书卷弱上下文（反馈 #27/#28：裸书名与裸章提及、不跨句、句末+括注不判跨句、章号新鲜度、简称人名不建上下文、全书引用覆盖）；**反馈 #29/#30/#31**：相对节范围列举、分号/引文标点不判跨句、诗篇「N篇」、零含引用检测与解析、跨章范围续节就近取章）；`run-all-tests.sh` 全量运行器（确保 8765 服务器（**统一 `--bind 127.0.0.1`、探活同址**——2026-10-14 实测：4 个老测试用 `localhost`，Chrome 偶发解析到 IPv6 `::1`，IPv4-only server 拒连致 `ERR_CONNECTION_REFUSED` 误报失败，已全部统一 127.0.0.1）→ 顺序跑全部测试 → 按输出解析判定，失败=非零退出或含 ✗/FAIL/JS 错误；`SKIP="home-test …"` 可跳过）；`person-link-test.js` 人物链接专项（scope 门控 slat+ni（ni 于 2026-10-15 反馈 #26 接入，断言「告诉祂」司布真段注入）/匹配规则：最长优先·复合词保护·与经文引用不重叠/正文注入人名链接且偏移坐标与源文本逐行一致/点击弹人物小传（简介+生卒+摘录+出处）/跳完整小传；`SHOT=1` 存图到 generated-images/）；`router-test.js` 路由专项（hash URL 同步/翻章 replace 不堆历史/前后退跨模块就位/刷新保持位置/五模块 + hub 深链/非法 hash 净化/章越界钳制/返回键层级（伪 Capacitor 注入）/移动端返回键关抽屉/合集层 push-back；8769）；`swipe-test.js` 滑动翻页专项（四模块横扫切章/篇 + URL 同步 + 淡入反馈类/卷首边界不动/慢扫与纵偏不触发/有选区走标注流程不切章/弹窗守卫/notes 无副作用；8770）；`theme-test.js` 阅读主题专项（classic 关键计算值零回归/设置→阅读主题选择器 4 项/paper 纸底+去卡片化+图标双渲染/minimal 纲目转灰+纯色差分层/刷新持久化/非法值回退 classic）；`help-test.js` 使用帮助专项（设置行位置/四章节+五色 mark/最近更新来自 CHANGELOG/更新弹窗「本次更新」命中与原始信息回退双分支/过老版本全量/「查看全部更新」跳转）；`books-data-test.js` 书报数据产物验收（node 直跑无浏览器：系列顺序/卷文件齐全/单文件<25MB/去重跳过项/网页与页眉残留/碎片行占比/`--idempotent` 重复导出逐字节一致）；`topic-test.js` 专题专项（8772，见「专题」节）；`audio-test.js` 听书专项（**8778**，见「听书」节：单列播放器/抽屉双栏合集·讲次/分组切换/切讲切段/真实播放推进/深链与刷新保持/首页检索与抽屉搜索/移动端）；**端口纪律（2026-10-21）**：`home-test` 改用 8777、`bookhub-test` 改用 8776、`topic-test` 8772——**别再用 8765**：本机常有遗留服务器占着它，脚本 spawn 静默失败后会跑在旧代码上（`bookhub-test` 断言「首页 6 块」曾因此假失败） |
+| `scripts/*-test.js` | puppeteer 端到端测试（e2e / 标注 / 复制出处 / 生命读经标注 / 生命读经模块内标注）；`copy-citation-test.js` 复制出处专项（`selectionCitation` 跨模块出处文案：读经/生命读经/书报/听抄 各自正确 + 半节后缀；「复制」payload = 正文 + 换行 + `—— 出处`；「引用到笔记」括号式同源）；`download-sim-test.js` 验证 WebView fetch 下载被 CORS 拦截（根因留档），`update-logic-test.js` mock 原生插件与 fetch 验证 download() fallback/进度/监听清理/版本化文件名传递/APK 清理与 manifest 失败重试，`lr-heading-test.js` 纲目标题提取，`home-test.js` / `home-test-mobile.js` 首页+合集链路冒烟（含 splash 经节断言；`home-test.js` 末尾含首页「最近阅读」：5 条上限/在合集块下方/点击跳原文并置顶/「全部 ›」首页历史弹窗（就地浏览全量 50 条、不跳工作区，点条目才跳原文）/空历史整块隐藏），`lr-reader-test.js` 生命读经阅读器专项，`lr-module-annotation-test.js` 生命读经模块内划线回归（rerenderAnn 主区重渲染 + 跨卷 book 字段），`reread-test.js` 重读专项（划线汇总头部「重读」按钮：无笔记划线删除+墓碑、带笔记原样保留、跨单元隔离（关联生命读经/邻章不动）、无标注章无按钮、生命读经右栏冒烟、移动端 390px 研读视图——Chrome 切 isMobile 设备模拟会重载页面，先等重载再重新进工作区；另：节号选择按数字匹配，创1:2 等拆半节 vnum 带「上/下」后缀），`book-reader-test.js` 书报阅读器专项（倪文集：直进/抽屉切章切书切辑/划线/笔记模块/在途去重），`slat-reader-test.js` 十二篮专项（系列清单/直进/抽屉扁平双栏：左栏全辑且无序号无篇数副标、无底部辑切换条、右栏篇标题经 `dwChapterLabel` 剥「第N篇/一/壹/（一）」序号、左栏点辑不反弹回当前阅读辑/划线标注/笔记树分组），`ezoe-reader-test.js` ezoe书报合辑专项（2026-10-13/14：分类=独立系列平级进书报合集层，用户定稿不裹大系列切辑；gospel/reading/periodicals/misc 四类各 1 辑，writings 已并入 bio。系列清单/直进福音类/正文 markdown 剥离（无 #/**/元数据残留、书名篇名二行式不重复渲染）与标题行识别（`一 神的意义`式裸编号成 bk-head）/抽屉双栏（单辑系列无底部辑切换条、左=书列表含「书·部」折叠条目 16 个、点左栏刷右栏）/多部书条目直进/划线 series=gospel/LS_BOOK_LAST 恢复/笔记树书名真名无兜底+列表完整 label/bio 合并验证（名=传记与文集、book 0 仍是基督教历史人物小传保旧标注索引、含神圣启示的高峰、重复书只 1 份）；三连跑稳定——enter 与抽屉刷新并发拉元数据的竞态已由 ensureBookMeta 守卫修复），`bookhub-test.js` 书报二级合集层专项（首页 6 块/倪文集直达/书报合集层 6 块 bio·gospel·misc·periodicals·reading·slat 无 ni/十二篮直进/合集层搜索跨系列同列（misc+十二篮）+ 搜索点击直进 misc）；`search-test.js` 统一检索专项（2026-10-20：书报跨系列分组结果/书号 `1001` 精确命中且带 `#1001` 并直进该书/经文全文「起初神创造」命中创1:1 并跳转定位/注解全文命中带「注N」/真实总数与「查看全部」弹窗/命中高亮 `<mark>`/空态/抽屉书报跨系列 + 「共 N 条，显示前 50 条」计数/抽屉「创24」直达第 24 章；8765 同其他 e2e），`morning-reader-test.js` 听抄阅读器专项（直进/切期/切篇/层级标题渲染/笔记/划线/全局笔记跳转/恢复）；`typography-test.js` 排版面板专项（默认 1.0x 与改造前逐项一致/字号与行距滑杆即时生效/正文内部层级与研读列跟随而 UI 不跟随/跨模块基准（经文18·生命读经17·书报15）/上下限与脏数据钳制/刷新持久化/2.0x 无横向溢出/标注数据不受排版影响/移动端底部 sheet）；`sync2-test.js` sync.js 条目级同步（v2 协议）node 单测，mock 与 server.py 同契约的服务端（无浏览器；播种 import-if-absent/outbox 编辑推送/幂等重放/conflict 裁决双向（服务端胜覆盖本地+败者备份、本地胜换 base 重推）/push 不推进拉取游标+flush 后补拉/pull 跳过在途条目/删除墓碑/笔记 dict 同构/forcePush+forcePull/lastError-lastSuccess 状态记录）；`notes-module-test.js` 笔记管理模块专项（直进/分类树/来源tab/颜色过滤/搜索/排序/选中进面板/编辑笔记/改色/删除单条/大段笔记编辑删除/批量删除/偏好恢复）；`drawer-test.js` 统一导航抽屉专项（桌面停靠列常驻/☰ 收起展开/四模块双栏渲染/高亮同步/旧约新约与辑切换/右栏跳转/模块级搜索/阅读历史记录去重跳转清空空态/notes 停靠隐藏/移动端浮层视口）；`ref-link-test.js` 经文引用识别专项（相对引用/上下文/误判防护/章越界过滤/别名切分回退/章…节至…节范围/列举式范围（、和与、节只在末尾、不跨章吞并）/相对章节式与跨章范围/书卷归属回退/简称补漏/串珠前缀格式/听抄正文跨行上下文（carry 段首相对引用，反馈 #20）/篇63 DOM 渲染/正文书卷弱上下文（反馈 #27/#28：裸书名与裸章提及、不跨句、句末+括注不判跨句、章号新鲜度、简称人名不建上下文、全书引用覆盖）；**反馈 #29/#30/#31**：相对节范围列举、分号/引文标点不判跨句、诗篇「N篇」、零含引用检测与解析、跨章范围续节就近取章）；`run-all-tests.sh` 全量运行器（确保 8765 服务器（**统一 `--bind 127.0.0.1`、探活同址**——2026-10-14 实测：4 个老测试用 `localhost`，Chrome 偶发解析到 IPv6 `::1`，IPv4-only server 拒连致 `ERR_CONNECTION_REFUSED` 误报失败，已全部统一 127.0.0.1）→ 顺序跑全部测试 → 按输出解析判定，失败=非零退出或含 ✗/FAIL/JS 错误；`SKIP="home-test …"` 可跳过）；`person-link-test.js` 人物链接专项（scope 门控 slat+ni（ni 于 2026-10-15 反馈 #26 接入，断言「告诉祂」司布真段注入）/匹配规则：最长优先·复合词保护·与经文引用不重叠/正文注入人名链接且偏移坐标与源文本逐行一致/点击弹人物小传（简介+生卒+摘录+出处）/跳完整小传；`SHOT=1` 存图到 generated-images/）；`router-test.js` 路由专项（hash URL 同步/翻章 replace 不堆历史/前后退跨模块就位/刷新保持位置/五模块 + hub 深链/非法 hash 净化/章越界钳制/返回键层级（伪 Capacitor 注入）/移动端返回键关抽屉/合集层 push-back；8769）；`swipe-test.js` 滑动翻页专项（四模块横扫切章/篇 + URL 同步 + 淡入反馈类/卷首边界不动/慢扫与纵偏不触发/有选区走标注流程不切章/弹窗守卫/notes 无副作用；8770）；`theme-test.js` 阅读主题专项（classic 关键计算值零回归/设置→阅读主题选择器 4 项/paper 纸底+去卡片化+图标双渲染/minimal 纲目转灰+纯色差分层/刷新持久化/非法值回退 classic）；`help-test.js` 使用帮助专项（设置行位置/四章节+五色 mark/最近更新来自 CHANGELOG/更新弹窗「本次更新」命中与原始信息回退双分支/过老版本全量/「查看全部更新」跳转）；`books-data-test.js` 书报数据产物验收（node 直跑无浏览器：系列顺序/卷文件齐全/单文件<25MB/去重跳过项/网页与页眉残留/碎片行占比/`--idempotent` 重复导出逐字节一致）；`topic-test.js` 专题专项（8772，见「专题」节）；`audio-test.js` 听书专项（**8778**，见「听书」节：单列播放器/抽屉双栏合集·讲次/分组切换/切讲切段/真实播放推进/深链与刷新保持/首页检索与抽屉搜索/移动端）；**端口纪律（2026-10-21）**：`home-test` 改用 8777、`bookhub-test` 改用 8776、`topic-test` 8772——**别再用 8765**：本机常有遗留服务器占着它，脚本 spawn 静默失败后会跑在旧代码上（`bookhub-test` 断言「首页 6 块」曾因此假失败） |
 | `scripts/run-all-tests.sh` | 全量测试运行器（见「测试与 Git 钩子」节） |
 | `scripts/install-hooks.sh` | 安装 git hooks 到 `.git/hooks/`（pre-commit 快速质量门 + pre-push 全量测试） |
 | `data/books.json` | 66 卷目录 + 每卷章数 + 缩写 |
