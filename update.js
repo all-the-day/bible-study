@@ -12,7 +12,8 @@
   const API_URL = "https://api.github.com/repos/" + REPO + "/releases/tags/" + TAG;
   // APK 相对路径（GitHub 直连 + 各镜像前缀拼接）
   const APK_PATH = "/" + REPO + "/releases/download/" + TAG + "/bible-study.apk";
-  // 下载源：直连 GitHub + 公共代理镜像（失败依次切换）
+  // 下载源：阿里云 OSS 版本化主包 + GitHub 直连/公共镜像（失败依次切换）
+  const OSS_APK_BASE = "https://szkjweb.oss-cn-hangzhou.aliyuncs.com/bible-study-apk/";
   const SOURCES = ["https://github.com", "https://gh-proxy.com", "https://ghproxy.net"];
   const CHECK_TIMEOUT = 10000;
   const APK_FILE = "bible-study-update.apk";
@@ -150,20 +151,20 @@
     return next();
   }
 
-  /* 候选源：API 给的 downloadUrl 优先（资产名带版本号，防镜像按 URL 缓存串版），
-     其余源用同一 URL 换 host（保持版本化文件名，静态 APK_PATH 仅作 API 无资产时的兜底）；
-     downloadUrl 通常就是 github.com 直连地址，与 SOURCES 首个域名重复，按域名去重避免
-     直连失败时白等两次 */
+  /* 候选源：OSS 版本化地址优先（大陆直连、路径不可变），其后才是 API 给的
+     GitHub 资产与公共镜像。OSS 失败时下载链完整保留，老 APK 仍可只靠 GitHub 更新。
+     GitHub 镜像只替换 GitHub URL 的 host，不能拿来代理 OSS。 */
+  function ossDownloadUrl(version) {
+    return /^\d+\.\d+\.\d+$/.test(version || "")
+      ? OSS_APK_BASE + "v" + version + "/bible-study-v" + version + ".apk"
+      : null;
+  }
   function buildCandidates(latest) {
     const out = [];
-    const push = (u) => {
-      try {
-        const host = new URL(u).host;
-        if (!out.some((x) => new URL(x).host === host)) out.push(u);
-      } catch (e) {}
-    };
+    const push = (u) => { if (u && !out.includes(u)) out.push(u); };
+    push(ossDownloadUrl(latest && latest.version));
     const base = latest && latest.downloadUrl ? latest.downloadUrl : null;
-    if (base) push(base);
+    push(base);
     SOURCES.forEach((s) => {
       if (base) {
         try {

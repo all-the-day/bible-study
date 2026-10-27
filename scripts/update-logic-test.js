@@ -160,9 +160,44 @@ async function main() {
       });
       return { urls, fileNames };
     }, { source });
-    check('场景4 直连加两个镜像共三个候选', r4.urls.length === 3);
+    check('场景4 OSS 加直连与两个镜像共四个候选', r4.urls.length === 4);
+    check('场景4 OSS 是首个候选', r4.urls[0] === 'https://szkjweb.oss-cn-hangzhou.aliyuncs.com/bible-study-apk/v1.0.26/bible-study-v1.0.26.apk', r4.urls[0]);
     check('场景4 所有候选 URL 带版本化文件名', r4.urls.every((u) => /bible-study-v1\.0\.26\.apk/.test(u)), JSON.stringify(r4.urls));
-    check('场景4 原生下载参数带版本化文件名', same(r4.fileNames, Array(3).fill('bible-study-v1.0.26.apk')), JSON.stringify(r4.fileNames));
+    check('场景4 原生下载参数带版本化文件名', same(r4.fileNames, Array(4).fill('bible-study-v1.0.26.apk')), JSON.stringify(r4.fileNames));
+
+    /* 场景 4b：OSS 可用时直接成功，不浪费 GitHub 请求 */
+    const r4b = await page.evaluate(async ({ source }) => {
+      const calls = [];
+      const fileNames = [];
+      window.Capacitor = {
+        isNativePlatform: () => true,
+        Plugins: {
+          ApkInstaller: {
+            download: ({ url, fileName }) => {
+              calls.push(url);
+              fileNames.push(fileName);
+              if (!url.startsWith('https://szkjweb.oss-cn-hangzhou.aliyuncs.com/')) {
+                return Promise.reject({ message: '不应请求 GitHub' });
+              }
+              return Promise.resolve({ uri: '/cache/downloads/oss.apk' });
+            },
+            install: ({ filePath }) => { calls.push('install:' + filePath); return Promise.resolve({ message: 'ok' }); },
+            addListener: () => Promise.resolve({ remove() {} }),
+            removeAllListeners: () => {},
+          },
+        },
+      };
+      eval(source);
+      const res = await window.BibleStudyUpdate.download({
+        version: '1.0.65',
+        downloadUrl: 'https://github.com/all-the-day/bible-study/releases/download/bible-study-main/bible-study-v1.0.65.apk',
+      });
+      return { res, calls, fileNames };
+    }, { source });
+    check('场景4b OSS 首源成功后不请求 GitHub', r4b.res.ok === true && r4b.calls.length === 2
+      && r4b.calls[0] === 'https://szkjweb.oss-cn-hangzhou.aliyuncs.com/bible-study-apk/v1.0.65/bible-study-v1.0.65.apk'
+      && r4b.calls[1] === 'install:/cache/downloads/oss.apk', r4b.calls.join(' → '));
+    check('场景4b OSS 与本地文件名版本一致', same(r4b.fileNames, ['bible-study-v1.0.65.apk']));
 
     /* 场景 5：只保留当前包；固定名作为历史包可删，作为当前兜底包时保留 */
     const r5 = await page.evaluate(async ({ source }) => {
