@@ -196,6 +196,40 @@ async function main() {
     const r10b = await page.evaluate(() => ({ mod: state.activeModule, ch: state.currentChapter }));
     check('10b. 书卷+章跳转', r10b.mod === 'bible' && r10b.ch === 24, `章:${r10b.ch}`);
 
+    // 11. 标注搜索：从非读经模块回首页点击，等待模块就位后再定位到创 24:5
+    await page.evaluate(async () => {
+      await enterModule('books', { series: 'slat', volume: 1, book: 0, chapter: 0 });
+      const a = {
+        id: 'search-ann-race', type: 'verse', book: 1, chapter: 24, verse: 5, half: '',
+        start: 0, end: 2, text: '亚伯兰', prefix: '', suffix: '',
+        colorId: 'c1', underline: false, note: '稳定性跳转唯一标记',
+      };
+      const i = state.annotations.findIndex(x => x.id === a.id);
+      if (i >= 0) state.annotations[i] = a;
+      else state.annotations.push(a);
+      localStorage.setItem(LS_ANNOTATIONS, JSON.stringify(state.annotations));
+      showHome();
+    });
+    await new Promise((r) => setTimeout(r, 400));
+    await typeSearch('稳定性跳转唯一标记');
+    const g11 = await group('ann');
+    check('11. 标注搜索结果', !!g11 && g11.items.some(t => t.includes('稳定性跳转唯一标记')),
+      g11 ? `总数:${g11.count}` : '无标注组');
+    await page.evaluate(() => {
+      const el = document.querySelector('#homeSearchResults .sr-group[data-g="ann"] .home-sr-item[data-k]');
+      if (el) el.click();
+    });
+    await new Promise((r) => setTimeout(r, 1000));
+    const r11 = await page.evaluate(() => ({
+      mod: state.activeModule,
+      book: state.currentBook && state.currentBook.index,
+      ch: state.currentChapter,
+      flash: !!document.querySelector('.vtext[data-verse="5"]')?.closest('.verse.flash'),
+    }));
+    check('11b. 非读经模块搜索标注跳转', r11.mod === 'bible' && r11.book === 1
+      && r11.ch === 24 && r11.flash,
+      `模块:${r11.mod} 书卷:${r11.book} 章:${r11.ch} 高亮:${r11.flash}`);
+
     console.log('\nJS 错误:', errors.length ? errors : '无');
     if (errors.length) fail = 1;
   } finally {

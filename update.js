@@ -64,8 +64,12 @@
   function localVersion() {
     if (_localVersion) return Promise.resolve(_localVersion);
     return fetchJSON("manifest.json", 5000)
-      .then((m) => (_localVersion = parseVersion(m.version) || "1.0.0"))
-      .catch(() => (_localVersion = "1.0.0"));
+      .then((m) => {
+        const version = parseVersion(m.version);
+        if (!version) throw new Error("invalid manifest version");
+        return (_localVersion = version);
+      })
+      .catch(() => null);
   }
 
   /* 查最新 release：失败静默返回 null */
@@ -87,11 +91,14 @@
       })
       .then((latest) => {
         if (!latest) return null;
-        return localVersion().then((current) => ({
-          latest,
-          current,
-          hasUpdate: compareVersion(latest.version, current) === 1,
-        }));
+        return localVersion().then((current) => {
+          if (!current) return null;
+          return {
+            latest,
+            current,
+            hasUpdate: compareVersion(latest.version, current) === 1,
+          };
+        });
       })
       .catch(() => null);
   }
@@ -132,7 +139,7 @@
         return Promise.reject(new Error("所有下载源均失败"));
       }
       const url = candidates[idx++];
-      return plugin.download({ url }).then(
+      return plugin.download({ url, fileName: _downloadFileName }).then(
         (res) => {
           finish();
           return res;
@@ -209,7 +216,7 @@
       Capacitor.Filesystem.readdir({ directory, path: "downloads" })
         .then(({ files }) => {
           (files || []).forEach((f) => {
-            if (f.name !== keep && f.name !== APK_FILE && /\.apk$/i.test(f.name || "")) {
+            if (f.name !== keep && /\.apk$/i.test(f.name || "")) {
               Capacitor.Filesystem.deleteFile({ directory, path: "downloads/" + f.name }).catch(() => {});
             }
           });

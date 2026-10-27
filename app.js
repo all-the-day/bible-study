@@ -2450,7 +2450,10 @@ function searchAnnotations(q, limit) {
     key: 'ann:' + a.id,
     loc: hlLocText(a),
     label: (a.note || a.text || '').slice(0, 40),
-    go: () => { enterModule('bible'); navigateToAnnotation(a); },
+    go: async () => {
+      await enterModule('bible');
+      await navigateToAnnotation(a);
+    },
   }));
   return out;
 }

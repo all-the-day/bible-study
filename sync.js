@@ -60,7 +60,8 @@
     } catch (e) { return fallback; }
   }
   function jset(key, val) {
-    try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
+    try { localStorage.setItem(key, JSON.stringify(val)); return true; }
+    catch (e) { return false; }
   }
   function readRaw(localKey) {
     try {
@@ -120,7 +121,7 @@
 
   // ---------- outbox / 游标 / 条目版本 ----------
   function getOutbox() { return jget(LS_OUTBOX, []); }
-  function setOutbox(ob) { jset(LS_OUTBOX, ob); }
+  function setOutbox(ob) { return jset(LS_OUTBOX, ob); }
   function removeOutbox(opId) {
     setOutbox(getOutbox().filter(function (o) { return o.op_id !== opId; }));
   }
@@ -222,7 +223,11 @@
         }
         if (i >= ob.length) ob.push(op);
       });
-      setOutbox(ob);
+      if (!setOutbox(ob)) {
+        setStatus({ lastError: "本地同步队列保存失败", errorAt: Date.now() });
+        notify();
+        return Promise.resolve(false);
+      }
     }
     lastLocal[localKey] = newRaw;
     jset(LS_LASTLOCAL, lastLocal);

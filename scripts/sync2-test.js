@@ -305,6 +305,30 @@ function ann(id, text, extra) {
     assert("场景11 恢复后重拉带回条目且游标推进", lp2 > 0 && local.some((x) => x.id === "x"));
   }
 
+  /* 场景 12：outbox 写入失败 → 不推进本地快照，恢复后可重新生成并推送 */
+  {
+    const server = makeServer();
+    const { Sync, store } = makeSync2(server);
+    store["bible-study.annotations"] = JSON.stringify([ann("a")]);
+    await Sync.pullAll(["bible-study.annotations"]);
+    const arr = JSON.parse(store["bible-study.annotations"]);
+    arr[0].note = "不能漏同步";
+    store["bible-study.annotations"] = JSON.stringify(arr);
+    const before = store["bible-study.sync:v2:lastlocal"];
+    store.__failSet = "bible-study.sync:v2:outbox";
+    const queued = await Sync.schedulePush("bible-study.annotations");
+    assert("场景12 outbox 写入失败返回失败", queued === false);
+    assert("场景12 outbox 写入失败不推进 lastLocal", store["bible-study.sync:v2:lastlocal"] === before);
+    const st = JSON.parse(store["bible-study.sync:v2:status"]);
+    assert("场景12 outbox 写入失败记录 lastError", !!st.lastError);
+    delete store.__failSet;
+    const retried = await Sync.schedulePush("bible-study.annotations");
+    await Sync.flushPending();
+    const row = server.rows["u1|annotations|a"];
+    assert("场景12 恢复后重新入队并推送成功", retried === true && !!row
+      && JSON.parse(row.payload).note === "不能漏同步");
+  }
+
   console.log(failed === 0 ? "\n全部通过" : "\n有 " + failed + " 项失败");
   process.exit(failed === 0 ? 0 : 1);
 })();
