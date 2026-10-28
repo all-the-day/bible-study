@@ -1392,7 +1392,9 @@ mark.sr-hit {
 /* ── 听书模块（audio，2026-10-26）：单列主区 = 讲次标题 + 自绘播放器 + 分段列表 ──
    自绘控件而非原生 <audio controls>：各平台外观不一、跟不了主题，且高度吃版面。
    <audio> 元素本身不在 DOM 里（state.audioEl 单例），所以重渲染不打断播放。 */
-.audio-main { padding: 20px 24px 40px; max-width: 720px; }
+/* margin-inline:auto：限宽容器要居中（同 .topic-main / .home-wrap），否则收起停靠抽屉后
+   内容贴在最左、右侧空半屏 */
+.audio-main { padding: 20px 24px 40px; max-width: 720px; margin-inline: auto; }
 .au-eyebrow { font-size: var(--fs-12); color: var(--text-muted); letter-spacing: .5px; margin-bottom: 6px; }
 .au-title { font-size: var(--fs-20); font-weight: 700; color: var(--heading); line-height: 1.35; margin: 0 0 6px; }
 .au-meta { font-size: var(--fs-13); color: var(--text-muted); margin-bottom: 18px; }
@@ -1401,6 +1403,9 @@ mark.sr-hit {
   background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
   box-shadow: var(--shadow-sm); padding: 16px 18px 14px; margin-bottom: 24px;
 }
+/* 分段进度说明：多段讲次时进度条只走当前段，标题区写的是整讲时长，需要标明口径 */
+.au-pg-cap { font-size: var(--fs-12); color: var(--text-muted); margin-bottom: 8px; }
+.au-pg-cap[hidden] { display: none; }
 .au-pg-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
 .au-time {
   flex: none; width: 46px; font-size: var(--fs-12); color: var(--text-muted);
@@ -1410,6 +1415,13 @@ mark.sr-hit {
 .au-pg {
   flex: 1; height: 4px; border-radius: 2px; background: var(--slider-track);
   position: relative; cursor: pointer;
+  /* 横向拖拽由播放器接管，纵向仍交给页面滚动 */
+  touch-action: pan-y;
+}
+/* 命中区扩展：视觉仍是 4px 细线，但可点/可拖范围 24px（细线本身几乎点不中） */
+.au-pg::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 50%;
+  height: 24px; transform: translateY(-50%);
 }
 /* 键盘可聚焦（role=slider + tabindex=0）：给出可见焦点环，否则纯键盘用户看不到当前焦点 */
 .au-pg:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; }
@@ -1422,7 +1434,10 @@ mark.sr-hit {
 }
 .au-pg:hover .au-pg-knob { transform: translate(-50%, -50%) scale(1.15); }
 
-.au-ctrl { display: flex; align-items: center; justify-content: center; gap: 22px; position: relative; }
+/* 控制行：左右各留一个 46px 对称占位，播放键才真正居中；倍速在右列（不再 absolute
+   叠在「前进 15 秒」上——窄屏时两者点击区会重叠） */
+.au-ctrl { display: grid; grid-template-columns: 46px minmax(0, 1fr) 46px; align-items: center; }
+.au-ctrl-main { grid-column: 2; display: flex; align-items: center; justify-content: center; gap: 22px; min-width: 0; }
 .au-side {
   width: 46px; height: 46px; border: 0; background: transparent; cursor: pointer;
   color: var(--text-soft); font-family: inherit; font-size: var(--fs-11); font-weight: 700;
@@ -1438,13 +1453,34 @@ mark.sr-hit {
   box-shadow: 0 4px 14px rgba(var(--brand-rgb), .4);
 }
 .au-play:hover { background: var(--brand-dark); }
+/* 播放器按钮的焦点环：与进度条/分段行统一成 2px 品牌色（原生 button 只有浏览器默认细环） */
+.au-ctrl button:focus-visible,
+.au-status button:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 .au-speed {
-  position: absolute; right: 0; min-width: 46px;
+  grid-column: 3; justify-self: end; min-width: 46px;
   border: 1px solid var(--border); background: var(--surface); color: var(--text-soft);
   font-family: inherit; font-size: var(--fs-12); font-weight: 600;
   padding: 4px 9px; border-radius: var(--radius-pill); cursor: pointer;
 }
 .au-speed:hover { border-color: var(--brand); color: var(--brand); }
+
+/* 状态行：缓冲中… / 加载失败·重试（落在播放器卡片内，toast 消失后仍可见） */
+.au-status {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  margin-top: 10px; font-size: var(--fs-12); color: var(--text-muted);
+}
+.au-status[hidden] { display: none; }
+/* 错误文案用 --danger-deep：--danger 在面板白底上只有 3.96:1，12px 小字读不清唯一的恢复入口 */
+.au-status.error { color: var(--danger-deep); }
+.au-retry {
+  border: 1px solid currentColor; background: transparent; color: inherit; cursor: pointer;
+  font-family: inherit; font-size: var(--fs-12); padding: 2px 10px; border-radius: var(--radius-pill);
+}
+.au-spin {
+  width: 12px; height: 12px; flex: none; border-radius: 50%;
+  border: 2px solid var(--slider-track); border-top-color: var(--brand);
+  animation: spin .8s linear infinite;
+}
 
 .au-sec-head { font-size: var(--fs-12); font-weight: 600; letter-spacing: .5px; color: var(--text-muted); margin: 0 0 8px 2px; }
 .au-track {
@@ -1453,12 +1489,13 @@ mark.sr-hit {
   font-size: var(--fs-15); color: var(--text); cursor: pointer;
 }
 .au-track:hover { background: var(--surface-alt); }
+/* 当前段用 brand-dark 而非 brand：15px/600 属于正文尺寸，brand 在浅底上只有 3.5:1 */
 .au-track.cur {
   background: var(--panel); border-color: var(--border);
-  box-shadow: var(--shadow-sm); color: var(--brand); font-weight: 600;
+  box-shadow: var(--shadow-sm); color: var(--brand-dark); font-weight: 600;
 }
 .au-track .ic { flex: none; width: 16px; text-align: center; font-size: var(--fs-12); color: var(--text-muted); }
-.au-track.cur .ic { color: var(--brand); }
+.au-track.cur .ic { color: var(--brand-dark); }
 .au-track .name { flex: 1; min-width: 0; }
 .au-track .dur { flex: none; font-size: var(--fs-12); color: var(--text-muted); font-weight: 400; font-variant-numeric: tabular-nums; }
 /* 抽屉右栏的讲次序号（窄栏里比前缀标题更省字） */
@@ -1612,6 +1649,16 @@ mark.sr-hit {
   /* 听书没有「研读」视图（单列播放器），pill 无意义 */
   body.body-mod-audio #modePill { display: none; }
   body.body-mod-audio .audio-main { padding: 16px 16px 32px; }
+  /* 376–900px 一行放得下三个运输键 + 倍速，但 22px 间距在 376 处会把按钮组顶到 pill 边上；
+     移动端收到 18px 留出余量 */
+  .au-ctrl-main { gap: 18px; }
+  /* 窄屏（≤380px：iPhone SE/8、360px 安卓机）一行只剩 0–2px 余量，倍速会贴住「前进 15 秒」，
+     改到第二行居中，保证两者点击区永不接触 */
+  @media (max-width: 380px) {
+    .au-ctrl { grid-template-columns: minmax(0, 1fr); row-gap: 10px; }
+    .au-ctrl-main { grid-column: 1; gap: 18px; }
+    .au-speed { grid-column: 1; justify-self: center; }
+  }
   /* 分类树改由统一导航抽屉承担（桌面仍用左栏 #navCol 树） */
   body.body-mod-notes .nav-col { display: none; }
   /* 编辑面板顶部返回条（仅移动端 notes 显示） */
@@ -1686,7 +1733,8 @@ mark.sr-hit {
     cursor: pointer;   /* 移动端点击弹章节选择 */
   }
   /* 听书没有 pill/Aa（下图已隐藏），把右侧让位收回给标题；否则长讲次名被无谓截断 */
-  body.body-mod-audio .crumb { right: 56px; }
+  /* left 96：☰ 的字形止于 87，88 起排字只留 1px，图标与标题会读成一串 */
+  body.body-mod-audio .crumb { right: 56px; left: 96px; }
   .crumb .crumb-nav { display: none; }   /* 翻页移至底部导航 */
   .topbar-actions { gap: 2px; margin-left: auto; position: relative; z-index: 2; }   /* crumb 绝对定位后：推到最右 + 盖在其上层避免拦截点击 */
   #menuBtn { width: 44px; height: 44px; margin-left: -6px; }
@@ -1745,7 +1793,7 @@ mark.sr-hit {
   --brand: #8a6a2f; --brand-dark: #6f5626; --brand-rgb: 138, 106, 47;
   --page-bg: #faf7f1; --surface: #fffdf8; --surface-alt: #f3edde; --border: #eae3d5;
   --scripture-bg: #f6f1e6;
-  --heading: #2b2822; --text: #33302a; --text-soft: #4d4636; --text-muted: #8a8170;
+  --heading: #2b2822; --text: #33302a; --text-soft: #4d4636; --text-muted: #7a7160;
   --hover: #f3ecdc;
   --topbar-bg: #faf7f1; --topbar-solid: #faf7f1; --topbar-fg: #33302a; --topbar-shadow: none;
   --topbar-border: 1px solid #eae3d5;

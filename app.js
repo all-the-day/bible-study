@@ -137,6 +137,8 @@ const state = {
   audioEl: null,             // 单例 <audio>：自绘控件驱动，重渲染不重建（保留播放状态）
   audioSpeed: 1,             // 倍速（纯本地偏好，随 audioLast 一起落盘）
   audioLastSave: 0,          // 播放位置落盘节流时间戳
+  audioBuffering: false,     // <audio> waiting 中（卡片内显示「缓冲中…」）
+  audioError: false,         // 当前源加载失败（卡片内显示重试，按钮回 ▶）
 };
 
 /* 合集注册表（数据驱动）：首页块列表，点击 = 直接进入对应阅读器模块。
@@ -1916,6 +1918,9 @@ const READER_MODULES = {
     // 直接进上次收听位置（LS_AUDIO_LAST）；位置只在「同一讲同一分片」时恢复播放秒数
     async enter(opts) {
       setMobileView('read');   // 移动端研读视图进听书会是白屏（textCol+studyCol 都隐藏且 pill 已隐藏）
+      // 数据要下载完才 renderCrumb；先把 crumb 写成模块占位，免得慢网首进时顶栏还留着上一屏的章节名
+      $('bookName').textContent = '听书';
+      $('chapterLabel').textContent = '';
       await ensureAudioIndex();
       const last = load(LS_AUDIO_LAST, null) || {};
       const colls = (state.audioIndex && state.audioIndex.collections) || [];
@@ -5330,15 +5335,25 @@ function ensureAudioEl() {
     audioSyncProgress();
   });
   a.addEventListener('play', audioSyncControls);
-  a.addEventListener('pause', audioSyncControls);
+  // 暂停即结束缓冲态：否则「缓冲中 → 用户按暂停」会把 spinner 永久挂在卡片里
+  a.addEventListener('pause', () => { state.audioBuffering = false; audioSyncControls(); audioSyncStatus(); });
   a.addEventListener('timeupdate', () => { audioSyncProgress(); audioSavePos(); });
+  // 缓冲/失败要落到界面（反馈 #32）：waiting → 「缓冲中…」，error → 卡片内重试 + 按钮回 ▶。
+  // 只靠 error 的 toast 不够：toast 2.6s 消失后界面会一直停在「正在播放 0:00」。
+  a.addEventListener('waiting', () => { state.audioBuffering = true; audioSyncStatus(); });
+  a.addEventListener('playing', () => { state.audioBuffering = false; audioSyncStatus(); });
+  a.addEventListener('canplay', () => { if (!a.paused) { state.audioBuffering = false; audioSyncStatus(); } });
   a.addEventListener('ended', () => {
+    state.audioBuffering = false;
     const lec = audioLectureData();
     if (lec && state.audioTrack + 1 < lec.tracks.length) playAudioTrack(state.audioTrack + 1, true);
-    else { audioSyncControls(); showToast('本讲已听完'); }
+    else { audioSyncControls(); audioSyncStatus(); showToast('本讲已听完'); }
   });
   a.addEventListener('error', () => {
+    state.audioBuffering = false;
+    state.audioError = !!a.dataset.auUrl;
     audioSyncControls();
+    audioSyncStatus();
     if (state.activeModule === 'audio' && a.dataset.auUrl) showToast('音频加载失败（检查网络，或该讲尚未上传）');
   });
   // 锁屏/耳机按键（网页版尽力而为，APK 后台播放不保证）
@@ -5377,28 +5392,74 @@ function audioSetSource(autoplay) {
   const url = audioTrackUrl(t);
   if (a.dataset.auUrl !== url) {
     a.dataset.auUrl = url;
+    state.audioError = false;   // 换了源 = 上一次的失败态作废
+    state.audioBuffering = false;
     a.src = url;
     a._resumeAt = state.audioResume > 0 ? state.audioResume : 0;
     state.audioResume = 0;
+  } else if (a.paused) {
+    // 同一源重渲染（进模块/切回本讲）时，只有确实停在暂停态才清缓冲态；
+    // 仍在等数据的情况保留 spinner，等 playing/canplay 来清
+    state.audioBuffering = false;
   }
   a.playbackRate = state.audioSpeed;
   audioUpdateMediaSession();
   if (autoplay) a.play().catch(() => showToast('播放失败（网络或浏览器策略）'));
   audioSyncControls();
   audioSyncProgress();
+  audioSyncStatus();
+}
+
+// 失败后重试：重新拉同一个源（load() 会清掉 error 态）；保留失败时的播放位置，
+// 否则长分片被网络抖一下就要从 0:00 重听
+function audioRetry() {
+  const a = ensureAudioEl();
+  const prev = a.currentTime || 0;
+  state.audioError = false;
+  state.audioBuffering = false;
+  a.load();
+  a._resumeAt = prev > 0 ? prev : 0;
+  audioSetSource(true);
 }
 
 function audioTogglePlay() {
   const a = ensureAudioEl();
   if (!a.dataset.auUrl) { audioSetSource(true); return; }
+  if (state.audioError) { audioRetry(); return; }
   if (a.paused) a.play().catch(() => showToast('播放失败（网络或浏览器策略）'));
   else a.pause();
+}
+
+// 数据缺失/空合集的「重试」：连索引一起重拉。
+// ensureAudioIndex 拉取失败会把 {collections: []} 永久缓存，只清合集缓存重试永远不会成功
+// （那正是用户最需要重试的「首屏索引拉挂」场景）
+async function audioReloadData() {
+  const cid = state.audioColl;
+  if (cid) { delete state.audioData[cid]; delete state.audioPending[cid]; }
+  const known = ((state.audioIndex && state.audioIndex.collections) || []).length > 0;
+  if (!cid || !known) {
+    state.audioIndex = null;
+    await ensureAudioIndex();
+    const first = ((state.audioIndex && state.audioIndex.collections) || [])[0];
+    if (first) state.audioColl = first.id;
+  }
+  const d = await ensureAudioCollection(state.audioColl);
+  if (!d) { showToast('仍无法加载听书数据，请稍后再试'); return; }
+  const lecs = d.lectures || [];
+  if (!lecs.some(l => l.n === state.audioLecture)) state.audioLecture = (lecs[0] || {}).n;
+  state.audioTrack = 0;
+  state.audioError = false;
+  state.audioBuffering = false;
+  renderAudioMain();
+  renderDrawer();
+  READER_MODULES.audio.renderCrumb();
+  syncRoute();   // 恢复后合集/讲次可能已变（首进时 URL 还停在空 hash），与其他导航函数一致
 }
 
 function audioSeekBy(delta) {
   const a = ensureAudioEl();
   if (!a.dataset.auUrl) return;
-  const dur = a.duration || 0;
+  const dur = audioDuration() || 0;
   a.currentTime = Math.max(0, Math.min(dur || Infinity, (a.currentTime || 0) + delta));
   audioSyncProgress();
 }
@@ -5430,8 +5491,46 @@ function audioSyncControls() {
   const b = $('auPlay');
   if (!b) return;
   const a = state.audioEl;
-  b.textContent = (a && !a.paused) ? '❚❚' : '▶';
-  b.setAttribute('aria-label', (a && !a.paused) ? '暂停' : '播放');
+  // 失败时不显示「暂停」：此时并没有在放，按钮必须回到 ▶ 并把语义写成可重试的播放
+  const playing = !!a && !a.paused && !state.audioError;
+  b.textContent = playing ? '❚❚' : '▶';
+  b.setAttribute('aria-label', playing ? '暂停' : (state.audioError ? '重试播放' : '播放'));
+}
+
+// 卡片内状态行：缓冲中… / 加载失败 · 重试（反馈落在播放器上，不靠 2.6s toast）
+function audioSyncStatus() {
+  const el = $('auStatus');
+  if (!el) return;
+  if (state.audioError) {
+    el.hidden = false;
+    el.className = 'au-status error';
+    if (!el.querySelector('[data-arety]')) {
+      el.innerHTML = `<span>音频加载失败，请检查网络</span><button class="au-retry" data-arety>重试</button>`;
+    }
+  } else if (state.audioBuffering) {
+    el.hidden = false;
+    el.className = 'au-status';
+    if (!el.querySelector('.au-spin')) {
+      el.innerHTML = `<span class="au-spin" aria-hidden="true"></span><span>缓冲中…</span>`;
+    }
+  } else {
+    // 状态行隐藏会移除正持有焦点的「重试」按钮 → 焦点交回播放键，键盘用户不必重 Tab 整页
+    if (el.contains(document.activeElement)) { try { $('auPlay').focus(); } catch (e) { /* 忽略 */ } }
+    el.hidden = true;
+    el.className = 'au-status';
+    el.textContent = '';
+  }
+}
+
+// 当前分片总时长：<audio> 元数据就绪后用精确值，否则用导出数据里的 durationSec
+// （进度条显示的是这个数，定位也必须按同一个数换算，否则刚进页面点进度条会没反应）
+function audioDuration() {
+  const a = state.audioEl;
+  // Infinity 也是 truthy：流式/无长度响应会给出 Infinity，直接拿去算就是 NaN 时钟
+  if (a && Number.isFinite(a.duration) && a.duration > 0) return a.duration;
+  const lec = audioLectureData();
+  const t = lec && lec.tracks[state.audioTrack];
+  return (t && t.durationSec) || 0;
 }
 
 function audioSyncProgress() {
@@ -5439,18 +5538,29 @@ function audioSyncProgress() {
   if (!fill) return;
   const lec = audioLectureData();
   const a = state.audioEl;
-  const fallback = lec && lec.tracks[state.audioTrack] ? (lec.tracks[state.audioTrack].durationSec || 0) : 0;
-  const dur = (a && a.duration) || fallback;
+  const dur = audioDuration();
   const pos = (a && a.dataset.auUrl) ? (a.currentTime || 0) : 0;
   const p = dur ? Math.min(1, pos / dur) : 0;
   fill.style.width = (p * 100) + '%';
   knob.style.left = (p * 100) + '%';
   if (cur) cur.textContent = audioClock(pos);
   if (total) total.textContent = dur ? audioClock(dur) : '—:—';
+  // 多段讲次的进度条是「分段进度」：标题区写的是整讲时长，不标段号会同屏出现
+  // 「2 小时 25 分」与「24:10」两个数却无解释（UI 评审 F5）
+  const multi = !!(lec && lec.tracks && lec.tracks.length > 1);
+  const cap = $('auSegCap');
+  if (cap) {
+    cap.hidden = !multi;
+    if (multi) {
+      const t = `第${cnNum(state.audioTrack + 1)}段 · 共 ${lec.tracks.length} 段`;
+      if (cap.textContent !== t) cap.textContent = t;
+    } else if (cap.textContent) cap.textContent = '';
+  }
+  const segLabel = multi ? `第${cnNum(state.audioTrack + 1)}段 ` : '';
   const pg = $('auPg');
   if (pg) {   // 读屏与键盘可感知进度
     pg.setAttribute('aria-valuenow', String(Math.round(p * 100)));
-    pg.setAttribute('aria-valuetext', `${audioClock(pos)} / ${dur ? audioClock(dur) : '—:—'}`);
+    pg.setAttribute('aria-valuetext', `${segLabel}${audioClock(pos)} / ${dur ? audioClock(dur) : '—:—'}`);
   }
 }
 
@@ -5458,7 +5568,11 @@ function renderAudioMain() {
   const main = $('audioMain');
   if (!main) return;
   const d = audioCollection(), lec = audioLectureData();
-  if (!d || !lec) { main.innerHTML = '<div class="loading-hint">听书数据缺失</div>'; return; }
+  // 空态给一个可执行的动作（与加载失败的「重试」一致），不留死胡同
+  if (!d || !lec) {
+    main.innerHTML = `<div class="loading-error"><span>听书数据缺失</span><button class="popup-btn primary" data-areload>重试</button></div>`;
+    return;
+  }
   const g = (d.groups || []).find(x => x.id === lec.group);
   const multi = lec.tracks.length > 1;
   main.innerHTML = `
@@ -5467,6 +5581,7 @@ function renderAudioMain() {
     <div class="au-meta">${audioDurText(lec.durationSec)} · ${lec.tracks.length} 段${d.speaker ? ` · ${escapeHtml(d.speaker)}` : ''}</div>
 
     <div class="au-player">
+      <div class="au-pg-cap" id="auSegCap" hidden></div>
       <div class="au-pg-row">
         <span class="au-time" id="auCur">0:00</span>
         <div class="au-pg" id="auPg" role="slider" tabindex="0" aria-label="播放进度"
@@ -5477,11 +5592,14 @@ function renderAudioMain() {
         <span class="au-time right" id="auTotal">—:—</span>
       </div>
       <div class="au-ctrl">
-        <button class="au-side" data-aseek="-15" aria-label="后退 15 秒"><span class="g">↺</span>15</button>
-        <button class="au-play" id="auPlay" data-aplay aria-label="播放">▶</button>
-        <button class="au-side" data-aseek="15" aria-label="前进 15 秒"><span class="g">↻</span>15</button>
+        <div class="au-ctrl-main">
+          <button class="au-side" data-aseek="-15" aria-label="后退 15 秒"><span class="g">↺</span>15</button>
+          <button class="au-play" id="auPlay" data-aplay aria-label="播放">▶</button>
+          <button class="au-side" data-aseek="15" aria-label="前进 15 秒"><span class="g">↻</span>15</button>
+        </div>
         <button class="au-speed" id="auSpeed" data-aspeed aria-label="播放速度">${String(state.audioSpeed).replace(/0$/, '')}×</button>
       </div>
+      <div class="au-status" id="auStatus" role="status" aria-live="polite" hidden></div>
     </div>
 
     ${multi ? `<div class="au-sec-head">分段</div>
@@ -5607,22 +5725,69 @@ function searchAudioTitles(q, limit) {
 function bindAudioEvents() {
   const main = $('audioMain');
   if (!main) return;
+  // 进度条：按下即定位、按住拖动实时跟随（只绑 click 会让拖动期间毫无反应）
+  const seekToPointer = (pg, clientX) => {
+    const a = ensureAudioEl();
+    const dur = audioDuration();
+    if (!a.dataset.auUrl || !dur) return;
+    const r = pg.getBoundingClientRect();
+    const p = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
+    try { a.currentTime = dur * p; } catch (err) { /* 元数据未就绪时交给默认起播位置 */ }
+    audioSyncProgress();
+  };
+  /* 进度条拖拽状态。触屏不能「按下即 seek」：手指落在进度条行上想上下滑页时，
+    浏览器要在 pointerdown 之后才接管滚动，先 seek 会把播放位置无声跳走。
+      · 鼠标：按下即定位，移动实时跟随
+      · 触屏：轻点 = 抬起时定位；横向拖动超过阈值才接管；纵向滑动 = 交给页面滚动，不改位置 */
+  let scrub = null;
+  const SCRUB_SLOP = 6;
+  main.addEventListener('pointerdown', (e) => {
+    const pg = e.target.closest('#auPg');
+    if (!pg || e.button !== 0) return;
+    const mouse = e.pointerType === 'mouse';
+    scrub = { id: e.pointerId, x0: e.clientX, y0: e.clientY, owned: mouse, dead: false };
+    try { pg.setPointerCapture(e.pointerId); } catch (err) { /* 老浏览器无指针捕获 */ }
+    if (mouse) seekToPointer(pg, e.clientX);
+  });
+  main.addEventListener('pointermove', (e) => {
+    if (!scrub || e.pointerId !== scrub.id) return;
+    if (!scrub.owned) {
+      const dx = e.clientX - scrub.x0, dy = e.clientY - scrub.y0;
+      if (Math.abs(dy) > SCRUB_SLOP && Math.abs(dy) >= Math.abs(dx)) { scrub.dead = true; return; }   // 纵向 = 滚动
+      if (Math.abs(dx) <= SCRUB_SLOP) return;                                                        // 还没过阈值
+      scrub.owned = true;
+    }
+    if (scrub.dead) return;
+    const pg = e.target.closest('#auPg') || $('auPg');
+    if (pg) seekToPointer(pg, e.clientX);
+  });
+  const endScrub = (e) => {
+    if (!scrub || e.pointerId !== scrub.id) return;
+    const s = scrub;
+    scrub = null;
+    const pg = $('auPg');
+    if (pg) { try { pg.releasePointerCapture(e.pointerId); } catch (err) { /* 忽略 */ } }
+    // 触屏轻点（没拖动、没被判为滚动）→ 此时才定位
+    if (e.type === 'pointerup' && !s.owned && !s.dead && pg) seekToPointer(pg, e.clientX);
+  };
+  main.addEventListener('pointerup', endScrub);
+  main.addEventListener('pointercancel', endScrub);
+  // 捕获丢失（窗口失焦/系统弹窗）也要清状态，否则 scrub 残留会让后续划过进度条就跳位置
+  main.addEventListener('lostpointercapture', (e) => {
+    if (scrub && e.pointerId === scrub.id) scrub = null;
+  });
+
   main.addEventListener('click', (e) => {
     if (e.target.closest('[data-aplay]')) { audioTogglePlay(); return; }
+    if (e.target.closest('[data-arety]')) { audioRetry(); return; }
+    if (e.target.closest('[data-areload]')) { audioReloadData(); return; }
     const sk = e.target.closest('[data-aseek]');
     if (sk) { audioSeekBy(+sk.dataset.aseek); return; }
     if (e.target.closest('[data-aspeed]')) { audioCycleSpeed(); return; }
     const tr = e.target.closest('[data-atrack]');
     if (tr) { playAudioTrack(+tr.dataset.atrack, true); return; }
     const pg = e.target.closest('#auPg');
-    if (pg) {
-      const a = ensureAudioEl();
-      if (!a.dataset.auUrl || !a.duration) return;
-      const r = pg.getBoundingClientRect();
-      const p = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
-      a.currentTime = a.duration * p;
-      audioSyncProgress();
-    }
+    if (pg && e.pointerType === undefined) seekToPointer(pg, e.clientX);   // 合成 click（脚本触发）兜底
   });
   // 键盘：进度条左右键 ±5 秒、分段行 Enter/Space 播放（div 不会自己产生 click）
   main.addEventListener('keydown', (e) => {

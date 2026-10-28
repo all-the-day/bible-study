@@ -283,6 +283,94 @@ async function main() {
   ok(r14b.open && r14b.cols === 2 && r14b.widths.every(w => w > 120),
     '14b. 移动端抽屉双栏', JSON.stringify(r14b.widths));
 
+  // 15. UI 评审回归（2026-10-28）：分段进度说明 / 进度条命中区 / 控制行不重叠
+  //     —— 三条都是纯几何与文案，不依赖 OSS，慢网也能稳定断言
+  await page.evaluate(() => { if (typeof closeNavDrawer === 'function') closeNavDrawer(); });
+  await sleep(400);
+  await page.evaluate(() => openAudioLecture('niaokan', 35));
+  await sleep(1200);
+  const r15 = await page.evaluate(() => {
+    const cap = document.getElementById('auSegCap');
+    const pg = document.getElementById('auPg').getBoundingClientRect();
+    const cx = Math.round(pg.left + pg.width / 2);
+    // 纵向扫描可命中「播放进度」的高度（视觉 4px，命中带应 ≥24px）
+    let band = 0;
+    for (let dy = -20; dy <= 20; dy += 1) {
+      const el = document.elementFromPoint(cx, Math.round(pg.top + pg.height / 2 + dy));
+      if (el && el.id === 'auPg') band++;
+    }
+    const fwd = document.querySelector('[data-aseek="15"]').getBoundingClientRect();
+    const speed = document.getElementById('auSpeed').getBoundingClientRect();
+    let stolen = 0;   // 前进按钮全宽里有多少像素实际落在倍速上
+    for (let x = Math.round(fwd.left); x < Math.round(fwd.right); x += 1) {
+      const el = document.elementFromPoint(x, Math.round(fwd.top + fwd.height / 2));
+      if (el && el.id === 'auSpeed') stolen++;
+    }
+    return {
+      capShown: !cap.hidden, capText: cap.textContent,
+      valuetext: document.getElementById('auPg').getAttribute('aria-valuetext'),
+      band, stolen, fwdRight: Math.round(fwd.right), speedLeft: Math.round(speed.left),
+    };
+  });
+  ok(r15.capShown && r15.capText.includes('共 5 段') && r15.valuetext.startsWith('第一段'),
+    '15. 多段讲次标注「分段进度」', `${r15.capText} | ${r15.valuetext}`);
+  ok(r15.band >= 24, '15b. 进度条命中区 ≥24px', `band=${r15.band}px`);
+  ok(r15.stolen === 0 && r15.fwdRight <= r15.speedLeft,
+    '15c. 「前进 15 秒」与倍速不重叠', `fwd右=${r15.fwdRight} 倍速左=${r15.speedLeft} 被压像素=${r15.stolen}`);
+
+  // 16. 单段讲次不显示分段进度说明（避免与「1 段」重复）
+  await page.evaluate(() => openAudioLecture('niaokan', 25));
+  await sleep(1200);
+  const r16 = await page.evaluate(() => {
+    const cap = document.getElementById('auSegCap');
+    return { tracks: document.querySelectorAll('.au-track').length, capHidden: cap.hidden, valuetext: document.getElementById('auPg').getAttribute('aria-valuetext') };
+  });
+  ok(r16.tracks === 0 && r16.capHidden && !r16.valuetext.startsWith('第'),
+    '16. 单段讲次隐藏分段说明', JSON.stringify(r16));
+
+  // 17. 数据缺失空态要给出可点的动作（不能是死胡同）
+  const r17 = await page.evaluate(() => {
+    state.audioData['__empty__'] = { id: '__empty__', name: '空合集', lectures: [], groups: [] };
+    const keepColl = state.audioColl, keepLec = state.audioLecture;
+    state.audioColl = '__empty__'; state.audioLecture = 1;
+    renderAudioMain();
+    const text = document.getElementById('audioMain').textContent.replace(/\s+/g, ' ').trim();
+    const hasRetry = !!document.querySelector('#audioMain [data-areload]');
+    delete state.audioData['__empty__'];
+    state.audioColl = keepColl; state.audioLecture = keepLec;
+    renderAudioMain();
+    return { text, hasRetry };
+  });
+  ok(r17.hasRetry && r17.text.includes('听书数据缺失'), '17. 空态给出重试动作', JSON.stringify(r17));
+
+  // 18. 触屏纵向滑动不该改播放位置（手指落在进度条行上想滚页时，
+  //     浏览器接管滚动发生在 pointerdown 之后，先 seek 会把位置无声跳走）
+  await page.evaluate(() => openAudioLecture('niaokan', 35));
+  await sleep(1000);
+  const r18 = await page.evaluate(() => {
+    const pg = document.getElementById('auPg');
+    const r = pg.getBoundingClientRect();
+    const y = Math.round(r.top + r.height / 2);
+    const at = (f) => Math.round(r.left + r.width * f);
+    const ev = (type, x, yy) => pg.dispatchEvent(new PointerEvent(type, {
+      bubbles: true, cancelable: true, clientX: x, clientY: yy,
+      pointerId: 7, pointerType: 'touch', isPrimary: true, button: 0,
+    }));
+    const el = ensureAudioEl();
+    el.currentTime = 0;
+    ev('pointerdown', at(0.2), y);
+    ev('pointermove', at(0.2), y + 12);
+    ev('pointermove', at(0.2), y + 34);
+    ev('pointerup', at(0.2), y + 34);
+    const afterSwipe = el.currentTime;
+    // 轻点仍应定位到对应位置
+    ev('pointerdown', at(0.5), y);
+    ev('pointerup', at(0.5), y);
+    return { afterSwipe: +afterSwipe.toFixed(1), afterTap: +el.currentTime.toFixed(1), half: Math.round(audioDuration() * 0.5) };
+  });
+  ok(r18.afterSwipe === 0 && Math.abs(r18.afterTap - r18.half) <= 3,
+    '18. 触屏纵滑不改位置 / 轻点定位', JSON.stringify(r18));
+
   console.log('\nJS 错误:', errors.length ? errors : '无');
   if (errors.length) fail = 1;
   await browser.close();
