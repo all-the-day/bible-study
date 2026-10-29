@@ -60,23 +60,34 @@ async function main() {
       home.crumb[0] === '活力八' && home.crumb[1] === '作业单',
       '2. 作业单页（8 周 + 五类条目 + 顶栏）', JSON.stringify(home));
 
-    // 3. 第 1 周的条目链接正确（原文 / 三篇生命读经按顺序 / 注释）
+    // 3. 第 1 周的条目链接正确（原文 / 三篇生命读经按顺序 / 书报 / 注释）
     const hrefs = await page.evaluate(() => ({
       bible: document.querySelector('.topic-week a.topic-row')?.getAttribute('href'),
       lr: [...document.querySelectorAll('.topic-week:first-of-type a.topic-row[href^="#/lr/"]')].map(a => a.getAttribute('href')),
+      book: document.querySelector('.topic-week:first-of-type a.topic-row[href^="#/book/"]')?.getAttribute('href'),
+      bookLabel: document.querySelector('.topic-week:first-of-type a.topic-row[href^="#/book/"] .topic-row-t')?.textContent,
       fn: document.querySelector('.topic-week:first-of-type a.topic-row[href^="#/bible/"]:last-of-type')?.getAttribute('href'),
     }));
-    ok(hrefs.bible === '#/bible/50/1' && hrefs.lr.join(',') === '#/lr/50/3,#/lr/50/4,#/lr/50/5' && hrefs.fn === '#/bible/50/1',
-      '3. 第 1 周链接（原文 + 三篇按顺序）', JSON.stringify(hrefs));
+    ok(hrefs.bible === '#/bible/50/1' && hrefs.lr.join(',') === '#/lr/50/3,#/lr/50/4,#/lr/50/5' &&
+      hrefs.book === '#/book/sg/2/21/0' && hrefs.bookLabel === '传福音的秘诀' && hrefs.fn === '#/bible/50/1',
+      '3. 第 1 周链接（原文 + 三篇按顺序 + 书报）', JSON.stringify(hrefs));
 
-    // 4. 书报 / 背经未填 → 虚化不可点（div 而非 a）
+    // 3b. 指定书报《福音的托付》7 章按顺序对应第 1–7 周，第 8 周仍待填
+    const bookWeek = await page.evaluate(() => [...document.querySelectorAll('#topicMain .topic-week')].map((wk) => {
+      const a = wk.querySelector('a.topic-row[href^="#/book/"]');
+      return a ? a.getAttribute('href').replace('#/book/sg/2/21/', '') : null;
+    }));
+    ok(bookWeek.join(',') === '0,1,2,3,4,5,6,',
+      '3b. 书报按周递增（1–7 周，第 8 周待填）', JSON.stringify(bookWeek));
+
+    // 4. 未填的周（第 1–7 周 各剩背经 + 第 8 周 书报与背经）→ 虚化不可点（div 而非 a）
     const pending = await page.evaluate(() => ({
       count: document.querySelectorAll('.topic-row.pending').length,
       anchors: [...document.querySelectorAll('.topic-row.pending')].filter(e => e.tagName === 'A').length,
       texts: [...document.querySelectorAll('.topic-week:first-of-type .topic-row.pending .topic-row-t')].map(e => e.textContent),
     }));
-    ok(pending.count === 16 && pending.anchors === 0 &&
-      pending.texts.join(',') === '指定书报待填,背经经节待填',
+    ok(pending.count === 9 && pending.anchors === 0 &&
+      pending.texts.join(',') === '背经经节待填',
       '4. 待填条虚化不可点', JSON.stringify(pending));
 
     // 5. 点「原文」→ 读经模块对应章（读经里自己的标注照常），顶栏 crumb 刷新

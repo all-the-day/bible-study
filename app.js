@@ -1318,7 +1318,7 @@ function renderTopicWeek(w) {
   const br = w.bookRead;
   if (br && br.series) {
     const series = String(br.series).replace(/[^a-z0-9_-]/gi, '');
-    rows.push(topicRow('book', '书报', escapeHtml(br.title || ''), `#/book/${series}/${Number(br.volume) || 1}/${Number(br.book) || 0}/${Number(br.chapter) || 0}`));
+    rows.push(topicRow('book', '书报', escapeHtml(br.label || br.title || ''), `#/book/${series}/${Number(br.volume) || 1}/${Number(br.book) || 0}/${Number(br.chapter) || 0}`));
   } else {
     rows.push(topicRowPending('book', '书报', '指定书报待填'));
   }

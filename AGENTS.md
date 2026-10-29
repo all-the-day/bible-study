@@ -182,13 +182,18 @@ node scripts/deploy.mjs --check
 - **作业单 = 脚本里的 `REGISTRY`（唯一事实源）**：`scripts/build-topics.py` 的
   `vitality8.weeks[]`，一周一条 `{n, book, chapter, articles:[篇号], bookRead, memory}`：
   - `articles` 生命读经篇号（按顺序显示；脚本校验篇目存在且 `verses` 覆盖该章，标题由数据解析并剥
-    「005第五篇、」前缀）；`bookRead` 指定书报 `{series, volume, book, chapter}` 或 `None`；
+    「005第五篇、」前缀）；`bookRead` 指定书报 `{series, volume, book, chapter[, label]}` 或 `None`；
     `memory` 背经经节串或 `None`。后两者为 `None` 时页面渲染虚化的「待填」行（不可点）。
+    `label` 可选，覆盖行内显示名——作业单的篇名落在章内、与章标题不同时用（如「传福音的秘诀」是
+    《福音的托付》第 1 章内的篇名），跳转仍定位到该章。
   - 脚本自检：周次非法/重复、书卷不在 `ALLOWED_BOOKS`（腓 50 / 西 51）、章号越界、篇号不存在或不覆盖该章
     → 非零退出，不静默少内容。产物 `data/topics/{id}.json`（`{id,title,blurb,weeks[]}`，只含标题与定位，无正文）。
   - **默认篇号**（腓 1/2/3/4 → 3·4·5 / 9·10·11 / 17·18·19 / 26·27·28；西 1/2/3/4 → 2·3·4 / 18·19·20 /
     27·28·29 / 31·65）按「经文整段落在该章内、按篇号取前三篇」选的，**活动作业单到手后逐周替换**；
     西 4 章源数据只有 2 篇整段落在本章（31/65），故只挂 2 篇。
+  - **指定书报**（2026-10-29 用户提供）：同一本《福音的托付》（`sg` 第二辑第 21 本，7 章）按章顺序
+    对应第 1–7 周，第 8 周无书报（仍待填）；第 1 章的章标题是「福音的托付」，作业单上的篇名
+    「传福音的秘诀」是章内一节，故用 `label` 覆盖显示名。
   - **`TOPICS_DATA=…`** 可把数据目录指到别处（`data/` 不入库的 worktree 用）；产物始终写回本仓库 `data/topics/`。
 - **屏幕 = `state.screen = 'topic'`**（第三种态，与 `home`/`bookhub` 正交）：`body.topic` + 独立
   `#topicView`（单列 `#topicTextCol > #topicMain`，没有左栏/右栏）。**不碰 `READER_MODULES` /

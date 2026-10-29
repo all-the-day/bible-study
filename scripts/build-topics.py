@@ -32,24 +32,42 @@ ALLOWED_BOOKS = (50, 51)
 #   book     书卷序号（1-66，见 data/books.json）
 #   chapter  该周所学的章
 #   articles 生命读经篇号（按顺序；id 见 data/lifereading/{缩写}.json），页面按顺序列链接
-#   bookRead 指定书报 {series, volume, book, chapter}（volume 1 基、book/chapter 0 基，与书报路由一致）
+#   bookRead 指定书报 {series, volume, book, chapter[, label]}（volume 1 基、book/chapter 0 基，与书报路由一致）
+#            label 可选，覆盖行内显示名（作业单的篇名落在章内、与章标题不同时用，跳转仍是该章）
 #            或 None → 页面该行显示「指定书报待填」
 #   memory   背经经节（如 '腓1:21'）或 None → 该行显示「背经经节待填」
 #
 # ⚠️ 下面的篇号是**默认值**（按「经文整段落在该章内、按篇号取前三篇」选出来的），
 #    活动作业单到手后逐周替换即可；西 4 章源数据只有 2 篇整段落在本章（31/65），故只挂 2 篇。
+# 指定书报《福音的托付》（属灵书报第二辑第 21 本）：7 章按顺序对应第 1–7 周。
+def _gospel_commit(chapter, label=None):
+    ref = {'series': 'sg', 'volume': 2, 'book': 21, 'chapter': chapter}
+    if label:
+        ref['label'] = label
+    return ref
+
+
 REGISTRY = {
     'vitality8': {
         'title': '活力八',
         'blurb': '腓立比书与歌罗西书：按作业单逐周读原文、生命读经与注解。',
         'weeks': [
-            {'n': 1, 'book': 50, 'chapter': 1, 'articles': [3, 4, 5], 'bookRead': None, 'memory': None},
-            {'n': 2, 'book': 50, 'chapter': 2, 'articles': [9, 10, 11], 'bookRead': None, 'memory': None},
-            {'n': 3, 'book': 50, 'chapter': 3, 'articles': [17, 18, 19], 'bookRead': None, 'memory': None},
-            {'n': 4, 'book': 50, 'chapter': 4, 'articles': [26, 27, 28], 'bookRead': None, 'memory': None},
-            {'n': 5, 'book': 51, 'chapter': 1, 'articles': [2, 3, 4], 'bookRead': None, 'memory': None},
-            {'n': 6, 'book': 51, 'chapter': 2, 'articles': [18, 19, 20], 'bookRead': None, 'memory': None},
-            {'n': 7, 'book': 51, 'chapter': 3, 'articles': [27, 28, 29], 'bookRead': None, 'memory': None},
+            # 第 1 周书报：「传福音的秘诀」是《福音的托付》第 1 章内的篇名，章标题本身叫「福音的托付」，
+            # 故用 label 覆盖显示名，跳转仍定位到该章。
+            {'n': 1, 'book': 50, 'chapter': 1, 'articles': [3, 4, 5],
+             'bookRead': _gospel_commit(0, '传福音的秘诀'), 'memory': None},
+            {'n': 2, 'book': 50, 'chapter': 2, 'articles': [9, 10, 11],
+             'bookRead': _gospel_commit(1), 'memory': None},
+            {'n': 3, 'book': 50, 'chapter': 3, 'articles': [17, 18, 19],
+             'bookRead': _gospel_commit(2), 'memory': None},
+            {'n': 4, 'book': 50, 'chapter': 4, 'articles': [26, 27, 28],
+             'bookRead': _gospel_commit(3), 'memory': None},
+            {'n': 5, 'book': 51, 'chapter': 1, 'articles': [2, 3, 4],
+             'bookRead': _gospel_commit(4), 'memory': None},
+            {'n': 6, 'book': 51, 'chapter': 2, 'articles': [18, 19, 20],
+             'bookRead': _gospel_commit(5), 'memory': None},
+            {'n': 7, 'book': 51, 'chapter': 3, 'articles': [27, 28, 29],
+             'bookRead': _gospel_commit(6), 'memory': None},
             {'n': 8, 'book': 51, 'chapter': 4, 'articles': [31, 65], 'bookRead': None, 'memory': None},
         ],
     },
@@ -102,7 +120,11 @@ def _book_read_ref(ref, errors):
     except (KeyError, IndexError, TypeError):
         errors.append(f'书报 {series} 卷{v} 书{b} 章{c} 超出范围')
         return None
-    return {'series': series, 'volume': v, 'book': b, 'chapter': c, 'title': str(title)}
+    out = {'series': series, 'volume': v, 'book': b, 'chapter': c, 'title': str(title)}
+    label = str(ref.get('label') or '').strip()
+    if label:
+        out['label'] = label
+    return out
 
 
 def _week(w, meta, lr_cache, errors):
