@@ -366,7 +366,7 @@ APK 端检查 GitHub Releases 新版本 → 下载 APK → 触发系统安装（
 | 本地版本 | `manifest.json` 的 `version`（`update.js` 读取；CI 构建 APK 时用 package.json 值重写 `www/manifest.json`） |
 | 远端版本 | Release `name`（CI 固定格式 `读经 v${VERSION} · 云同步版`），正则 `/v(\d+\.\d+\.\d+)/` 解析 |
 | 比较 | `compareVersion`：去 v 前缀 → split('.') → parseInt 逐位比较 |
-| 下载源 | **阿里云 OSS 版本化主包优先**，其后直连 GitHub + 公共镜像（`OSS` → `github.com` → `gh-proxy.com` → `ghproxy.net`），失败切换下一个。OSS 地址由 Release 版本号直接生成：`https://szkjweb.oss-cn-hangzhou.aliyuncs.com/bible-study-apk/v{VERSION}/bible-study-v{VERSION}.apk`（与音频前缀 `u8jw85vqqv/` 分离，**路径是对外契约，不可改名**）；无 OSS 对象时自动回退 GitHub。GitHub Releases 仍是版本检查真相源与老 APK 兼容通道，不能撤。镜像只替换 GitHub URL 的 host，不代理 OSS；静态 `bible-study.apk` 路径仅作 API 无资产时的兜底 |
+| 下载源 | **GitHub 直连优先**，其后公共镜像（`github.com` → `gh-proxy.com` → `ghproxy.net`），失败切换下一个；镜像只替换 GitHub URL 的 host。静态 `bible-study.apk` 路径仅作 API 无资产时的兜底。**2026-10-28 移除阿里云 OSS 主源**：OSS 默认域名禁止分发 APK（400 `ApkDownloadForbidden`，需 CNAME 绑定），保留它只会让每次更新先白试一次再回退，净是延迟。GitHub Releases 是版本检查真相源与唯一资产通道 |
 | 下载方式 | **原生 `HttpURLConnection`**（`ApkInstallerPlugin.download`，不受 WebView CORS 限制）→ cacheDir `downloads/`；进度经插件 `progress` 事件（fraction 0..1，原生节流 500ms）转发 JS 进度条 |
 | 安装 | `Capacitor.Plugins.ApkInstaller.install({filePath})`（原生插件）→ FileProvider → 系统 `ACTION_VIEW` 安装器 |
 | 清理 | 成功后清理 CACHE/DATA `downloads/` 目录历史 `*.apk`（保留当前版本化文件与旧版固定名兜底） |
@@ -377,8 +377,7 @@ APK 端检查 GitHub Releases 新版本 → 下载 APK → 触发系统安装（
 - **平台分支**：原生（`Capacitor.isNativePlatform()`）→ `download()`（update.js）依次调插件 `download({url})`，失败（超时/HTTP 错误）切下一源 → 成功后 `install`；PWA/浏览器 → 只提示跳转 Releases 页（网页内容走 SW 自动更新）
 - **⚠️ 不要退回 WebView fetch 下载**：GitHub release 资产域（`release-assets.githubusercontent.com`）与公共镜像都不带 `Access-Control-Allow-Origin`，Capacitor WebView（origin `https://localhost`）里 fetch 跨域下载被 CORS 拦截，稳定复现 `Failed to fetch`（开 VPN 无效）——2026-08-26 实测根因，已改用原生下载
 - **原生插件注入**：仓库不建 `android/`（CI `cap add android` 全新建）；`scripts/patch-android.mjs` 在 cap sync 后拷贝 `config/android/` 的 Java/XML 并幂等改写 AndroidManifest（`REQUEST_INSTALL_PACKAGES` 权限 + `<queries>` VIEW apk + FileProvider authority `com.allday.biblestudy.fileprovider`）
-- **OSS 发布与凭据**：CI 在 GitHub Release 发布后，经仓库变量 `OSS_APK_ENABLED=true` 启用 OSS 上传（`continue-on-error`：失败只告警不阻断发版与版本递增，客户端自动回退 GitHub 下载）；Secrets `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET` 应使用仅限 `szkjweb/bible-study-apk/*` 读写的 RAM 子账号，**不给删除权限**。CI 用固定版本与 SHA-256 的官方 ossutil 上传；版本对象不可变——已存在（同版本重跑）时不覆盖，此时 debug APK 不可逐字节复现（zip 条目时间戳），只校验对象可下载与 MIME，逐字节 cmp 仅对**本轮实际上传**的包执行。历史版本不自动删除，手动回滚走对应版本 URL，自动更新只升不降
-- **本机手工上传/回填**：`D:/document/聖經鳥瞰/tools/oss-upload/` 已通用化（APK MIME + `--manifest`/`--urls`/`--cache-control`）；APK 放独立目录，用 `--root <目录> --prefix bible-study-apk/v{版本}/ --ext apk --manifest <独立清单>`，不要覆盖音频清单
+- **OSS 发布已下线（2026-10-28）**：阿里云 OSS 默认域名禁止在公网分发 APK（`400 ApkDownloadForbidden`，需 CNAME 自定义域名才能发），所以「OSS 版本化主包」这条线永远发不出去、客户端每次还要白试一次才回退 GitHub——已从 `update.js` 候选链与 `build-apk.yml` 删除。**不要再加回来**，除非先给 bucket 绑好自定义域名并实测能下载 APK。仓库 Secrets `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET` 与变量 `OSS_APK_ENABLED` 保留未删（bucket 仍用于**听书音频**，前缀 `u8jw85vqqv/`，那条链路正常）
 - **版本一致性守卫**：build-apk.yml 构建前校验 `package.json.version == manifest.json.version`，不一致直接失败——App 内更新依赖两处版本对齐，**每次发版两处都要同步升**
 
 ## 反馈闭环
