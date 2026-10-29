@@ -48,6 +48,9 @@ generated-images/
 .playwright-cli/
 .tmp-shots/
 
+# ui-review 评审过程产物（报告 + 页面截图），结论已随修复提交
+.ui-review/
+
 # 调试产物与工具本地配置
 docs/*.har
 .zcodeignore
