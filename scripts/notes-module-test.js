@@ -255,6 +255,26 @@ async function main() {
   }));
   console.log('11. 偏好恢复:', r11.active === '听抄' ? '✓' : '✗', '|', JSON.stringify(r11));
 
+  // 12. 移动端 390px：「筛选 ▾」留在视口内（2026-10-30 S1 回归——曾在 422px max-content 宽下被推出屏）
+  await page.setViewport({ width: 390, height: 844 });
+  await wait(400);
+  await page.evaluate(() => renderNotesList());
+  await wait(400);
+  const r12 = await page.evaluate(() => {
+    const fb = document.querySelector('.notes-filter-btn');
+    const bar = document.querySelector('.notes-toolbar-mobile');
+    const doc = document.documentElement;
+    return {
+      hasBtn: !!fb,
+      btnRight: fb ? Math.round(fb.getBoundingClientRect().right) : null,
+      vw: window.innerWidth,
+      barW: bar ? Math.round(bar.getBoundingClientRect().width) : null,
+      overflowX: doc.scrollWidth > doc.clientWidth,
+    };
+  });
+  console.log('12. 移动端「筛选」不出屏:', r12.hasBtn && r12.btnRight <= r12.vw && !r12.overflowX ? '✓' : '✗',
+    '| 按钮右缘:', r12.btnRight, '| 视口:', r12.vw, '| 工具条宽:', r12.barW, '| 横向溢出:', r12.overflowX);
+
   console.log('\nJS 错误:', errors.length ? errors : '无');
   await browser.close();
   server.kill();

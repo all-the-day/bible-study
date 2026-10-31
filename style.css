@@ -186,7 +186,12 @@ body.home .reading-progress { display: none; }
 .icon-btn:hover { background: rgba(255,255,255,.15); }
 .topbar .icon-btn:hover { background: var(--topbar-btn); }
 .crumb { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; font-size: var(--fs-17); font-weight: 600; }
-.crumb #bookName { white-space: nowrap; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; }
+/* 书名允许收缩（2026-10-30 S2）：原来 flex-shrink:0 让书卷名独占宽度，窄屏上
+   #chapterLabel 被压成 0，flex 行还从中间溢出、被 overflow:hidden 裁掉左端，
+   首字压到 ☰ 字形底下。放不下时书卷名整段让位（shrink 99，不做半字碎屑）——
+   书卷/训练期名在抽屉与正文里都有，章/篇名才是「我在读哪一段」；
+   放得下时（读经「创世记 1章」）与改前逐像素一致。 */
+.crumb #bookName { white-space: nowrap; flex: 0 99 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .crumb #chapterLabel { font-weight: 400; opacity: .9; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .topbar-actions { display: flex; gap: 4px; align-items: center; }
 @media (max-width: 900px) {
@@ -1022,8 +1027,11 @@ body.scroll-locked { overflow: hidden; }
 .dw-hist-item .t { font-size: var(--fs-14); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dw-hist-item .sub { font-size: var(--fs-12); color: var(--text-muted); flex-shrink: 0; }
 
-/* ── 停靠列（桌面 >900px）：抽屉常驻为左侧栏，可经 ☰/crumb 收起展开 ── */
-@media (min-width: 901px) {
+/* ── 停靠列（桌面 ≥1200px）：抽屉常驻为左侧栏，可经 ☰/crumb 收起展开。
+   阈值 2026-10-30 由 901 抬到 1200（UI 评审 B1）：340 抽屉 + 480 研读列会把正文
+   挤到 901px 时 81px（一句经文一行一个字）、1024px 时 204px。901–1199 之间抽屉
+   退回浮层（☰ / crumb 唤出），正文吃满两列。JS 侧同阈值见 app.js DRAWER_DOCK_MIN。 ── */
+@media (min-width: 1200px) {
   body.drawer-docked:not(.body-mod-notes) #navDrawer {
     top: 52px;   /* 从顶栏下缘开始，不遮挡 ☰/crumb */
     transform: translateX(0);
@@ -1289,6 +1297,19 @@ mark.sr-hit {
 #lrMain, #lrSide, #bookMain, #bookSide, #morningMain, #morningSide,
 #audioMain, #notesMain, #notesSide { display: none; }
 .body-mod-notes .nav-col { display: flex; }
+/* 笔记管理三列 = 分类树 220 + 列表 + 编辑面板 480：<1200 收窄分类树与编辑面板，
+   否则 901–999 之间列表被挤到 200px 以下（与停靠抽屉同源，2026-10-30 B1）。
+   注意：不能用 --study-w 覆盖——它在 app.js 里以内联样式写到 .layout 上
+   （拖拽调宽用，见 state.studyWidth），样式表改不动，只能整体覆盖网格列。
+   #topicView 同为 .layout，必须排除。 */
+@media (min-width: 901px) and (max-width: 1199px) {
+  body.body-mod-notes .layout:not(#topicView) {
+    grid-template-columns: minmax(0, 190px) minmax(0, 1fr) minmax(0, 370px);
+  }
+  /* 该区间网格列写死，拖拽改不了宽度（只会静默写 state.studyWidth 落盘），
+     手柄一并隐藏——否则是个拖了没反应的假控件 */
+  body.body-mod-notes .resize-handle { display: none; }
+}
 .body-mod-lifereading #chapterTheme, .body-mod-lifereading #verseContainer { display: none; }
 .body-mod-lifereading #studyTabs, .body-mod-lifereading #studyBody { display: none; }
 .body-mod-lifereading #lrMain { display: block; }
@@ -1671,9 +1692,12 @@ mark.sr-hit {
     background: var(--surface); color: var(--brand); font-size: var(--fs-14); font-weight: 600; cursor: pointer;
   }
   #notesBackBtn:active { background: var(--surface-alt); }
-  /* 工具条收敛：第 1 行「搜索 + 筛选」，第 2 行「来源 chips（可横滑）+ 多选」 */
-  .notes-toolbar-mobile { flex-direction: column; align-items: stretch; gap: 8px; }
-  .notes-toolbar-mobile .notes-row { display: flex; gap: 6px; align-items: center; }
+  /* 工具条收敛：第 1 行「搜索 + 筛选」，第 2 行「来源 chips（可横滑）+ 多选」。
+     flex-wrap: nowrap 必须显式写（2026-10-30 S1）：它继承 .notes-toolbar 的 wrap，
+     列方向下 wrap 会让 .notes-row 拿到 max-content 宽（422px），搜索框占满后把
+     「筛选 ▾」推到 390 视口外——手机上颜色筛选与排序整个点不到。 */
+  .notes-toolbar-mobile { flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 8px; }
+  .notes-toolbar-mobile .notes-row { display: flex; gap: 6px; align-items: center; min-width: 0; }
   .notes-toolbar-mobile .notes-search { flex: 1; min-width: 0; }
   .notes-toolbar-mobile .notes-tabs-row { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
   .notes-toolbar-mobile .notes-tabs-row::-webkit-scrollbar { display: none; }

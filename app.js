@@ -3022,6 +3022,15 @@ function showLrMapPicker() {
       <button class="popup-btn primary" id="lrPickSave">保存</button>
     </div>
   `);
+  // 打开即滚到第一个勾选项（本卷篇目常有几十篇，要手动指定时得先找到当前落在哪几篇）
+  const pickList = $('popupBody').querySelector('.lr-pick-list');
+  const firstChecked = pickList && pickList.querySelector('.lr-pick-row input:checked');
+  if (firstChecked) {
+    const row = firstChecked.closest('.lr-pick-row');
+    const listRect = pickList.getBoundingClientRect();
+    const rowRect = row.getBoundingClientRect();
+    pickList.scrollTop += (rowRect.top - listRect.top) - (listRect.height - rowRect.height) / 2;
+  }
   $('lrPickSave').addEventListener('click', () => {
     const ids = [...document.querySelectorAll('#popupBody .lr-pick-row input:checked')].map(i => +i.value);
     state.lrMap[key] = ids;
@@ -5853,9 +5862,15 @@ function cnNum(n) {
   return d[h] + '百' + cnNum(r);
 }
 
-// 桌面停靠判定：>900px + 用户未收起 + 非笔记管理模块 + 工作区
+/* 停靠抽屉的最小视口宽（与 style.css「停靠列」媒体查询同值，改一处必须同步另一处）：
+   340px 抽屉 + 480px 研读列会把正文挤到 901px 时 81px、1024px 时 204px，
+   一句经文一行只放得下一个字（2026-10-30 UI 评审 B1）。窄于此时抽屉退回浮层。 */
+const DRAWER_DOCK_MIN = 1200;
+function drawerWide() { return window.innerWidth >= DRAWER_DOCK_MIN; }
+
+// 桌面停靠判定：≥1200px + 用户未收起 + 非笔记管理模块 + 工作区
 function isDocked() {
-  return window.innerWidth > 900 && state.drawerDocked &&
+  return drawerWide() && state.drawerDocked &&
     state.activeModule !== 'notes' && state.screen === 'work';
 }
 
@@ -5871,7 +5886,7 @@ function applyDrawerDock() {
     lockScroll(false);
     dw.hidden = false;
     renderDrawer();
-  } else if (window.innerWidth > 900) {
+  } else if (!isMobile()) {
     // 桌面收起（或 notes/首页）：彻底隐藏，唤出走 setDocked(true)
     dw.hidden = true; dw.classList.remove('open');
     ov.hidden = true; ov.classList.remove('on');
@@ -5887,19 +5902,21 @@ function setDocked(v) {
 }
 
 function toggleDrawerDock() {
-  if (state.screen === 'home' || state.activeModule === 'notes') return;
+  if (state.screen !== 'work' || state.activeModule === 'notes') return;   // 首页/合集层/专题页无阅读位置
   setDocked(!state.drawerDocked);
 }
 
 function openNavDrawer() {
   if (state.screen === 'home' || state.screen === 'bookhub') return;   // 首页/合集层无阅读位置，不承载导航抽屉
-  if (window.innerWidth > 900) {
-    // 桌面：notes 用左栏 #navCol 树（不参与停靠抽屉），其余模块停靠展开
+  if (drawerWide() && state.screen === 'work') {
+    // 宽屏工作区：notes 用左栏 #navCol 树（不参与停靠抽屉），其余模块停靠展开
     if (state.activeModule === 'notes') return;
     if (!state.drawerDocked) setDocked(true);
     return;
   }
-  // 移动端：浮层（遮罩 + 平移）
+  // 901–1199（及宽屏下的专题页）：抽屉当浮层用（停靠会把正文挤成窄条）；notes 在桌面工作区仍走自身左栏
+  if (!isMobile() && state.screen === 'work' && state.activeModule === 'notes') return;
+  // 浮层（遮罩 + 平移）
   const ov = $('drawerOverlay'), dw = $('navDrawer');
   clearTimeout(openNavDrawer._t);
   ov.hidden = false; dw.hidden = false;
@@ -6349,9 +6366,30 @@ async function jumpDrawerBrowse(mod, r) {
 
 function bindDrawerEvents() {
   $('drawerOverlay').addEventListener('click', closeNavDrawer);
-  // 视口跨界（≤900 ↔ >900）：桌面侧重估停靠态（移动端浮层由 CSS media 兜底）
+  // 视口跨界停靠阈值（<1200 ↔ ≥1200）时重估停靠态：跨 900 不再需要重估，
+  // 901–1199 与移动端同为浮层（抽屉常显与否只由 DRAWER_DOCK_MIN 决定）
+  let lastWide = drawerWide();
   window.addEventListener('resize', () => {
-    if (window.innerWidth > 900 && state.screen === 'work') applyDrawerDock();
+    const wide = drawerWide();
+    if (wide === lastWide) return;
+    lastWide = wide;
+    if (state.screen === 'work') applyDrawerDock();
+  });
+  // Esc 关闭浮层抽屉（2026-10-30 S5）：停靠态不响应，与点遮罩一致；
+  // 弹窗栈在上（清空历史确认框等）时让给弹窗，别关掉抽屉却留个确认框在屏上；
+  // 搜索框内先清检索词（业界惯例），再按一次才关抽屉
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const dw = $('navDrawer');
+    if (dw.hidden || !dw.classList.contains('open') || isDocked()) return;
+    if (!$('popup').hidden) return;
+    const si = $('dwSearchInput');
+    if (document.activeElement === si && si.value) {
+      si.value = ''; dwState.query = '';
+      renderDrawerSearch(state.activeModule);
+      return;
+    }
+    closeNavDrawer();
   });
   // 模块级搜索：输入即搜（seq 竞态守卫在 renderDrawerSearch），取消清空
   $('dwSearchInput').addEventListener('input', () => {
@@ -6440,14 +6478,16 @@ function bindEvents() {  // 首页：合集块点击 + 顶部搜索 + ⌂ 回首
     applyHideMarks();
     save(LS_HIDE_MARKS, state.hideMarks);
   });
-  // 菜单 ☰：桌面=停靠列收起/展开（全模块统一）；移动端=浮层导航抽屉
+  // 菜单 ☰：宽屏工作区=停靠列收起/展开（全模块统一）；窄屏=浮层导航抽屉
   $('menuBtn').addEventListener('click', () => {
     if (state.screen === 'home' || state.screen === 'bookhub') return;   // 首页/合集层隐藏 ☰（CSS 双保险）
-    if (window.innerWidth > 900) {
+    if (drawerWide() && state.screen === 'work') {
       const mod = READER_MODULES[state.activeModule];
       if (mod && mod.onMenu) mod.onMenu();
       return;
     }
+    // 非移动端（含 901–1199、以及宽屏下的专题页）：浮层（notes 桌面工作区用自身左栏，openNavDrawer 内已早退）
+    if (!isMobile()) { openNavDrawer(); return; }
     // 移动端：读经研读视图仅生命读经 tab 提供篇目/纲目导航（notes 走统一抽屉，见 openNavDrawer）
     if (state.activeModule === 'bible' && document.body.classList.contains('mobile-study')) {
       if (state.activeTab === 'lifereading') openLrNavSheet();

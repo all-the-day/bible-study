@@ -246,6 +246,62 @@ async function main() {
     await page.close();
   }
 
+  /* ============ 中等宽度视口（1024px）：不停靠，抽屉退浮层（2026-10-30 B1 回归） ============ */
+  {
+    const { page, errors } = await newPage(browser, { width: 1024, height: 800 });
+
+    // W1. 1024 不停靠：340 抽屉 + 480 研读列会把正文挤到 204px，正文得吃满
+    await page.evaluate(() => enterWork());
+    await wait(1500);
+    const w1 = await page.evaluate(() => ({
+      docked: document.body.classList.contains('drawer-docked'),
+      margin: parseFloat(getComputedStyle(document.querySelector('.layout')).marginLeft),
+      drawerW: document.querySelector('#navDrawer').getBoundingClientRect().width,
+      textW: Math.round(document.querySelector('#textCol').getBoundingClientRect().width),
+    }));
+    check('W1. 1024 不停靠（正文不被挤）', !w1.docked && w1.margin === 0 && w1.drawerW === 0 && w1.textW > 300,
+      `| 停靠:${w1.docked} margin:${w1.margin} 抽屉宽:${w1.drawerW} 正文宽:${w1.textW}`);
+
+    // W2. ☰ 在 1024 = 浮层抽屉（不是停靠展开）
+    await page.click('#menuBtn');
+    await wait(600);
+    const w2 = await page.evaluate(() => ({
+      open: document.querySelector('#navDrawer').classList.contains('open'),
+      overlayOn: document.querySelector('#drawerOverlay').classList.contains('on'),
+      docked: document.body.classList.contains('drawer-docked'),
+      w: Math.round(document.querySelector('#navDrawer').getBoundingClientRect().width),
+    }));
+    check('W2. 1024 ☰ 开浮层', w2.open && w2.overlayOn && !w2.docked && w2.w > 300,
+      `| 开:${w2.open} 遮罩:${w2.overlayOn} 停靠:${w2.docked} 宽:${w2.w}`);
+
+    // W3. Esc 关浮层
+    await page.keyboard.press('Escape');
+    await wait(500);
+    const w3 = await page.evaluate(() => !document.querySelector('#navDrawer').classList.contains('open'));
+    check('W3. 1024 Esc 关浮层', w3);
+
+    // W4. 1024 笔记管理：分类树常驻左栏、☰ 隐藏、三列收窄、无假拖拽手柄
+    await page.evaluate(() => enterModule('notes'));
+    await wait(1200);
+    const w4 = await page.evaluate(() => {
+      const cols = getComputedStyle(document.querySelector('.layout')).gridTemplateColumns.split(' ').map(parseFloat);
+      return {
+        navCol: getComputedStyle(document.querySelector('#navCol')).display !== 'none',
+        menuHidden: getComputedStyle(document.querySelector('#menuBtn')).display === 'none',
+        handleHidden: getComputedStyle(document.querySelector('#resizeHandle')).display === 'none',
+        cols,
+        listW: Math.round(document.querySelector('#notesMain').getBoundingClientRect().width),
+      };
+    });
+    check('W4. 1024 笔记三列收窄+无假拖拽手柄',
+      w4.navCol && w4.menuHidden && w4.handleHidden &&
+      Math.abs(w4.cols[0] - 190) < 1 && Math.abs(w4.cols[2] - 370) < 1 && w4.listW > 300,
+      `| 左栏:${w4.navCol} ☰隐藏:${w4.menuHidden} 手柄隐藏:${w4.handleHidden} 列:${w4.cols.map(Math.round)} 列表宽:${w4.listW}`);
+
+    check('1024 无 JS 错误', errors.length === 0, errors.join('; ').slice(0, 200));
+    await page.close();
+  }
+
   /* ============ 移动端视口（375px，浮层模式） ============ */
   {
     const { page, errors } = await newPage(browser, { width: 375, height: 720 });
