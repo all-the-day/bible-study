@@ -327,7 +327,61 @@ print(json.dumps(out, ensure_ascii=False))
   }
 }
 
-/* ── 6. 幂等（可选） ─────────────────────────────────────────── */
+/* ── 6. 书报纲目产物（data/books/outline/，scripts/build-book-outlines.py 生成）
+ * 契约见 docs/book-outline-playbook.md：按系列+辑分文件，键 "{书}:{章}"（0 基），
+ * 条目 {l,t} 精确 / {l,p,label} 前缀；[] = 显式空。这里只验结构与基数，
+ * 策展内容本身的正确性由构建脚本的逐行校验保证。 */
+{
+  const OUT = path.join(DATA, "outline");
+  if (!fs.existsSync(OUT)) {
+    bad("outline/ 目录缺失（先跑 python scripts/build-book-outlines.py）");
+  } else {
+    const files = fs.readdirSync(OUT).filter(f => f.endsWith(".json"));
+    let nCh = 0, nEmpty = 0, nEnt = 0, bads = [];
+    for (const f of files) {
+      const m = f.match(/^(.+)-(\d+)\.json$/);
+      if (!m) { bads.push(`${f} 文件名不合契约`); continue; }
+      const [, sid, vStr] = m;
+      const v = Number(vStr);
+      const p = path.join(OUT, f);
+      if (fs.statSync(p).size >= MAX_BYTES) bads.push(`${f} 超 25MB`);
+      const doc = readJSON(p);
+      if (!doc.chapters || typeof doc.chapters !== "object") { bads.push(`${f} 缺 chapters`); continue; }
+      const metaPath = path.join(DATA, `${sid}.json`);
+      if (!fs.existsSync(metaPath)) { bads.push(`${f} 对应系列元数据缺失`); continue; }
+      const vols = readJSON(metaPath).volumes || [];
+      if (v < 1 || v > vols.length) { bads.push(`${f} 辑号 ${v} 越界（1..${vols.length}）`); continue; }
+      const content = readJSON(path.join(DATA, `${sid}-${v}.json`));
+      const nb = (content.books || []).length;
+      for (const key of Object.keys(doc.chapters)) {
+        const [b, c] = key.split(":").map(Number);
+        const chaptersOf = (content.books[b] || {}).chapters || [];
+        if (!Number.isInteger(b) || !Number.isInteger(c) ||
+            b < 0 || b >= nb || c < 0 || c >= chaptersOf.length) {
+          bads.push(`${f} 键 ${key} 越界（书 ${nb} 本）`);
+          continue;
+        }
+        const entries = doc.chapters[key];
+        if (!Array.isArray(entries)) { bads.push(`${f} ${key} 非数组`); continue; }
+        nCh++;
+        if (!entries.length) { nEmpty++; continue; }
+        for (const e of entries) {
+          if (!e || typeof e.l !== "number" || e.l < 1 || e.l > 4 ||
+              !(typeof e.t === "string" || typeof e.p === "string")) {
+            bads.push(`${f} ${key} 条目不合契约：${JSON.stringify(e).slice(0, 60)}`);
+            break;
+          }
+          nEnt++;
+        }
+      }
+    }
+    if (bads.length) bads.slice(0, 8).forEach(x => bad(`${x}`));
+    if (bads.length > 8) bad(`…另 ${bads.length - 8} 处纲目产物问题`);
+    if (!bads.length) ok(`纲目产物：${files.length} 个辑文件 / ${nCh} 章（${nCh - nEmpty} 有纲目 / ${nEmpty} 显式空）/ ${nEnt} 条，基数与 25MB 上限均合契约`);
+  }
+}
+
+/* ── 7. 幂等（可选） ─────────────────────────────────────────── */
 // 只重导新增系列——已上线的 gospel 等系列因源侧索引变化必须冻结，全量重导会造成索引位移
 if (process.argv.includes("--idempotent")) {
   const targets = new Set(NEW_IDS.map(id => id + ".json"));

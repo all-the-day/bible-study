@@ -68,6 +68,8 @@ const state = {
   lrBookIndex: null,     // 生命读经阅读器当前卷（null=未进入过）
   lrArticleId: null,     // 生命读经阅读器当前篇
   lrSideTab: 'outline',  // 生命读经右栏 tab：'outline' | 'notes'
+  bookSideTab: 'outline', // 书报右栏 tab：'outline'（纲目，2026-11 策展数据） | 'notes'
+  bookSideTabPinned: false, // 用户点过 tab → 不再按「本章有无纲目」自动切换
   lrNotes: load(LS_LR_NOTES, {}),
   // 专题（topics，2026-10-21 活力八）：screen='topic' 与 home/bookhub 正交，不复用 body-mod-* 阅读器容器
   topicId: null,         // 当前专题 id（TOPICS 的键）
@@ -77,6 +79,8 @@ const state = {
   // 书报阅读器（倪柝声文集等，多系列）
   bookMeta: null,        // data/books/{series}.json 元数据（懒加载）
   bookVolumes: {},       // {series: {volume: {volume, books}}} 按系列+辑内容缓存（懒加载）
+  bookOutlines: {},      // {series: {volume: {"书:章": [纲目条目]}}} 纲目策展数据缓存（懒加载，docs/book-outline-playbook.md）
+  bookOutlinePending: {},// 纲目文件在途去重（同 bookVolPending）
   bookSeriesIndex: null, // data/books/index.json 系列清单（懒加载）
   bookNumbers: null,      // data/books/numbers.json（{series:[[vol,book,num]]}，源侧真实编号）
   bookSearchIndex: null,  // 全部系列元数据就绪后一次构建的章级索引
@@ -243,6 +247,11 @@ function openThemePicker() {
 /* ── 用户语言版本记录（单一来源）：① 使用帮助弹窗「最近更新」；② 更新弹窗「本次更新」。
    纪律：只记用户可见变化、不记 chore/内部改动；用户可见功能发布时在顶部补一行（AGENTS.md 发版流程）。 ── */
 const CHANGELOG = [
+  { v: '1.0.69', date: '2026-11-02', items: [
+    '书报新增「纲目」：倪柝声文集与福音类的章内小标题按层级列在右栏，点一下跳到那一节，长文不用再翻',
+    '正文里的标题更准了：经文引用、页码与诗句不再被加粗成标题',
+    '没有纲目的章（纯叙事、诗集等）右栏直接显示笔记，不多一层空页',
+  ] },
   { v: '1.0.68', date: '2026-10-31', items: [
     '中等宽度屏幕（如 iPad 横屏）不再被目录栏挤成一行一个字：目录只在宽屏常驻，更窄时点 ☰ 弹出，正文读满',
     '手机「我的笔记」的颜色筛选与排序入口不再跑到屏幕外，点得到',
@@ -1870,6 +1879,9 @@ const READER_MODULES = {
       await ensureBookMeta();
       const vol = await ensureBookVolume(state.bookVolume);
       if (!vol) { showToast('该辑数据缺失'); return; }
+      // 纲目策展数据预热：enterModule 的 renderMain/renderSide 是 Promise.all 并发分发，
+      // 不预热则右栏会早于主区的懒加载完成、回退成 detectLrHeading 结果（2026-11-02 深链实测竞态）
+      await ensureBookOutline(state.bookSeries, state.bookVolume);
       const metaVol = state.bookMeta && state.bookMeta.volumes[state.bookVolume - 1];
       if (metaVol && state.bookBook >= metaVol.books.length) { state.bookBook = 0; state.bookChapter = 0; }
       const book = vol.books[state.bookBook];
@@ -1889,6 +1901,10 @@ const READER_MODULES = {
     },
     onMenu() { toggleDrawerDock(); },
     onCrumbClick() { openNavDrawer(); },
+    // 切走前解绑 #textCol 滚动高亮监听（右栏纲目 spy，防其他模块残留无效 listener）
+    onLeave() {
+      if (_lrSpy) { $('textCol').removeEventListener('scroll', _lrSpy); _lrSpy = null; }
+    },
   },
   morning: {
     id: 'morning',
@@ -4889,6 +4905,38 @@ async function bookAnnLabel(series, volume, book, chapterSuffix) {
   const fallback = `${series} · 卷${volume} · 书${+book + 1}`;
   return chapterSuffix ? `${fallback}${chapterSuffix}` : fallback;
 }
+// 纲目策展数据懒加载：data/books/outline/{series}-{辑}.json（build-book-outlines.py 产物，
+// 契约见 docs/book-outline-playbook.md）。404/失败按「本辑未策展」缓存空表——
+// 整辑回退 detectLrHeading 运行时识别，且不重复请求
+async function ensureBookOutline(series, volume) {
+  const cache = (state.bookOutlines[series] = state.bookOutlines[series] || {});
+  if (cache[volume]) return cache[volume];
+  const pk = series + ':' + volume;
+  if (state.bookOutlinePending[pk]) return state.bookOutlinePending[pk];
+  const p = (async () => {
+    try {
+      const data = await fetchJSON(`data/books/outline/${series}-${volume}.json`);
+      cache[volume] = data && data.chapters ? data.chapters : {};
+    } catch (e) {
+      cache[volume] = {};
+    } finally {
+      delete state.bookOutlinePending[pk];
+    }
+    return cache[volume];
+  })();
+  state.bookOutlinePending[pk] = p;
+  return p;
+}
+
+// 取某章策展纲目：数组 = 已策展（空数组 = 显式压制，见 playbook §2）；
+// null = 未策展，调用方回退 detectLrHeading
+function bookOutlineFor(series, volume, book, chapter) {
+  const doc = state.bookOutlines[series] && state.bookOutlines[series][volume];
+  if (!doc) return null;
+  const key = `${book}:${chapter}`;
+  return Object.prototype.hasOwnProperty.call(doc, key) ? doc[key] : null;
+}
+
 async function ensureBookVolume(volume) {
   const key = state.bookSeries;
   const vols = (state.bookVolumes[key] = state.bookVolumes[key] || {});
@@ -4922,20 +4970,67 @@ async function ensureBookVolume(volume) {
 // 正文内容渲染：跳过正文头部与 .bk-title 重复的章标题行、与 crumb 重复的书名行
 // （源 md 首部常带「书名 + 章名」两行，章名与 ch.title 相同会与 .bk-title 重复渲染；
 // 偏移照常累计，标注坐标系不变）
-function renderBookContent(parent, content, annotations, chapterTitle, bookTitle) {
+// 章节纲目 = 正文加粗行 + 右栏 TOC 的**唯一来源**（CR 2026-11-02：两侧各算一遍会错位——
+// 正文按实际命中计数、TOC 按数组下标，回退路径混进被跳过的开头书名/章名行后整体偏一位）。
+// 返回 [{line, level, text}]，line = content 行下标；跳过逻辑与标题判定都在这里。
+// outline：策展数据（数组；空数组=显式压制该章识别，见 docs/book-outline-playbook.md）；
+//          null=未策展，回退 detectLrHeading；idPrefix 只给正文用（TOC 用数组下标取同一前缀）。
+function collectBookHeadings(content, chapterTitle, bookTitle, outline) {
+  const lines = (content || '').split('\n');
+  const norm = (s) => (s || '').replace(/[\s\u3000]/g, '');
+  const skipTitles = new Set([norm(chapterTitle), norm(bookTitle)]);
+  let leading = true;
+  let hi = 0;   // 策展纲目指针（顺序游走）
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trim() === '') continue;
+    if (leading && skipTitles.has(norm(line))) continue;
+    leading = false;
+    const t = line.trim();
+    let hit = null;
+    if (outline) {
+      // 策展数据完全取代运行时识别；当前条不匹配本行时，若后续条能匹配则前跳指针
+      // （正文因导出清洗漂移时的自愈，避免后半程纲目整体丢失）
+      while (hi < outline.length && !hit) {
+        const e = outline[hi];
+        if (e.t ? t === e.t : t.startsWith(e.p)) { hit = e; hi++; break; }
+        let jump = -1;
+        for (let k = hi + 1; k < outline.length; k++) {
+          const e2 = outline[k];
+          if (e2.t ? t === e2.t : t.startsWith(e2.p)) { jump = k; break; }
+        }
+        if (jump < 0) break;
+        hi = jump;
+      }
+    } else {
+      const h = detectLrHeading(line);
+      if (h) hit = { l: h.level };
+    }
+    if (hit) out.push({ line: i, level: hit.l, text: hit.label || hit.t || hit.p || t });
+  }
+  return out;
+}
+
+// idPrefix：标题 div 的 id 前缀（纲目 tab 跳转锚点），形如 bkh-{辑}-{书}-{章}
+function renderBookContent(parent, content, annotations, chapterTitle, bookTitle, outline, idPrefix) {
+  const headings = collectBookHeadings(content, chapterTitle, bookTitle, outline);
+  const byLine = new Map(headings.map((h, idx) => [h.line, { level: h.level, id: `${idPrefix}-${idx}` }]));
   const lines = (content || '').split('\n');
   const norm = (s) => (s || '').replace(/[\s\u3000]/g, '');
   const skipTitles = new Set([norm(chapterTitle), norm(bookTitle)]);
   let leading = true;
   let offset = 0;
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     if (line.trim() === '') { offset += line.length + 1; continue; }
     if (leading && skipTitles.has(norm(line))) { offset += line.length + 1; continue; }
     leading = false;
     const div = document.createElement('div');
-    const heading = detectLrHeading(line);
-    div.className = heading ? `bk-head lr-h${heading.level}` : 'bk-para';
+    const h = byLine.get(i);
+    div.className = h ? `bk-head lr-h${h.level}` : 'bk-para';
     div.dataset.base = offset;
+    if (h && idPrefix) div.id = h.id;
     // 人物链接（原型：仅 scope 内系列，目前=十二篮）——与经文引用同一渲染通道，重叠时经文引用优先
     const persons = personScopeOn(state.bookSeries) ? detectPersons(line) : null;
     renderLrLine(div, line, offset, annotations, null, null, persons);
@@ -4955,6 +5050,9 @@ async function renderBookMain() {
     a.type === 'book' && a.series === state.bookSeries && a.volume === state.bookVolume &&
     a.book === state.bookBook && a.chapter === state.bookChapter);
   if (healAnnotations(anns, ch.content || '')) save(LS_ANNOTATIONS, state.annotations);
+  // 纲目策展数据（先确保懒加载到位，再取本章；无则 null → 回退 detectLrHeading）
+  await ensureBookOutline(state.bookSeries, state.bookVolume);
+  const outline = bookOutlineFor(state.bookSeries, state.bookVolume, state.bookBook, state.bookChapter);
   const main = $('bookMain');
   main.innerHTML = '';
   const h = document.createElement('div');
@@ -4967,23 +5065,79 @@ async function renderBookMain() {
   content.dataset.volume = state.bookVolume;
   content.dataset.book = state.bookBook;
   content.dataset.chapter = state.bookChapter;
-  renderBookContent(content, ch.content || '', anns, ch.title, book.title);
+  renderBookContent(content, ch.content || '', anns, ch.title, book.title, outline,
+                    `bkh-${state.bookVolume}-${state.bookBook}-${state.bookChapter}`);
   main.appendChild(content);
 }
 
-// 右栏：本章笔记（章级笔记 + 划线汇总）。章切换统一走目录抽屉——
-// 原「章列表」tab 与抽屉右栏完全重复（同为当前书全部章），已删（方案 A）
+// 右栏：纲目 | 笔记（state.bookSideTab）。纲目 = 策展数据（docs/book-outline-playbook.md），
+// 未策展章回退 detectLrHeading，与生命读经右栏同构。
+// 默认 tab：本章有条目才落「纲目」；没有（未策展且识别不出 / 显式空）落「笔记」——
+// 未策展系列大多如此，否则一进阅读器就是空态（CR 2026-11-02）。
+// 用户点过任一 tab 即固定（state.bookSideTabPinned），不再自动切换。
 function renderBookSide() {
   const side = $('bookSide');
   side.innerHTML = '';
+  const vol = state.bookVolumes[state.bookSeries] && state.bookVolumes[state.bookSeries][state.bookVolume];
+  const book = vol && vol.books[state.bookBook];
+  const ch = book && book.chapters[state.bookChapter];
+  const hasOutline = !!ch && collectBookHeadings(ch.content || '', ch.title, book.title,
+    bookOutlineFor(state.bookSeries, state.bookVolume, state.bookBook, state.bookChapter)).length;
+  const active = (!state.bookSideTabPinned && state.bookSideTab === 'outline' && !hasOutline)
+    ? 'notes' : state.bookSideTab;
+  const tabs = document.createElement('div');
+  tabs.className = 'lr-side-tabs';
+  [['outline', '纲目'], ['notes', '笔记']].forEach(([v, label]) => {
+    const b = document.createElement('button');
+    b.className = 'lr-side-tab' + (active === v ? ' active' : '');
+    b.textContent = label;
+    b.addEventListener('click', () => {
+      state.bookSideTab = v;
+      state.bookSideTabPinned = true;
+      renderBookSide();
+    });
+    tabs.appendChild(b);
+  });
   const body = document.createElement('div');
   body.className = 'lr-side-body';
-  renderBookNotes(body);
+  if (active === 'outline') renderBookOutline(body, collectBookHeadings(ch.content || '', ch.title, book.title,
+    bookOutlineFor(state.bookSeries, state.bookVolume, state.bookBook, state.bookChapter)));
+  else renderBookNotes(body);
+  side.appendChild(tabs);
   side.appendChild(body);
+}
+
+// 右栏纲目：条目来自 collectBookHeadings（与正文同一份结果，锚点下标天然一致）
+function renderBookOutline(body, headings) {
+  if (_lrSpy) { $('textCol').removeEventListener('scroll', _lrSpy); _lrSpy = null; }
+  if (!headings || !headings.length) { body.innerHTML = '<div class="empty-hint">本章无纲目</div>'; return; }
+  const idPrefix = `bkh-${state.bookVolume}-${state.bookBook}-${state.bookChapter}`;
+  const outline = document.createElement('div');
+  outline.className = 'lr-outline';
+  const group = document.createElement('div');
+  group.className = 'lr-outline-group';
+  headings.forEach((h, i) => {
+    const item = document.createElement('div');
+    item.className = `lr-toc-item lr-toc-l${h.level}`;
+    item.dataset.target = `${idPrefix}-${i}`;
+    item.textContent = h.text;
+    item.title = h.text;
+    item.addEventListener('click', () => {
+      const el = document.getElementById(item.dataset.target);
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setLrOutlineActive(outline, item.dataset.target);
+    });
+    group.appendChild(item);
+  });
+  outline.appendChild(group);
+  body.appendChild(outline);
+  _lrSpy = bindLrOutlineSpy($('textCol'), outline);
 }
 
 // 右栏笔记：章级笔记 + 本章标注汇总
 function renderBookNotes(body) {
+  if (_lrSpy) { $('textCol').removeEventListener('scroll', _lrSpy); _lrSpy = null; }
   const key = `${state.bookVolume}:${state.bookBook}:${state.bookChapter}`;
   const ta = document.createElement('textarea');
   ta.className = 'lr-note-ta';
@@ -7166,9 +7320,12 @@ function rerenderAnn(ann) {
       else renderStudy();
     });
   } else if (ann.type === 'book') {
-    // 书报模块内标注：重渲染主区保持高亮 + 右栏标注汇总同步刷新
+    // 书报模块内标注：重渲染主区保持高亮 + 右栏标注汇总同步刷新。
+    // renderMain 是异步（懒加载卷/纲目）：先等主区落定再刷右栏，否则侧栏可能读到旧章数据
     withScrollPreserved(['#textCol'], () => {
-      if (state.activeModule === 'books') { READER_MODULES.books.renderMain(); READER_MODULES.books.renderSide(); }
+      if (state.activeModule === 'books') {
+        Promise.resolve(READER_MODULES.books.renderMain()).then(() => READER_MODULES.books.renderSide());
+      }
     });
   } else if (ann.type === 'morning') {
     withScrollPreserved(['#textCol'], () => {

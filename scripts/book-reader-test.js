@@ -168,6 +168,87 @@ async function main() {
       '| 请求次数:', reqs.length, '| 同一Promise:', r8.same, '| 缓存写入:', r8.cached, '| 书数:', r8.bookCount);
   }
 
+  // 9. 右栏纲目（2026-11 策展流水线，契约见 docs/book-outline-playbook.md）：
+  //    策展章按纲目渲染 + 点击定位；显式空章压制运行时误报；未策展章回退 detectLrHeading
+  {
+    // data/books/outline/ 是构建产物（不入库）：本地缺失就先构建。
+    // 构建失败/产物缺失**判失败**（✗），不许静默跳过——否则整个新功能的 e2e 可以永不执行而门禁全绿（CR 2026-11-02）。
+    // 构建脚本原子写入（tmp + os.replace），并发泳道里被读到半个 JSON 的风险已消除。
+    const { spawnSync } = require('child_process');
+    const built = spawnSync('python', ['scripts/build-book-outlines.py', 'ni', 'gospel'], { cwd: ROOT, encoding: 'utf-8' });
+    const hasData = built.status === 0 &&
+      require('fs').existsSync(require('path').join(ROOT, 'data', 'books', 'outline', 'ni-1.json'));
+    if (!hasData) {
+      console.log('9. 纲目: ✗ 数据不可用（build-book-outlines 退出码 ' + built.status + '）：'
+        + (built.error ? built.error.message : String(built.stderr || '').slice(0, 200)));
+    } else {
+      await page.evaluate(() => openBookChapter(1, 0, 1, 'ni'));
+      await new Promise((r) => setTimeout(r, 2000));
+      const r9a = await page.evaluate(() => ({
+        tab: document.querySelector('#bookSide .lr-side-tab.active')?.textContent,
+        toc: [...document.querySelectorAll('#bookSide .lr-toc-item')].map(i => i.textContent),
+        heads: document.querySelectorAll('#bookMain .bk-head').length,
+      }));
+      const ok9a = r9a.tab === '纲目' && r9a.heads === 5 && r9a.toc.length === 5 &&
+        r9a.toc[0] === '与神和好的地方' &&
+        r9a.toc[4] === '祂的子民怎样得胜过魔鬼和他的军兵呢？';   // 12 字上限漏识别、策展补入的那条
+      console.log('9a. 纲目(策展章):', ok9a ? '✓' : '✗', '| tab:', r9a.tab, '| 纲目', r9a.toc.length, '条 | 正文标题', r9a.heads, '个');
+      const topBefore = await page.evaluate(() => document.getElementById('textCol').scrollTop);
+      await page.evaluate(() => document.querySelectorAll('#bookSide .lr-toc-item')[2].click());
+      await new Promise((r) => setTimeout(r, 1000));
+      const r9b = await page.evaluate(() => ({
+        top: document.getElementById('textCol').scrollTop,
+        active: document.querySelector('#bookSide .lr-toc-item.active')?.textContent,
+      }));
+      console.log('9b. 纲目点击定位:', r9b.top > topBefore && r9b.active === '基督的十字架和洗净' ? '✓' : '✗',
+        '| scrollTop', topBefore, '→', r9b.top, '| active:', r9b.active);
+      await page.evaluate(() => openBookChapter(1, 1, 34, 'ni'));
+      await new Promise((r) => setTimeout(r, 2000));
+      const r9c0 = await page.evaluate(() => ({
+        tab: document.querySelector('#bookSide .lr-side-tab.active')?.textContent,
+        noteTa: !!document.querySelector('#bookSide .lr-note-ta'),
+      }));
+      // 没有纲目的章默认落「笔记」（CR 2026-11-02：未策展系列否则一进来就是空态）
+      await page.evaluate(() => { [...document.querySelectorAll('#bookSide .lr-side-tab')].find(t => t.textContent === '纲目').click(); });
+      await new Promise((r) => setTimeout(r, 400));
+      const r9c = await page.evaluate(() => ({
+        toc: document.querySelectorAll('#bookSide .lr-toc-item').length,
+        empty: document.querySelector('#bookSide .empty-hint')?.textContent || '',
+        heads: document.querySelectorAll('#bookMain .bk-head').length,
+      }));
+      const ok9c = r9c0.tab === '笔记' && r9c0.noteTa &&
+        r9c.toc === 0 && r9c.heads === 0 && r9c.empty === '本章无纲目';
+      console.log('9c. 纲目(显式空压制+默认落笔记):', ok9c ? '✓' : '✗',
+        '| 默认tab:', r9c0.tab, '| 纲目', r9c.toc, '条 | 正文标题', r9c.heads, '个 |', r9c.empty);
+      // 未策展系列 → 回退 detectLrHeading，且 TOC 与正文标题必须逐条对齐（CR 2026-11-02：
+      // 旧实现 TOC 扫全文、正文跳过开头书名/章名行，回退路径整体偏一位，点击跳错标题）。
+      // bio 第2本第1章正是「开头有书名+章名两行」的样本；断言首条不是书名/章名、点第2条落到同名标题。
+      await page.evaluate(() => openBookChapter(1, 1, 0, 'bio'));
+      await new Promise((r) => setTimeout(r, 2500));
+      const r9d = await page.evaluate(() => {
+        const tocEls = [...document.querySelectorAll('#bookSide .lr-toc-item')];
+        if (tocEls.length < 2) return { series: state.bookSeries, toc: tocEls.length, heads: 0 };
+        tocEls[1].click();
+        const hit = document.getElementById(tocEls[1].dataset.target);
+        return {
+          series: state.bookSeries,
+          toc: tocEls.length,
+          heads: document.querySelectorAll('#bookMain .bk-head').length,
+          tocFirst: tocEls[0].textContent,
+          tocSecond: tocEls[1].textContent,
+          hitText: hit ? hit.textContent : '',
+          curated: Object.keys((state.bookOutlines.bio || {})[1] || {}).length,
+        };
+      });
+      const ok9d = r9d.series === 'bio' && !r9d.curated && r9d.toc > 1 && r9d.toc === r9d.heads &&
+        r9d.tocFirst !== '世界基督教历史故事' && r9d.tocFirst !== '第一章 初期教会史' &&
+        r9d.hitText && r9d.tocSecond.startsWith(r9d.hitText);
+      console.log('9d. 纲目(未策展系列回退+锚点对齐):', ok9d ? '✓' : '✗',
+        '| 纲目', r9d.toc, '条 | 正文标题', r9d.heads, '个 | 首条:', r9d.tocFirst,
+        '| 点第2条「' + r9d.tocSecond + '」→ 命中「' + r9d.hitText + '」');
+    }
+  }
+
   console.log('\nJS 错误:', errors.length ? errors : '无');
   await browser.close();
   server.kill();
