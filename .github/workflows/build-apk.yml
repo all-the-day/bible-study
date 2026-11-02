@@ -129,18 +129,16 @@ jobs:
             done
           done
           # 书报纲目（scripts/build-book-outlines.py 产物，按系列+辑分文件）。
-          # 404 属正常（未策展系列）——删掉占位文件，前端回退 detectLrHeading
+          # 未策展系列没有文件，而 CF Pages 的 SPA fallback 会把 404 变成 200 + HTML——
+          # 故按内容校验，非法 JSON 一律当「未策展」删掉（宽容语义，前端回退 detectLrHeading）
           mkdir -p www/data/books/outline
           for sid in $(python3 -c "import json; print(' '.join(s['id'] for s in json.load(open('www/data/books/index.json'))['series']))"); do
             for v in $(python3 -c "import json; print(' '.join(str(i) for i in range(1, len(json.load(open('www/data/books/$sid.json')).get('volumes', [])) + 1)))"); do
-              code=$(curl -sL --retry 3 --retry-all-errors --retry-delay 2 --connect-timeout 15 --max-time 120 -4 -w "%{http_code}" -o "www/data/books/outline/$sid-$v.json" "$BASE/books/outline/$sid-$v.json")
-              if [ "$code" != "200" ]; then
-                rm -f "www/data/books/outline/$sid-$v.json"
-              else
-                check_json "www/data/books/outline/$sid-$v.json"
-              fi
+              $CURL "$BASE/books/outline/$sid-$v.json" -o "www/data/books/outline/$sid-$v.json"
+              python3 -c "import json,sys; json.load(open(sys.argv[1]))" "www/data/books/outline/$sid-$v.json" 2>/dev/null || rm -f "www/data/books/outline/$sid-$v.json"
             done
           done
+          echo "outline: $(ls www/data/books/outline/ 2>/dev/null | wc -l) 个文件"
           # 听抄：期索引 → 各期内容
           $CURL "$BASE/morning/index.json" -o "www/data/morning/index.json"
           check_json "www/data/morning/index.json"
