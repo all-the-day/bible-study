@@ -220,30 +220,37 @@ async function main() {
         r9c.toc === 0 && r9c.heads === 0 && r9c.empty === '本章无纲目';
       console.log('9c. 纲目(显式空压制+默认落笔记):', ok9c ? '✓' : '✗',
         '| 默认tab:', r9c0.tab, '| 纲目', r9c.toc, '条 | 正文标题', r9c.heads, '个 |', r9c.empty);
-      // 未策展系列 → 回退 detectLrHeading，且 TOC 与正文标题必须逐条对齐（CR 2026-11-02：
-      // 旧实现 TOC 扫全文、正文跳过开头书名/章名行，回退路径整体偏一位，点击跳错标题）。
-      // bio 第2本第1章正是「开头有书名+章名两行」的样本；断言首条不是书名/章名、点第2条落到同名标题。
+      // 回退路径：全系列已策展后，把本辑缓存置成「已加载但本章无键」→ bookOutlineFor 返回 null
+      // → 主区/右栏都走 detectLrHeading 回退（策展文件加载失败、未来新增系列未策展时靠这条路兜底）。
+      // CR 2026-11-02 修的正是这条路径的锚点错位：旧实现 TOC 扫全文、正文跳过开头书名/章名行，
+      // 回退路径整体偏一位，点击跳错标题。bio 第2本第1章正是「开头有书名+章名两行」的样本。
+      // 注意不能 delete 整个系列缓存——renderMain 会 await ensureBookOutline 重新 fetch 回来，
+      // 那样仍走策展路径，断言会假绿（CR 2026-11-03 实测：54/54 策展 vs 66/66 回退）。
       await page.evaluate(() => openBookChapter(1, 1, 0, 'bio'));
       await new Promise((r) => setTimeout(r, 2500));
+      await page.evaluate(async () => {
+        state.bookOutlines.bio = { 1: {} };         // 已加载但本章无键 → 真回退
+        await READER_MODULES.books.renderMain();
+        READER_MODULES.books.renderSide();
+      });
+      await new Promise((r) => setTimeout(r, 800));
       const r9d = await page.evaluate(() => {
         const tocEls = [...document.querySelectorAll('#bookSide .lr-toc-item')];
-        if (tocEls.length < 2) return { series: state.bookSeries, toc: tocEls.length, heads: 0 };
+        if (tocEls.length < 2) return { toc: tocEls.length, heads: 0 };
         tocEls[1].click();
         const hit = document.getElementById(tocEls[1].dataset.target);
         return {
-          series: state.bookSeries,
           toc: tocEls.length,
           heads: document.querySelectorAll('#bookMain .bk-head').length,
           tocFirst: tocEls[0].textContent,
           tocSecond: tocEls[1].textContent,
           hitText: hit ? hit.textContent : '',
-          curated: Object.keys((state.bookOutlines.bio || {})[1] || {}).length,
         };
       });
-      const ok9d = r9d.series === 'bio' && !r9d.curated && r9d.toc > 1 && r9d.toc === r9d.heads &&
+      const ok9d = r9d.toc > 1 && r9d.toc === r9d.heads &&
         r9d.tocFirst !== '世界基督教历史故事' && r9d.tocFirst !== '第一章 初期教会史' &&
         r9d.hitText && r9d.tocSecond.startsWith(r9d.hitText);
-      console.log('9d. 纲目(未策展系列回退+锚点对齐):', ok9d ? '✓' : '✗',
+      console.log('9d. 纲目(回退路径+锚点对齐):', ok9d ? '✓' : '✗',
         '| 纲目', r9d.toc, '条 | 正文标题', r9d.heads, '个 | 首条:', r9d.tocFirst,
         '| 点第2条「' + r9d.tocSecond + '」→ 命中「' + r9d.hitText + '」');
     }

@@ -27,6 +27,12 @@ ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
 # 手工策展过的书（系列 → {(辑, 本)}）：草案器永不覆盖，只补后续的书
 SERIES_HAND = {"ni": {(1, 0), (1, 1)}}
 
+# 系列级校准（playbook §5.2）：哪些系列要认 13–20 字的长标题裸行。
+# 十二篮（slat）的节标题普遍超 detectLrHeading 的 12 字上限（「抹大拉的马利亚对于主的认识」），
+# 靠「纯中文短语 + 下一行是长段落」补收；其他系列该形态混杂正文句子（如圣经疑难的问答句），
+# 不开这个口子。
+SERIES_LONG_TITLE = {"slat"}
+
 # ---- 识别（与 app.js detectLrHeading 一致，另补「参」——壹/贰/叁的俗写，app 侧同类 bug） ----
 CN1 = "壹贰叁肆伍陆柒捌玖拾参"
 
@@ -76,14 +82,28 @@ HYMN_META = re.compile(r"(^[\d\s．.、副（(英\d+)）]+$|大调|小调|^福�
 # 印刷残片：ASCII/框线表格行、同一字符重复（「第第第第第」）
 BOXART = re.compile(r"^[─│┌┐└┘├┤┬┴┼━┃┏┓┗┛┣┫┳┻╋═║╔╗╚╝╠╣╦╩╬\-\s]+$")
 SENT_END = re.compile(r"[。，；：？！、」』）】]$")
+# 版块标签 / 目录标记（2026-11-02 全量批次新增）：这些行是结构标记不是标题
+LABEL_LINE = re.compile(r"^(纲\s*目[:：]?|目\s*录[:：]?|一 重点经节：|二 你喜欢的经节：、、。|三 真理要点：|阅读更多＞?|(读经|祷告|见证)[:：])$")
+# 裸「祷告/见证」既可能是版块标记（后面跟祈祷文）也可能是真小节标题（如「信心/祷告/奉献」并列），
+# 只在下一行是祈祷文/署名时才算标记（CR 2026-11-03：原先无条件剔，误删了真标题）
+PRAYER_NEXT = re.compile(r"^(主阿|主啊|主，|主,|主！|哦主|哦，主|求你|我们求你|我们祷告|感谢主|赞美主|阿们|弟兄|姊妹|父阿|父啊)")
+PUA_LINE = re.compile(r"[-\s]+")
+# 纯西文行（荒漠甘泉等英文署名/残字）
+ASCII_LINE = re.compile(r"[A-Za-z0-9][A-Za-z0-9\s\.,'’()（）\-–—:;!?”\"…%]*")
 MAX_ENTRY = 60   # 超过此长度的命中行转前缀匹配 + 截断显示名（纲目列会撑爆）
 
 
-def classify(text, prev_level, prev_flat, in_hymn=False):
+def classify(text, prev_level, prev_flat, in_hymn=False, long_title=False, next_len=0, next_text=""):
     """返回 (条目 dict 或 None, 新 prev_level, 新 prev_flat, 剔除原因或 None)"""
     t = text.strip()
     lv = detect(t)
     if lv is None:
+        # 长标题裸行（仅开的系列）：13–20 字纯中文短语、无句读收尾、下一行是长段落
+        if (long_title and 13 <= len(t) <= 20 and next_len >= 30
+                and not SENT_END.search(t) and not re.search(r"[（(【[《]", t)
+                and not re.search(r"[A-Za-z0-9]", t)):
+            level = min(prev_level + 1, 3) if (prev_level and not prev_flat) else (prev_level or 1)
+            return {"t": t, "l": level}, level, True, None
         # 诗歌编译栏：「标题（全角空格填补）+ 译」——标题被译者署名撑爆漏识别，按前缀收
         m = re.match(r"^(.{2,12}?)[\u3000\s]+译$", t)
         if m:
@@ -99,6 +119,16 @@ def classify(text, prev_level, prev_flat, in_hymn=False):
         return None, prev_level, prev_flat, "作者落款"
     if t in ("全文完", "读经：", "读经", "诗歌"):
         return None, prev_level, prev_flat, "标签行"
+    if LABEL_LINE.match(t):
+        return None, prev_level, prev_flat, "版块/目录标签"
+    if t in ("祷告", "见证") and PRAYER_NEXT.match(next_text or ""):
+        return None, prev_level, prev_flat, "祈祷文抬头"
+    if len(t) <= 40 and ASCII_LINE.fullmatch(t) and not re.search(r"[一-鿿]", t):
+        return None, prev_level, prev_flat, "纯西文行"
+    # 纯私有区字符行（网页抓取的装饰图标残留，浏览器渲染成空白）——福音天地/传记有几处，
+    # 不滤会在纲目里出现空白条目（2026-11-02 全量批次实测）
+    if re.fullmatch(r"[-\s]+", t):
+        return None, prev_level, prev_flat, "私有区字符行"
     if BOXART.match(t) or (len(t) >= 3 and len(set(t)) == 1):
         return None, prev_level, prev_flat, "表格/重复字符残片"
     if HYMN_META.search(t):
@@ -143,7 +173,7 @@ def classify(text, prev_level, prev_flat, in_hymn=False):
     return {"t": t, "l": level}, prev_level, prev_flat, None
 
 
-def draft_chapter(vol, bi, ci):
+def draft_chapter(vol, bi, ci, series=""):
     """返回 (条目列表, 标记列表, 剔除统计, 识别数)"""
     ch = vol["books"][bi]["chapters"][ci]
     content = ch.get("content") or ""
@@ -161,10 +191,11 @@ def draft_chapter(vol, bi, ci):
             sum(1 for ln in lines if detect(ln) is not None)
 
     entries, flags, drops = [], [], collections.Counter()
+    long_title = series in SERIES_LONG_TITLE
     prev_level = 0
     prev_flat = False
     in_hymn = False   # 「诗歌」标签起的诗歌块（gospel 等译本合集），块内长编号行是诗节
-    for ln in lines:
+    for idx_ln, ln in enumerate(lines):
         if ntitle and norm(ln) == ntitle:
             drops["章名重复"] += 1
             continue
@@ -177,7 +208,9 @@ def draft_chapter(vol, bi, ci):
         if ln == "诗歌":
             in_hymn = True
             continue
-        e, prev_level, prev_flat, why = classify(ln, prev_level, prev_flat, in_hymn)
+        next_text = lines[idx_ln + 1] if idx_ln + 1 < len(lines) else ""
+        e, prev_level, prev_flat, why = classify(ln, prev_level, prev_flat, in_hymn, long_title,
+                                                 len(next_text), next_text)
         if e:
             entries.append(e)
             if detect(ln) == 0:
@@ -267,7 +300,7 @@ def main():
             key = f"{vol_no}:{bi}:{ci}"
             if key in chapters and not force:
                 continue
-            entries, flags, drops, n_det = draft_chapter(vol, bi, ci)
+            entries, flags, drops, n_det = draft_chapter(vol, bi, ci, series)
             chapters[key] = entries
             if entries:
                 n_new += 1
