@@ -138,6 +138,27 @@ eq(stats.zj ? readJSON(path.join(DATA, "zj.json")).volumes.length : 0, 2, "zj �
     eq(spot("gospel", 1001), "到底有没有神", "书号 1001 指向");
     eq(spot("fuyintiandi", 1001), "到底有没有神", "福音天地 书号 1001 指向");
     eq(spot("ni", 1), "灵修指微", "倪文集 第一辑 1 号指向");
+    // 灵粮目录序号（sg/th/jd/xyzl 的 1-based 排列序）2026-11-03 起不再入表：
+    // 外部对不上、四系列互相撞号。真正的书报号只有 ezoe 段与倪文集册内 book_number。
+    // 注意：这里的四系列 id 需与 scripts/export-spiritual.py 的 LEGACY_ORDINAL_SERIES 保持一致，
+    // 那边增删成员时同步改这里（测试在消费仓、常数在导出仓，无法直接 import）。
+    const LEGACY_IDS = ["sg", "th", "jd", "xyzl"];
+    const legacyIn = LEGACY_IDS.filter(s => nums[s]);
+    eq(legacyIn.length, 0, "灵粮目录序号系列不得入书号表" + (legacyIn.length ? `（发现 ${legacyIn}）` : ""));
+    for (const sid of LEGACY_IDS) {
+      const meta = readJSON(path.join(DATA, `${sid}.json`));
+      const withNum = (meta.volumes || []).flatMap(v => (v.books || []).filter(b => b.num !== undefined));
+      eq(withNum.length, 0, `${sid} 元数据不得带 num 字段`);
+      // 正文懒加载文件同样不得带 num（write_volume_files 若改回写 meta 会静默回归）
+      const volFiles = fs.readdirSync(DATA).filter(f => new RegExp(`^${sid}-\\d+\\.json$`).test(f));
+      let contentNum = 0;
+      for (const f of volFiles) {
+        const vc = readJSON(path.join(DATA, f));
+        contentNum += (vc.volumes || []).reduce(
+          (n, v) => n + (v.books || []).filter(b => b.num !== undefined).length, 0);
+      }
+      eq(contentNum, 0, `${sid} 正文文件不得带 num 字段（${volFiles.length} 个辑文件）`);
+    }
   }
 }
 

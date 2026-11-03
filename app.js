@@ -2181,7 +2181,8 @@ function bindHomeEvents() {
    数据域：书报标题（32 系列 / 972 本 / 15367 章，元数据懒加载后建一次索引）、
    经文与注解全文（启动即全量在内存，零额外下载）、我的标注、生命读经篇目、听抄篇目。
    规则：空白分词 AND；ASCII 不区分大小写；纯数字词按「书号」精确匹配（源侧真实编号：
-   ezoe 书报号 / 灵粮目录序号 / 倪文集册内 book_number，见 data/books/numbers.json）。
+   ezoe 书报号 / 倪文集册内 book_number，见 data/books/numbers.json。灵粮目录序号 sg/th/jd/xyzl
+   已于 2026-11-03 移除——外部对不上且四系列互相撞号）。
    每个域返回 {items,total}：total 是裁剪前真实总数，下拉每组只展示前几条。 */
 const SR_GROUP_LIMIT = 5;   // 首页下拉每组预览条数
 const SR_CAP = 300;         // 单个域的内部上限（防极端查询把内存打满）

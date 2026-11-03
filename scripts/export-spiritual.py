@@ -1189,6 +1189,23 @@ SERIES_ORDER = [
     "periodicals", "misc", "reading",
 ]
 
+# 灵粮目录序号系列：这些号是 uoregon 抓取时的目录排列序号，不是书报号——
+# ① 外部（mana.stmn1 / ezoe / 印刷书）对不上，检索命中后无法反查；
+# ② sg/th/jd/xyzl 四系列都在 1–217 段内，互相撞号，搜「1」会同时蹦出四处的第一本。
+# 故这些号不进 numbers.json、也不写进 {id}.json / {id}-{n}.json 的 num 字段。
+# 真正的书报号只有 ezoe 书报号（1000/2000/…/8000 段）与倪文集册内 book_number。
+LEGACY_ORDINAL_SERIES = {"sg", "th", "jd", "xyzl"}
+
+
+def _strip_legacy_num(meta, volumes_content):
+    """摘掉灵粮目录序号系列的 num 字段（元数据与正文两侧都要清）"""
+    for v in meta.get("volumes") or []:
+        for b in v.get("books") or []:
+            b.pop("num", None)
+    for vc in volumes_content or []:
+        for b in vc.get("books") or []:
+            b.pop("num", None)
+
 
 def export(only=None, numbers_only=False):
     os.makedirs(OUT, exist_ok=True)
@@ -1200,6 +1217,11 @@ def export(only=None, numbers_only=False):
         for sid in ids:
             if sid not in SERIES:
                 print(f"[SKIP] 未知系列 id：{sid}")
+                continue
+            if sid in LEGACY_ORDINAL_SERIES:
+                # 注意：numbers 模式整体覆写 numbers.json，单系列跑会把别系列的号冲掉；
+                # 这里必须留日志，否则「跑过但什么都没进表」看不出来
+                print(f"[SKIP] {sid}：灵粮目录序号，不入书号表")
                 continue
             meta, _ = SERIES[sid]()
             rows = [[vi, bi, b["num"]]
@@ -1221,6 +1243,8 @@ def export(only=None, numbers_only=False):
             print(f"[SKIP] 未知系列 id：{sid}")
             continue
         meta, volumes_content = SERIES[sid]()
+        if sid in LEGACY_ORDINAL_SERIES:
+            _strip_legacy_num(meta, volumes_content)
         meta_light = {
             "name": meta["name"],
             "volumes": [{"title": v["title"], "books": [
