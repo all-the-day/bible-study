@@ -90,7 +90,7 @@ async function main() {
       footEmpty: document.querySelector('#dwFoot').innerHTML.trim() === '',
     };
   });
-  console.log('4. 抽屉双栏:', r4.leftCount === 70 && r4.rightCount === 14 && r4.folded === 16
+  console.log('4. 抽屉双栏:', r4.leftCount === 72 && r4.rightCount === 14 && r4.folded === 16
     && !r4.hasNum && !r4.hasSub && r4.footEmpty ? '✓' : '✗',
     '| 左栏:', r4.leftCount, '本 | 首本:', r4.leftFirst, '| 书·部条目:', r4.folded,
     '| 右栏章数:', r4.rightCount, '| 无序号:', !r4.hasNum, '| 无副标:', !r4.hasSub,

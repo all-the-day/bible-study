@@ -100,9 +100,13 @@ for (const s of series) {
 }
 
 /* ── 3. 关键系列的书数（去重结果回归） ───────────────────────── */
+// 2026-11-03 ezoe 补抓后按追加感知导出增长：zj +30（含真理课程 4 级/生命课程 4 卷等
+// 分「部」折叠条目）、jh +14、gospel +2、reading +16（新约总论 14 部）、periodicals +2、misc +5。
+// 基线只随补抓上调；若某天数变小，说明有书被误删，测试会报。
 const EXPECT = {
-  sg: 224, th: 37, jd: 29, zj: 232, jh: 96,
+  sg: 224, th: 37, jd: 29, zj: 262, jh: 110,
   sjzl: 15, xyzl: 8, zlkc: 8, smkc: 4, zlyd: 6, kdyf: 6, hhls: 9,
+  gospel: 72, reading: 44, periodicals: 34, misc: 13,
 };
 for (const [id, n] of Object.entries(EXPECT)) {
   if (!stats[id]) continue;
@@ -188,6 +192,8 @@ const NEW_IDS = ["sg", "th", "jd", "sjzl", "xyzl", "zlyd", "zlkc", "smkc", "sjyn
   "jkhy", "zlzt", "zlpz", "kdyf", "jpl", "hhls", "tllc", "xblm", "hmgq", "zjgs", "sl",
   "zsxx", "cqxl", "zj", "jh"];
 const NEW_SET = new Set(NEW_IDS);
+// 纲目/结构行标记：壹贰叁…、一二三…、阿拉伯数字、带圈数字、括号中文数字、「第N课」
+const STRUCT_RE = /^([壹贰叁肆伍陆柒捌玖拾]+|[一二三四五六七八九十百]+|[0-9]{1,3}|[⑴-⑿]|[①-⑳]|（[一二三四五六七八九十]+）|第[一二三四五六七八九十百0-9]+[课篇章讲则条])([ 、.．:：]|$)/;
 const HEAD_RE = /^\s*书\s*$|^\s*名\s*[:：]|^\s*书\s*名\s*[:：]/m;
 const TRAIN_RE = /^.{0,14}年.{0,14}(训练|特会)$/m;
 const FOOT_RE = /^\*\*(来源|URL|获取时间|书报号|说明)\*\*/m;
@@ -221,7 +227,10 @@ for (const s of series) {
         if (/^---$/m.test(text)) seps.push(loc);
         if (text.replace(/\s/g, "").length < 20) empties.push(loc);
         const lines = text.split("\n").filter(l => l.trim());
-        const short = lines.filter(l => l.trim().length <= 10).length;
+        // 结构行（纲目层级「一 / 1 / ⑴ / （一） / 第N课」）本就短，不是硬折行碎片——
+        // ezoe 的真理课程/生命课程等整章是纲目、诗章整段短行，都按结构行排除
+        const structural = l => STRUCT_RE.test(l.trim());
+        const short = lines.filter(l => l.trim().length <= 10 && !structural(l)).length;
         frag += short; total += lines.length;
         if (lines.length >= 20 && short / lines.length > 0.6) {
           fragSeries.push(`${loc} (${Math.round(short / lines.length * 100)}%)`);

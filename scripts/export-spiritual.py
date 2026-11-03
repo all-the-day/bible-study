@@ -21,6 +21,7 @@ import hashlib
 import json
 import os
 import re
+from collections import defaultdict
 import sys
 from difflib import SequenceMatcher
 
@@ -1207,6 +1208,127 @@ def _strip_legacy_num(meta, volumes_content):
             b.pop("num", None)
 
 
+# ── 追加感知重导（索引稳定，2026-11-03 补抓后启用） ──────────────────────
+# 标注按 (series, volume, book, chapter) 定位。源库新增书时若按源序（书号）重排，
+# 新书会插到系列中部、其后所有书索引前移 → 旧标注错位丢失（gospel 冻结产物即因此
+# 不敢重导）。故重导时以「现有导出」为顺序基准：老书保持原序，新书追加到所在卷末。
+# 首导（无旧文件）按源序。源库丢书时从旧导出原文 splice 回该条，绝不静默删除。
+
+
+def _book_ident(b):
+    """书的稳定身份：有书号用 (号, 归一化书名)——分「部」折叠的书同号不同名；
+    无书号（灵粮 legacy 系列）用归一化书名。"""
+    t = re.sub(r"[\s\u3000]+", "", b.get("title") or "")
+    num = str(b.get("num") or "")
+    return (num, t) if num else ("", t)
+
+
+def merge_append_order(sid, meta, volumes_content=None):
+    """就地重排 meta / volumes_content 的 books：老书按旧导出的（卷,位置）归位，
+    新书追加到源库所派卷的末位，源库丢了的书从旧导出 splice 回原位置。
+
+    为什么按「旧 slot」而不是「源库卷」归位：分卷边界是写死的位置切分
+    （如 zj cuts=[116]），源库新增书会按书号插进中部、把切点后的书挤到邻卷——
+    若按源库卷对齐，同一本书会被判「新书追加进上卷」+「旧卷丢失 splice 回下卷」而重复。
+
+    返回 (新增数, 丢失数, 提示列表)。volumes_content 为 None 时只重排 meta
+    （--numbers 只需要顺序一致，不碰内容）。
+    """
+    path = os.path.join(OUT, f"{sid}.json")
+    notes = []
+    if not os.path.exists(path):
+        return 0, 0, notes
+    try:
+        old = json.load(open(path, encoding="utf-8"))
+    except Exception as exc:
+        notes.append(f"[WARN] {sid} 旧导出读取失败（{exc}），按源序导出")
+        return 0, 0, notes
+
+    # 旧导出：identity -> [(卷序号, 卷内位置), ...]（同身份多本按出现次序）
+    old_slot = {}
+    for vi, v in enumerate(old.get("volumes") or []):
+        for bi, b in enumerate(v.get("books") or []):
+            old_slot.setdefault(_book_ident(b), []).append((vi, bi))
+    old_vols = old.get("volumes") or []
+
+    # 旧内容文件（splice 用）
+    old_content = {}
+    for vi in range(1, len(old_vols) + 1):
+        cp = os.path.join(OUT, f"{sid}-{vi}.json")
+        if os.path.exists(cp):
+            try:
+                old_content[vi] = json.load(open(cp, encoding="utf-8")).get("books") or []
+            except Exception:
+                old_content[vi] = []
+
+    # 源库全部书（跨卷拉平）
+    src = []
+    for vi, v in enumerate(meta.get("volumes") or []):
+        vc = volumes_content[vi].get("books") if (volumes_content is not None and vi < len(volumes_content)) else None
+        for i, b in enumerate(v.get("books") or []):
+            src.append((_book_ident(b), b, vc[i] if vc and i < len(vc) else None, vi))
+
+    # 老书归位到旧 slot；新书留在源库卷
+    per_vol = defaultdict(list)          # vi -> [(sort_key, meta_b, content_b)]
+    consumed = defaultdict(int)
+    added = 0
+    for ident, b, cb, svi in src:
+        k = consumed[ident]
+        slots = old_slot.get(ident, [])
+        if k < len(slots):
+            ovi, obi = slots[k]
+            per_vol[ovi].append(((0, obi), b, cb))
+            consumed[ident] = k + 1
+        else:
+            per_vol[svi].append(((1, added), b, cb))
+            added += 1
+
+    # 源库没有的旧书：splice 回旧（卷, 位置）
+    lost = 0
+    for ident, slots in old_slot.items():
+        for k, (ovi, obi) in enumerate(slots):
+            if consumed.get(ident, 0) <= k:
+                lost += 1
+                title = None
+                for ob in (old_vols[ovi].get("books") or []):
+                    if _book_ident(ob) == ident:
+                        title = ob.get("title")
+                        break
+                cb = None
+                for cand in old_content.get(ovi + 1, []):
+                    if _book_ident(cand) == ident:
+                        cb = cand
+                        break
+                notes.append(f"[WARN] {sid} 卷{ovi + 1} 源库丢失《{title}》，已从旧导出 splice 保留（索引不退）")
+                if cb is not None:
+                    per_vol[ovi].append(((0, obi),
+                                         {"title": title, "num": cb.get("num"),
+                                          "chapters": [{"title": c.get("title")} for c in cb.get("chapters") or []]},
+                                         cb))
+                else:
+                    notes.append(f"[WARN] {sid} 《{title}》旧内容读不到，仅保留元数据条目")
+                    per_vol[ovi].append(((0, obi), {"title": title, "chapters": []},
+                                         {"title": title, "chapters": []}))
+
+    # 写回：卷数取新旧较大值（源库卷数不应变；变了要叫）
+    n_vols = max(len(old_vols), len(meta.get("volumes") or []))
+    if len(meta.get("volumes") or []) != len(old_vols):
+        notes.append(f"[WARN] {sid} 卷数变化：旧 {len(old_vols)} → 新 {len(meta.get('volumes') or [])}，请人工确认")
+    new_meta_vols = []
+    for vi in range(n_vols):
+        items = sorted(per_vol.get(vi, []), key=lambda x: x[0])
+        mbooks = [b for _, b, _ in items]
+        if vi < len(meta.get("volumes") or []):
+            meta["volumes"][vi]["books"] = mbooks
+            if volumes_content is not None and vi < len(volumes_content):
+                volumes_content[vi]["books"] = [cb for _, _, cb in items]
+        elif mbooks:
+            notes.append(f"[WARN] {sid} 旧导出卷{vi + 1} 在源库已不存在，{len(mbooks)} 本无法写回")
+    if added:
+        notes.append(f"[APPEND] {sid}：新增 {added} 本追加到卷末，老书（卷,位置）不动")
+    return added, lost, notes
+
+
 def export(only=None, numbers_only=False):
     os.makedirs(OUT, exist_ok=True)
     ids = only or list(SERIES)
@@ -1224,6 +1346,11 @@ def export(only=None, numbers_only=False):
                 print(f"[SKIP] {sid}：灵粮目录序号，不入书号表")
                 continue
             meta, _ = SERIES[sid]()
+            # 书号表的 (辑,书,号) 是位置索引，必须与导出文件的顺序同源——
+            # 否则追加感知重排后，书号会指向错书
+            _add, _lost, _notes = merge_append_order(sid, meta)
+            for n in _notes:
+                print("  " + n)
             rows = [[vi, bi, b["num"]]
                     for vi, v in enumerate(meta["volumes"], 1)
                     for bi, b in enumerate(v["books"]) if b.get("num")]
@@ -1245,6 +1372,10 @@ def export(only=None, numbers_only=False):
         meta, volumes_content = SERIES[sid]()
         if sid in LEGACY_ORDINAL_SERIES:
             _strip_legacy_num(meta, volumes_content)
+        # 追加感知重导：老书保持旧导出顺序，新书追加到卷末（防索引位移）
+        _add, _lost, _notes = merge_append_order(sid, meta, volumes_content)
+        for n in _notes:
+            print("  " + n)
         meta_light = {
             "name": meta["name"],
             "volumes": [{"title": v["title"], "books": [
