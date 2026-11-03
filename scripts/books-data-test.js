@@ -158,8 +158,8 @@ eq(stats.zj ? readJSON(path.join(DATA, "zj.json")).volumes.length : 0, 2, "zj �
       let contentNum = 0;
       for (const f of volFiles) {
         const vc = readJSON(path.join(DATA, f));
-        contentNum += (vc.volumes || []).reduce(
-          (n, v) => n + (v.books || []).filter(b => b.num !== undefined).length, 0);
+        // 内容文件顶层是 {volume, books}（无 volumes 键）——按 books 直取，否则恒 0 空转
+        contentNum += (vc.books || []).filter(b => b.num !== undefined).length;
       }
       eq(contentNum, 0, `${sid} 正文文件不得带 num 字段（${volFiles.length} 个辑文件）`);
     }

@@ -1283,22 +1283,21 @@ def merge_append_order(sid, meta, volumes_content=None):
             per_vol[svi].append(((1, added), b, cb))
             added += 1
 
-    # 源库没有的旧书：splice 回旧（卷, 位置）
+    # 源库没有的旧书：splice 回旧（卷, 位置）。按记录的下标直取，不按身份搜——
+    # 同卷同身份（同 num+同书名）多本时，按身份搜会把每一本都拼成第一本的正文。
     lost = 0
     for ident, slots in old_slot.items():
         for k, (ovi, obi) in enumerate(slots):
             if consumed.get(ident, 0) <= k:
                 lost += 1
-                title = None
-                for ob in (old_vols[ovi].get("books") or []):
-                    if _book_ident(ob) == ident:
-                        title = ob.get("title")
-                        break
+                ob = (old_vols[ovi].get("books") or [])[obi]
+                title = ob.get("title")
                 cb = None
-                for cand in old_content.get(ovi + 1, []):
-                    if _book_ident(cand) == ident:
-                        cb = cand
-                        break
+                ocl = old_content.get(ovi + 1) or []
+                if obi < len(ocl) and _book_ident(ocl[obi]) == ident:
+                    cb = ocl[obi]
+                else:      # 内容文件与元数据顺序不同构时的兜底（正常不该发生）
+                    cb = next((c for c in ocl if _book_ident(c) == ident), None)
                 notes.append(f"[WARN] {sid} 卷{ovi + 1} 源库丢失《{title}》，已从旧导出 splice 保留（索引不退）")
                 if cb is not None:
                     per_vol[ovi].append(((0, obi),
@@ -1306,31 +1305,36 @@ def merge_append_order(sid, meta, volumes_content=None):
                                           "chapters": [{"title": c.get("title")} for c in cb.get("chapters") or []]},
                                          cb))
                 else:
-                    notes.append(f"[WARN] {sid} 《{title}》旧内容读不到，仅保留元数据条目")
+                    notes.append(f"[ERR] {sid} 《{title}》旧内容读不到，仅保留元数据条目（数据不完整，需人工处理）")
                     per_vol[ovi].append(((0, obi), {"title": title, "chapters": []},
                                          {"title": title, "chapters": []}))
 
-    # 写回：卷数取新旧较大值（源库卷数不应变；变了要叫）
-    n_vols = max(len(old_vols), len(meta.get("volumes") or []))
-    if len(meta.get("volumes") or []) != len(old_vols):
-        notes.append(f"[WARN] {sid} 卷数变化：旧 {len(old_vols)} → 新 {len(meta.get('volumes') or [])}，请人工确认")
-    new_meta_vols = []
+    # 写回：卷数只允许「源库 ≥ 旧导出」；源库卷数变少会让整卷书无处安放（标注成孤儿），
+    # 故不是简单报警，而是记入 notes 让 export() 非零退出。
+    n_src_vols = len(meta.get("volumes") or [])
+    n_vols = max(len(old_vols), n_src_vols)
+    if n_src_vols < len(old_vols):
+        notes.append(f"[ERR] {sid} 卷数收缩：旧 {len(old_vols)} → 新 {n_src_vols}；"
+                     f"旧卷 {n_src_vols + 1}..{len(old_vols)} 的书无处安放，拒绝静默丢书")
+    elif n_src_vols > len(old_vols):
+        notes.append(f"[WARN] {sid} 卷数增加：旧 {len(old_vols)} → 新 {n_src_vols}，请人工确认")
     for vi in range(n_vols):
         items = sorted(per_vol.get(vi, []), key=lambda x: x[0])
         mbooks = [b for _, b, _ in items]
-        if vi < len(meta.get("volumes") or []):
+        if vi < n_src_vols:
             meta["volumes"][vi]["books"] = mbooks
             if volumes_content is not None and vi < len(volumes_content):
                 volumes_content[vi]["books"] = [cb for _, _, cb in items]
         elif mbooks:
-            notes.append(f"[WARN] {sid} 旧导出卷{vi + 1} 在源库已不存在，{len(mbooks)} 本无法写回")
+            notes.append(f"[ERR] {sid} 旧导出卷{vi + 1} 在源库已不存在，{len(mbooks)} 本无法写回")
     if added:
         notes.append(f"[APPEND] {sid}：新增 {added} 本追加到卷末，老书（卷,位置）不动")
     return added, lost, notes
 
 
-def export(only=None, numbers_only=False):
+def export(only=None, numbers_only=False, allow_loss=False):
     os.makedirs(OUT, exist_ok=True)
+    had_issue = False
     ids = only or list(SERIES)
     if numbers_only:
         # --numbers：只跑各系列构建器、只写编号表，**不碰任何内容文件**
@@ -1351,6 +1355,8 @@ def export(only=None, numbers_only=False):
             _add, _lost, _notes = merge_append_order(sid, meta)
             for n in _notes:
                 print("  " + n)
+                if n.startswith("[ERR]") or n.startswith("[WARN] 源库丢失"):
+                    had_issue = True
             rows = [[vi, bi, b["num"]]
                     for vi, v in enumerate(meta["volumes"], 1)
                     for bi, b in enumerate(v["books"]) if b.get("num")]
@@ -1362,6 +1368,9 @@ def export(only=None, numbers_only=False):
         with open(path, "w", encoding="utf-8") as f:
             json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
         print(f"[NUM] {len(out)} 个系列 / {sum(len(v) for v in out.values())} 本带编号 -> {path}")
+        if had_issue and not allow_loss:
+            print("[ABORT] 有序号表存在丢书/结构异常（见上），已写出但需人工确认；确认无碍可加 --allow-loss 重跑")
+            return 2
         return 0
     with open(os.path.join(OUT, "index.json"), encoding="utf-8") as f:
         series_index = json.load(f)
@@ -1376,6 +1385,8 @@ def export(only=None, numbers_only=False):
         _add, _lost, _notes = merge_append_order(sid, meta, volumes_content)
         for n in _notes:
             print("  " + n)
+            if n.startswith("[ERR]") or n.startswith("[WARN] 源库丢失"):
+                had_issue = True
         meta_light = {
             "name": meta["name"],
             "volumes": [{"title": v["title"], "books": [
@@ -1396,11 +1407,17 @@ def export(only=None, numbers_only=False):
         json.dump(series_index, f, ensure_ascii=False, separators=(",", ":"))
     print("")
     print(f"系列清单 -> {os.path.join(OUT, 'index.json')}（{len(series_index['series'])} 个系列）")
+    if had_issue and not allow_loss:
+        print("[ABORT] 有系列存在丢书/结构异常（见上 [ERR]/[WARN] 源库丢失 行），"
+              "产物已写出但不完整；确认无碍可加 --allow-loss 重跑")
+        return 2
 
 
 if __name__ == "__main__":
     argv = sys.argv[1:]
+    allow_loss = "--allow-loss" in argv
+    argv = [a for a in argv if a != "--allow-loss"]
     if "--numbers" in argv:
         rest = [a for a in argv if a != "--numbers"]
-        sys.exit(export(rest or None, numbers_only=True))
-    sys.exit(export(argv or None))
+        sys.exit(export(rest or None, numbers_only=True, allow_loss=allow_loss))
+    sys.exit(export(argv or None, allow_loss=allow_loss))
