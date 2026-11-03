@@ -63,8 +63,9 @@ async function main() {
     '| # 残留:', r3.hashLeft, '| ** 残留:', r3.boldLeft, '| 元数据残留:', r3.metaLeft,
     '| 书名/篇名重复行:', r3.dupTitle, '| 首段:', r3.firstPara);
 
-  // 3b. 标题行识别：第二篇含「一 神的意义」式裸编号小标题
-  await page.evaluate(() => openBookChapter(1, 0, 1, 'gospel'));
+  // 3b. 标题行识别：《人生的奥秘》(book 38) 章1 含「一 人生存之目的」式裸编号小标题
+  //    （原 book0 章1 2026-11-03 起已墓碑化并入福音天地，无纲目行）
+  await page.evaluate(() => openBookChapter(1, 38, 0, 'gospel'));
   await new Promise((r) => setTimeout(r, 2500));
   const r3b = await page.evaluate(() => ({
     heads: document.querySelectorAll('#bookMain .bk-head').length,
@@ -212,15 +213,23 @@ async function main() {
     const coll = d.books.find(b => b.title === '福音讲台总集·变死亡为生命');
     const collCh = coll.chapters.find(c => c.title === '上流人的需要');
     const lm = d.books.find(b => b.title === '生命的意义');
+    // 正版在 fuyintiandi（gospel-1.json 里没有这本书，必须单独拉）
+    const fy = await fetchJSONStall('data/books/fuyintiandi-1.json');
+    const fyb = (fy.books || []).find(b => b.title === '福音讲台总集');
+    const fyCh = fyb && (fyb.chapters || []).find(c => c.title === '上流人的需要');
     return {
       soloTomb: solo.chapters[0].content.startsWith('（本文与'),
-      soloGuide: solo.chapters[0].content.includes('福音讲台总集·变死亡为生命'),
-      collKept: collCh.content.length > 5000 && !collCh.content.startsWith('（本文与'),
-      inBookTomb: lm.chapters.filter(c => c.content.startsWith('（本文与「')).length,
+      soloGuide: solo.chapters[0].content.includes('福音天地 · 福音讲台总集'),
+      collTomb: collCh.content.startsWith('（本文已并入'),
+      fyKept: !!(fyCh && fyCh.content.length > 5000 && !fyCh.content.startsWith('（本文')),
+      inBookTomb: lm.chapters.filter(c => c.content.startsWith('（本文')).length,
     };
   });
-  console.log('9. 重复篇墓碑化:', r9.soloTomb && r9.soloGuide && r9.collKept && r9.inBookTomb === 5 ? '✓' : '✗',
-    '| 单篇书墓碑:', r9.soloTomb, '| 指引含合集名:', r9.soloGuide, '| 合集篇保留真内容:', r9.collKept,
+  // 2026-11-03 重导后语义更新：福音讲台总集四部整体并入《福音天地》（合集篇亦墓碑），
+  // 吸收正版在 fuyintiandi；生命的意义 书内墓碑 5→53（源索引 57 saved + 53 duplicate）
+  console.log('9. 重复篇墓碑化:', r9.soloTomb && r9.soloGuide && r9.collTomb && r9.fyKept && r9.inBookTomb === 53 ? '✓' : '✗',
+    '| 单篇书墓碑:', r9.soloTomb, '| 指引指向福音天地·福音讲台总集:', r9.soloGuide, '| 合集篇亦墓碑:', r9.collTomb,
+    '| 正版在 fuyintiandi:', r9.fyKept,
     '| 书内墓碑:', r9.inBookTomb, '篇');
 
   console.log('\nJS 错误:', errors.length ? errors : '无');
