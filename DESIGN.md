@@ -30,7 +30,7 @@
 | 阴影 | sm `0 1px 4px` · md `0 6px 16px` · overlay `0 8px 24px` · 卡片品牌蓝 `0 1px 5px rgba(102,126,234,.2)` |
 | 字号 | `--fs-10…40` 刻度；正文走 `calc(基准×--reading-scale)` 白名单 |
 | 层级 | topbar 30 < backdrop 80 < dock 81 < floattool 82 < popup 85 < typo 88 < toast 90 < splash 100 |
-| 主题 | classic（默认）/ indigo / paper / minimal —— 差异只覆盖 token |
+| 主题 | classic（默认）/ indigo / paper / minimal / dark 暗夜（2026-11-04 新增，标注透明度 25–35%）—— 差异只覆盖 token |
 
 ## 4. 布局与断点
 
@@ -41,7 +41,7 @@
 
 ## 5. 组件清单
 
-Topbar · IconBtn · TopBtn · Segment(on-brand/on-surface) · NavDrawer · VerseCard · OutlineItem · Mark(五色) · FnRef · PersonLink · RefLink · StudyPanel · StudyItem · NoteEditor · HomeBlock · RecentList · PlayerCard · SegmentList · Modal · SettingsList · Switch · Badge · AnnotationToolbar · Toast · 三态占位(Loading/Error/Empty) · Splash · ResizeHandle
+Topbar · IconBtn · TopBtn · Segment(on-brand/on-surface) · NavDrawer · VerseCard · OutlineItem · Mark(五色) · FnRef · PersonLink · RefLink · StudyPanel · StudyItem · NoteEditor · HomeBlock · RecentList · PlayerCard · SegmentList · Modal · SettingsList · Switch · Badge · AnnotationToolbar · Toast · 三态占位(Loading/Error/Empty) · Splash · ResizeHandle · MiniPlayer 迷你播放条
 → 每个组件的解剖/变体/属性/状态/键盘/Do-Don't 见 `ui-spec/docs/03-components.md`；SVG 稿 `ui-spec/svg/`；JSX 契约 `ui-spec/jsx/`。
 
 ## 6. 状态与文案（详见 ui-spec/docs/05）

@@ -11,7 +11,7 @@
     try {
       var _t = null;
       try { _t = JSON.parse(localStorage.getItem('bible-study.theme')); } catch (e) {}
-      document.documentElement.setAttribute('data-theme', (_t === 'indigo' || _t === 'paper' || _t === 'minimal' || _t === 'classic') ? _t : 'classic');
+      document.documentElement.setAttribute('data-theme', (_t === 'indigo' || _t === 'paper' || _t === 'minimal' || _t === 'dark' || _t === 'classic') ? _t : 'classic');
     } catch (e) {}
   </script>
   <link rel="manifest" href="manifest.json">
@@ -36,6 +36,15 @@
   <!-- 首屏 splash：纯静态（app.js 未加载也能显示），JS 拉取 data/verses.json 后替换随机经节；
        2026-10-10：启动数据（经文四件套+生命读经卷）改为首屏可见加载——进度条显示字节级进度，全部就绪才隐藏 -->
   <!-- 2026-09-28：听抄 2026-04 夏季训练以 epub 全文重导上线（数据随本部署打包） -->
+  <!-- 全局迷你播放条（评审 F7）：听书已加载且不在听书模块时显示，点击标题回听书 -->
+  <div id="miniPlayer" class="mini-player" hidden>
+    <button id="mpPlay" class="mini-player-pp" aria-label="播放">▶</button>
+    <div class="mini-player-ti" id="mpTitle" role="button" tabindex="0" aria-label="回到听书模块">
+      <b id="mpTitleText"></b>
+      <span id="mpMeta"></span>
+      <div class="mini-player-pr"><i id="mpProg"></i></div>
+    </div>
+  </div>
   <div id="splash">
     <div class="splash-logo">📖 读经</div>
     <blockquote class="splash-verse" id="splashVerse">愿耶和华赐福与你，保护你；愿耶和华使祂的面光照你，赐恩给你。</blockquote>

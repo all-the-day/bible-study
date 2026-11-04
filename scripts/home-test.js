@@ -13,7 +13,7 @@ async function main() {
     headless: 'new', args: ['--no-sandbox'],
   });
   const page = await browser.newPage();
-  await page.setViewport({ width: 1280, height: 800 });
+  await page.setViewport({ width: 1600, height: 800 });
   const errors = [];
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
   page.on('console', (m) => {

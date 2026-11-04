@@ -173,7 +173,7 @@
     <p style="margin:0"><b>拖后腿的</b>：① 没有深色主题——阅读类应用的 bedtime 场景硬伤；② 宽屏行长失控与中档屏正文过窄——两个相反方向上的阅读工效漏洞；③ classic 主题 5 处对比度不达标（已实测）；④ 首页 emoji 图标与缺失的品牌身份，让第一印象停在「模板感」。</p>
   </div>
 
-  <h2 class="sect" id="f1">F1 · 深色 / 夜间主题缺失</h2>
+  <h2 class="sect" id="f1">F1 · 深色 / 夜间主题缺失 <span class="tag p0">✅ 2026-11-04 已落地</span></h2>
   <p class="sect-sub"><span class="tag p0">P0</span><span class="tag eff">工作量：中（1 个主题覆盖块 + 标注透明度调整）</span></p>
   <div class="card">
     <p class="why">读经应用的高频场景之一是睡前与弱光环境。现有 indigo / paper / minimal 三主题全部是浅色，而 token 体系已经把颜色收敛到 <code>:root</code>——新增一个 <code>[data-theme=dark]</code> 覆盖块就能落地，成本远低于用户价值。唯一要专项处理的是五色标注：暗底上 50% 透明度会让正文对比度跌到 3.2:1（不达标），需降到 ~25% 或改下划线式。</p>
@@ -291,7 +291,7 @@
     </div>
   </div>
 
-  <h2 class="sect" id="f7">F7 · 听书离开模块后没有迷你播放条</h2>
+  <h2 class="sect" id="f7">F7 · 听书离开模块后没有迷你播放条 <span class="tag p1">✅ 2026-11-04 已落地</span></h2>
   <p class="sect-sub"><span class="tag p1">P1</span><span class="tag eff">工作量：中（全局组件 + 播放状态桥接）</span></p>
   <div class="card">
     <p class="why">音频在离开听书模块后继续播放（断点续听已做），但界面里没有任何常驻控制：用户边听边读经时，想暂停或跳一段必须退回暖书模块。提案：非听书界面底部常驻<b>迷你播放条</b>（标题 + 播放/暂停 + 细进度），点标题回听书模块。这是「边听边读」场景的最后一块拼图。</p>
@@ -376,7 +376,7 @@
         <td>classic 基线纪律：渐变加深与字色属主题覆盖块，建议作为「经典主题 v1.1 一次性修」整体评审后落，不动五色与布局契约</td>
       </tr>
       <tr>
-        <td><b>第二批<br>体验跃升</b></td>
+        <td><b>第二批<br>体验跃升</b><br><span class="pill-ok">✅ 2026-11-04 已落地（feat/ui-refactor）</span></td>
         <td>F1 深色主题（token 覆盖块 + 标注 25% 透明度 + 主题列表新增项）· F7 迷你播放条</td>
         <td>1–2 天</td>
         <td>新主题走 <code>[data-theme=dark]</code>；播放桥接复用现有播放状态，不新建播放器</td>

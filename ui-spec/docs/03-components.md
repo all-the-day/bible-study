@@ -120,6 +120,7 @@
 | Badge 状态徽标 | 11px · radius 10 · on=success | 文字用深档（04 §1.2） | modal |
 | AnnotationToolbar 标注条 | 深底 pill · 5 色点 r10 · z-82 | 点色即存；改色/改笔记/删除分离 | annotation |
 | Toast 轻提示 | 底部居中 · 上浮 10px · z-90 | `role="status"`；可悬停暂停（待补） | annotation |
+| MiniPlayer 迷你播放条 | fixed 底部 · max-w 720 · z-79 · 34px 播放钮 + 标题/时间/细进度 | 仅「已加载音频且不在听书模块」显示；toast/mode-pill 让位；正文列补底部 padding；标题点击回听书；`body.mini-audio` 驱动 | design-review F7 |
 | LoadingHint/ErrorHint/EmptyHint | spinner 18px · 错误三问 · 空态带 CTA | 永不无限转 | annotation |
 | RefLink 引用链接 | 品牌色内联 → 跳对应章 | 3.54 ✗ 建议换 brand-dark | reading |
 | PersonLink 人物链接 | 青绿 #0f7b6c 4.99 ✓ → 人物小传弹窗 | 弹窗含 meta+摘录 | reading |

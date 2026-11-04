@@ -170,12 +170,13 @@ const TOPICS = {
 };
 
 /* ── 阅读主题（设置 → 阅读主题；style.css 末尾 :root[data-theme=…] 变量覆盖）── */
-const THEMES = { classic: '经典', indigo: '靛蓝', paper: '暖纸', minimal: '素灰' };
+const THEMES = { classic: '经典', indigo: '靛蓝', paper: '暖纸', minimal: '素灰', dark: '暗夜' };
 const THEME_SWATCH = {   // 选择器里的三圆点预览：[主色, 页面底, 正文色]
   classic: ['#5B67D4', '#f0f3f9', '#1f2937'],
   indigo: ['#5662CE', '#f4f5f8', '#26272b'],
   paper: ['#8a6a2f', '#faf7f1', '#33302a'],
   minimal: ['#5662CE', '#f6f6f8', '#1c1c1e'],
+  dark: ['#8b96ff', '#111318', '#e7e9f0'],
 };
 // 非经典主题的合集块线性图标（classic 用 emoji；SVG stroke=currentColor，颜色由 CSS 按 theme 给）
 function _thSvg(paths) {
@@ -2044,6 +2045,7 @@ async function enterModule(id, opts) {
   }
   state.activeModule = id;
   applyModuleBodyClass(id);
+  audioSyncMini();
   enterWork();
   // 面板开着时切模块：px 标签按新模块基准刷新（各模块基准字号不同）
   const typoPanel = $('typoModal');
@@ -5480,7 +5482,7 @@ async function ensureAudioAll() {
   return idx;
 }
 
-function audioCollection() { return state.audioData[state.audioColl] || null; }
+function audioCollection() { return (state.audioData || {})[state.audioColl] || null; }
 function audioLectureData() {
   const d = audioCollection();
   return (d && (d.lectures || []).find(l => l.n === state.audioLecture)) || null;
@@ -5511,15 +5513,17 @@ function ensureAudioEl() {
       a._resumeAt = 0;
     }
     audioSyncProgress();
+    audioSyncMini();
   });
   a.addEventListener('play', audioSyncControls);
   // 暂停即结束缓冲态：否则「缓冲中 → 用户按暂停」会把 spinner 永久挂在卡片里
-  a.addEventListener('pause', () => { state.audioBuffering = false; audioSyncControls(); audioSyncStatus(); });
-  a.addEventListener('timeupdate', () => { audioSyncProgress(); audioSavePos(); });
+  a.addEventListener('pause', () => { state.audioBuffering = false; audioSyncControls(); audioSyncStatus(); audioSyncMini(); });
+  a.addEventListener('timeupdate', () => { audioSyncProgress(); audioSavePos(); audioSyncMini(); });
   // 缓冲/失败要落到界面（反馈 #32）：waiting → 「缓冲中…」，error → 卡片内重试 + 按钮回 ▶。
   // 只靠 error 的 toast 不够：toast 2.6s 消失后界面会一直停在「正在播放 0:00」。
   a.addEventListener('waiting', () => { state.audioBuffering = true; audioSyncStatus(); });
   a.addEventListener('playing', () => { state.audioBuffering = false; audioSyncStatus(); });
+  a.addEventListener('error', audioSyncMini);
   a.addEventListener('canplay', () => { if (!a.paused) { state.audioBuffering = false; audioSyncStatus(); } });
   a.addEventListener('ended', () => {
     state.audioBuffering = false;
@@ -5675,6 +5679,35 @@ function audioSyncControls() {
   b.setAttribute('aria-label', playing ? '暂停' : (state.audioError ? '重试播放' : '播放'));
 }
 
+/* 全局迷你播放条（评审 F7）：已加载音频且不在听书模块时常驻显示。
+   更新时机：audio 元素事件（play/pause/timeupdate/metadata/error）+ enterModule 切换。
+   不挂 audioSyncControls/Progress——它们在模块外因控件不存在而早退。 */
+let _miniBound = false;
+function audioSyncMini() {
+  const bar = $('miniPlayer');
+  if (!bar) return;
+  if (!_miniBound) {
+    _miniBound = true;
+    $('mpPlay').addEventListener('click', audioTogglePlay);
+    const go = () => { if (state.activeModule !== 'audio') enterModule('audio'); };
+    $('mpTitle').addEventListener('click', go);
+    $('mpTitle').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+  }
+  const a = state.audioEl;
+  const on = !!(a && a.dataset.auUrl && state.audioData) && state.activeModule !== 'audio';
+  bar.hidden = !on;
+  document.body.classList.toggle('mini-audio', on);
+  if (!on) return;
+  const lec = audioLectureData();
+  const playing = !a.paused && !state.audioError;
+  $('mpPlay').textContent = playing ? '❚❚' : '▶';
+  $('mpPlay').setAttribute('aria-label', playing ? '暂停' : '播放');
+  $('mpTitleText').textContent = lec.title || '听书';
+  const dur = audioDuration();
+  const seg = lec.tracks.length > 1 ? ` · 第${state.audioTrack + 1}段` : '';
+  $('mpMeta').textContent = `${audioClock(a.currentTime || 0)} / ${audioClock(dur)}${seg}`;
+  $('mpProg').style.width = (dur ? Math.min(100, (a.currentTime || 0) / dur * 100) : 0) + '%';
+}
 // 卡片内状态行：缓冲中… / 加载失败 · 重试（反馈落在播放器上，不靠 2.6s toast）
 function audioSyncStatus() {
   const el = $('auStatus');

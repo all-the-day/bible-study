@@ -1858,6 +1858,41 @@ mark.sr-hit {
   --switch-track: #d5d5da; --slider-track: #e3e3e8; --grab-bg: #d9d9de;
 }
 
+/* ── 暗夜（2026-11-04 评审 F1）：暗底亮字，避开纯黑纯白；标注透明度 50%→25-35%
+   （暗底上 50% 会让正文对比度跌到 3.2:1，降档后 6.9–10.9 全部 ≥4.5）。 ── */
+:root[data-theme="dark"] {
+  --brand: #8b96ff; --brand-dark: #a3adff; --brand-rgb: 139, 150, 255;
+  --page-bg: #111318; --surface: #191b22; --surface-alt: #20232c; --border: rgba(255,255,255,.09);
+  --scripture-bg: #1a1c24;
+  --heading: #f2f3f7; --text: #e7e9f0; --text-soft: #b8bcc9; --text-muted: #8b90a0;
+  --hover: rgba(255,255,255,.05);
+  --topbar-bg: #15161d; --topbar-solid: #15161d; --topbar-fg: #e7e9f0; --topbar-shadow: none;
+  --topbar-border: 1px solid rgba(255,255,255,.09);
+  --topbar-line: rgba(255,255,255,.25); --topbar-line-strong: rgba(255,255,255,.35);
+  --topbar-btn: rgba(255,255,255,.08); --topbar-btn-on: rgba(255,255,255,.16);
+  --pill-bg: rgba(255,255,255,.08); --pill-fg: rgba(255,255,255,.75);
+  --pill-active-bg: #e7e9f0; --pill-active-fg: #15161d;
+  --card-bg: var(--surface); --card-border: 1px solid var(--border); --card-shadow: none;
+  --verse-sep: 1px solid rgba(255,255,255,.06);
+  --vnum-color: var(--brand);
+  --ol2-color: var(--brand);
+  --panel: var(--surface);
+  --fn-ref: #e0a458; --fn-ref-hover: #f0b56e;
+  --person: #3fc9ba; --person-dark: #3fc9ba;
+  --danger: #e07a76; --danger-soft: rgba(224,122,118,.14); --danger-deep: #f09a96;
+  --success: #4ade80; --success-soft: rgba(74,222,128,.14); --success-deep: #4ade80;
+  --switch-track: #3a3d4a; --slider-track: #2e3140; --grab-bg: #33364a;
+  --note-wavy: #f0a05a; --note-soft: rgba(240,160,90,.12);
+}
+/* 暗底语义修正：--danger-deep 兼任文字色（亮）与弹窗按钮底——按钮白字改回 #b91c1c（6.47） */
+:root[data-theme="dark"] .popup-btn.danger { background: #b91c1c; border-color: #b91c1c; }
+:root[data-theme="dark"] #splash { background: linear-gradient(160deg, #15161d, #1a1c24); }
+:root[data-theme="dark"] mark.c1 { background: rgba(255,235,59,.25); }
+:root[data-theme="dark"] mark.c2 { background: rgba(76,175,80,.28); }
+:root[data-theme="dark"] mark.c3 { background: rgba(156,39,176,.35); }
+:root[data-theme="dark"] mark.c4 { background: rgba(33,150,243,.3); }
+:root[data-theme="dark"] mark.c5 { background: rgba(244,67,54,.3); }
+
 /* ── 阅读主题选择器（设置 → 阅读主题；popup replace 原位渲染）── */
 .theme-list { display: flex; flex-direction: column; margin: 4px 0 10px; }
 .theme-item {
@@ -1905,3 +1940,31 @@ mark.sr-hit {
 .update-body .upd-ch-item { font-size: var(--fs-13); color: var(--text); line-height: 1.8; padding-left: 16px; position: relative; margin-bottom: 4px; }
 .update-body .upd-ch-item::before { content: '·'; position: absolute; left: 3px; color: var(--text-faint); }
 .update-body .upd-note { margin-top: 10px; font-size: var(--fs-12); color: var(--text-muted); line-height: 1.7; }
+
+
+/* ── 全局迷你播放条（2026-11-04 评审 F7）：听书播放/已加载时离开模块的常驻控制 ── */
+.mini-player {
+  position: fixed; left: 12px; right: 12px; bottom: calc(10px + env(safe-area-inset-bottom));
+  max-width: 720px; margin: 0 auto; z-index: 79;
+  display: flex; align-items: center; gap: 12px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md); padding: 8px 14px;
+}
+.mini-player[hidden] { display: none; }   /* hidden 属性必须压过 display:flex（否则启动即显示） */
+.mini-player-pp {
+  width: 34px; height: 34px; border-radius: 50%; border: none; cursor: pointer; flex: none;
+  background: var(--brand); color: #fff; font-size: var(--fs-13); line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+}
+.mini-player-ti { flex: 1; min-width: 0; cursor: pointer; }
+.mini-player-ti b { display: block; font-size: var(--fs-13); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-player-ti span { font-size: var(--fs-11); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.mini-player-pr { height: 3px; border-radius: 2px; background: var(--slider-track); margin-top: 5px; position: relative; overflow: hidden; }
+.mini-player-pr i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--brand); border-radius: 2px; }
+body.mini-audio .toast { bottom: calc(118px + env(safe-area-inset-bottom)); }   /* toast 让位迷你条 */
+body.mini-audio .text-col { padding-bottom: 118px; }                             /* 正文末行不被迷你条盖住 */
+body.mini-audio #homeView { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+@media (max-width: 900px) {
+  body.mini-audio .mode-pill { bottom: calc(126px + env(safe-area-inset-bottom)); } /* 模式 pill 上移让位 */
+  .mini-player { left: 8px; right: 8px; }
+}
