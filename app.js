@@ -181,25 +181,25 @@ const THEME_SWATCH = {   // 选择器里的三圆点预览：[主色, 页面底,
 };
 // 非经典主题的合集块线性图标（classic 用 emoji；SVG stroke=currentColor，颜色由 CSS 按 theme 给）
 function _thSvg(paths) {
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
 }
 const THEME_ICONS = {
-  bible: _thSvg('<path d="M12 5.5C10 3.9 7.5 3.5 4.5 3.7v14c3-.2 5.5.2 7.5 1.8 2-1.6 4.5-2 7.5-1.8v-14C16.5 3.5 14 3.9 12 5.5z"/><path d="M12 5.5v14"/>'),
-  lifereading: _thSvg('<path d="M6 3.5h12v17l-6-3.5-6 3.5z"/><path d="M9.5 3.5v7l2.5-1.8 2.5 1.8v-7"/>'),
-  notes: _thSvg('<rect x="5" y="4" width="14" height="16" rx="2"/><path d="M8.5 9h7M8.5 13h7M8.5 17h4"/>'),
-  morning: _thSvg('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5v3.5M8.5 21h7"/>'),
-  audio: _thSvg('<path d="M7.5 14.5V9a4.5 4.5 0 0 1 9 0v5.5"/><rect x="4.5" y="13" width="3.5" height="6" rx="1.5"/><rect x="16" y="13" width="3.5" height="6" rx="1.5"/>'),
-  ni: _thSvg('<path d="M5 6.5h11M7 10h11M9 13.5h11"/><path d="M4 17.5l3.2-11h2"/>'),
-  bookhub: _thSvg('<path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>'),
-  vitality8: _thSvg('<path d="M12 3.5c1.6 2.8 1.2 4.4-.2 5.8-1.2 1.2-2.3 2.4-2.3 4.2a4.5 4.5 0 0 0 9 0c0-1.7-.8-2.7-1.6-3.6"/><path d="M12 20.5a3 3 0 0 1-3-3c0-1.8 1.6-2.4 1.6-4.4"/>'),
+  bible: _thSvg('<path d="M12 7v14" /> <path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z" />'),
+  lifereading: _thSvg('<path d="M10 2v8l3-3 3 3V2" /> <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20" />'),
+  notes: _thSvg('<path d="M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4" /> <path d="M2 6h4" /> <path d="M2 10h4" /> <path d="M2 14h4" /> <path d="M2 18h4" /> <path d="M21.378 5.626a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z" />'),
+  morning: _thSvg('<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" /> <path d="M19 10v2a7 7 0 0 1-14 0v-2" /> <line x1="12" x2="12" y1="19" y2="22" />'),
+  audio: _thSvg('<path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3" />'),
+  ni: _thSvg('<path d="m16 6 4 14" /> <path d="M12 6v14" /> <path d="M8 8v12" /> <path d="M4 4v16" />'),
+  bookhub: _thSvg('<rect width="8" height="18" x="3" y="3" rx="1" /> <path d="M7 3v18" /> <path d="M20.4 18.9c.2.5-.1 1.1-.6 1.3l-1.9.7c-.5.2-1.1-.1-1.3-.6L11.1 5.1c-.2-.5.1-1.1.6-1.3l1.9-.7c.5-.2 1.1.1 1.3.6Z" />'),
+  vitality8: _thSvg('<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />'),
   slat: _thSvg('<path d="M4.5 9.5h15l-1.6 8.2a2 2 0 0 1-2 1.8H8.1a2 2 0 0 1-2-1.8z"/><path d="M8.5 9.5 10.5 5M15.5 9.5 13.5 5M9 13h6"/>'),
-  bio: _thSvg('<circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/>'),
+  bio: _thSvg('<path d="M15 13a3 3 0 1 0-6 0" /> <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20" /> <circle cx="12" cy="8" r="2" />'),
   fuyintiandi: _thSvg('<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c-5 5.5-5 11.5 0 17 5-5.5 5-11.5 0-17"/>'),
   gospel: _thSvg('<path d="M12 20s-7-4.6-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.4-7 10-7 10z"/>'),
-  reading: _thSvg('<rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M9 3.5v17"/>'),
+  reading: _thSvg('<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20" />'),
   periodicals: _thSvg('<path d="M4 5h13v14H6a2 2 0 0 1-2-2z"/><path d="M17 8h3v9a2 2 0 0 1-2 2"/><path d="M7.5 9h6M7.5 12.5h6M7.5 16h4"/>'),
   misc: _thSvg('<path d="M4 8l8-4.5L20 8v8l-8 4.5L4 16z"/><path d="M4 8l8 4.5L20 8M12 12.5v8"/>'),
-  _default: _thSvg('<path d="M6 3.5h8l4 4v13H6z"/><path d="M14 3.5v4h4"/>'),
+  _default: _thSvg('<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20" />'),
 };
 // 新系列在非经典主题下复用相近的线性图标（否则 24 个块全回落同一个文件图标）
 const SERIES_ICON_ALIAS = {

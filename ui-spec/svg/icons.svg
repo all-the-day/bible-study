@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="576" height="400" viewBox="0 0 576 400">
+  <!-- 2026-11-04：应用内主题图标已切换为 Lucide v0.462（ISC）官方路径——本图表保留作历史参考，其余图标待逐步对齐 Lucide。 -->
   <style>
     .t{font-family:'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif;}
     .ic{stroke:#475569;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round;}
