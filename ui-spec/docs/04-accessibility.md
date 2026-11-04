@@ -32,7 +32,7 @@
 | vnum / 链接 brand 文字 | 3.54 → **4.84**（#5B67D4） | ✅ 已改 | `--vnum-color`、`.ref-link` |
 | `.popup-btn.danger` 白字 | 3.96 → **6.47**（#b91c1c） | ✅ 已改 | `.popup-btn.danger` |
 | `.sync-st-on` 文字 | 3.19 → **7.13**（--success-deep #166534） | ✅ 已改 | `.sync-row b.sync-st-on` |
-| 注脚上标 #c07818 | 3.42 | ⬜ 待改 | 建议加深至 #a36112 一档 |
+| 注脚上标 #c07818 → #a36112 | 3.42 → **4.76** | ✅ 已改 | `--fn-ref`（hover #e08000→#c2410c，5.02） |
 
 澄清（CR 核实）：`--danger`/`--success` 的 hover 图标与边框用法均过 3:1 图形档 ✓；`.settings-badge.on` 已用 `--success-deep` ✓；音频错误文字已用 `--danger-deep` ✓——这两色的**文字场景欠账只有上表两处**。
 

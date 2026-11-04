@@ -15,8 +15,8 @@
   --radius-md: 8px;
   --shadow-sm: 0 1px 4px rgba(0,0,0,.06);
   --shadow-md: 0 6px 16px rgba(0,0,0,.08);
-  --fn-ref: #c07818;
-  --fn-ref-hover: #e08000;
+  --fn-ref: #a36112;  /* 评审：3.42→4.76 */
+  --fn-ref-hover: #c2410c;  /* 评审：hover 同步加深 5.02 */
   /* 人物链接（正文人名 → 人物小传弹窗，原型阶段仅十二篮） */
   --person: #0f7b6c;
   --person-dark: #0a5c51;
