@@ -1133,8 +1133,6 @@ body.home #menuBtn { display: none; }                  /* ☰ 只服务工作区
 body.home #modePill { display: none; }                 /* 首页是第三种态，隐藏读经|研读 pill */
 body.home #viewModeBtn, body.home #hideMarksBtn,
 body.home #studyFullBtn { display: none !important; }
-.brand-mark { display: none; font-size: var(--fs-17); font-weight: 700; letter-spacing: .02em; }  /* 评审 F6：首页身份锚点 */
-body.home .brand-mark { display: inline; }
 #homeView {
   position: fixed; inset: 52px 0 0; z-index: 20;       /* 顶栏 z30 之上、popup z60 之下 */
   background: var(--page-bg); overflow-y: auto; padding: 24px 16px 40px;
