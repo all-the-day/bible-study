@@ -221,14 +221,22 @@ def ezoe_dedup(books):
     return len(tomb_ch), len(covered_books)
 
 
+def _atomic_write_json(path, obj):
+    """原子写 JSON：先写 .tmp 再 os.replace，防进程中断留下截断的半截文件——
+    半截的旧导出会让下次重导的追加感知护栏读到损坏文件。"""
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(obj, f, ensure_ascii=False, separators=(",", ":"))
+    os.replace(tmp, path)
+
+
 def write_volume_files(series_id, meta_light, volumes_content):
     """写 {id}.json 元数据 + {id}-{n}.json 按辑内容；返回 (辑数, 本数, 章数)"""
-    with open(os.path.join(OUT, f"{series_id}.json"), "w", encoding="utf-8") as f:
-        json.dump(meta_light, f, ensure_ascii=False, separators=(",", ":"))
+    _atomic_write_json(os.path.join(OUT, f"{series_id}.json"), meta_light)
     total_books = total_chapters = 0
     for i, vol in enumerate(volumes_content, 1):
-        with open(os.path.join(OUT, f"{series_id}-{i}.json"), "w", encoding="utf-8") as f:
-            json.dump({"volume": vol["volume"], "books": vol["books"]}, f, ensure_ascii=False, separators=(",", ":"))
+        _atomic_write_json(os.path.join(OUT, f"{series_id}-{i}.json"),
+                           {"volume": vol["volume"], "books": vol["books"]})
         total_books += len(vol["books"])
         total_chapters += sum(len(b["chapters"]) for b in vol["books"])
         print(f"[OK] {series_id} {vol['volume']}：{len(vol['books'])} 本 / {sum(len(b['chapters']) for b in vol['books'])} 章")
@@ -1231,18 +1239,26 @@ def merge_append_order(sid, meta, volumes_content=None):
     （如 zj cuts=[116]），源库新增书会按书号插进中部、把切点后的书挤到邻卷——
     若按源库卷对齐，同一本书会被判「新书追加进上卷」+「旧卷丢失 splice 回下卷」而重复。
 
-    返回 (新增数, 丢失数, 提示列表)。volumes_content 为 None 时只重排 meta
+    返回 (新增数, 丢失数, 提示列表, flags)。volumes_content 为 None 时只重排 meta
     （--numbers 只需要顺序一致，不碰内容）。
+
+    flags 是结构化的失败判定（不要用 notes 字符串匹配——note 格式会演化，判定
+    靠它必然再次静默失配）：hard=旧导出读取失败（护栏被绕过，按源序导出即全量
+    位移，--allow-loss 不可放行）；err=丢书 splice / 卷数收缩 / 结构异常
+    （数据保留或条目完整，人工确认后可 --allow-loss 放行）。
     """
+    flags = {"hard": False, "err": False}
     path = os.path.join(OUT, f"{sid}.json")
     notes = []
     if not os.path.exists(path):
-        return 0, 0, notes
+        return 0, 0, notes, flags
     try:
         old = json.load(open(path, encoding="utf-8"))
     except Exception as exc:
-        notes.append(f"[WARN] {sid} 旧导出读取失败（{exc}），按源序导出")
-        return 0, 0, notes
+        notes.append(f"[FATAL] {sid} 旧导出读取失败（{exc}）：追加感知护栏被绕过，"
+                     f"按源序导出会造成全量索引位移，拒绝导出（先修复 {path} 再重跑）")
+        flags["hard"] = True
+        return 0, 0, notes, flags
 
     # 旧导出：identity -> [(卷序号, 卷内位置), ...]（同身份多本按出现次序）
     old_slot = {}
@@ -1299,6 +1315,7 @@ def merge_append_order(sid, meta, volumes_content=None):
                 else:      # 内容文件与元数据顺序不同构时的兜底（正常不该发生）
                     cb = next((c for c in ocl if _book_ident(c) == ident), None)
                 notes.append(f"[WARN] {sid} 卷{ovi + 1} 源库丢失《{title}》，已从旧导出 splice 保留（索引不退）")
+                flags["err"] = True
                 if cb is not None:
                     per_vol[ovi].append(((0, obi),
                                          {"title": title, "num": cb.get("num"),
@@ -1316,6 +1333,7 @@ def merge_append_order(sid, meta, volumes_content=None):
     if n_src_vols < len(old_vols):
         notes.append(f"[ERR] {sid} 卷数收缩：旧 {len(old_vols)} → 新 {n_src_vols}；"
                      f"旧卷 {n_src_vols + 1}..{len(old_vols)} 的书无处安放，拒绝静默丢书")
+        flags["err"] = True
     elif n_src_vols > len(old_vols):
         notes.append(f"[WARN] {sid} 卷数增加：旧 {len(old_vols)} → 新 {n_src_vols}，请人工确认")
     for vi in range(n_vols):
@@ -1327,9 +1345,10 @@ def merge_append_order(sid, meta, volumes_content=None):
                 volumes_content[vi]["books"] = [cb for _, _, cb in items]
         elif mbooks:
             notes.append(f"[ERR] {sid} 旧导出卷{vi + 1} 在源库已不存在，{len(mbooks)} 本无法写回")
+            flags["err"] = True
     if added:
         notes.append(f"[APPEND] {sid}：新增 {added} 本追加到卷末，老书（卷,位置）不动")
-    return added, lost, notes
+    return added, lost, notes, flags
 
 
 def export(only=None, numbers_only=False, allow_loss=False):
@@ -1352,11 +1371,16 @@ def export(only=None, numbers_only=False, allow_loss=False):
             meta, _ = SERIES[sid]()
             # 书号表的 (辑,书,号) 是位置索引，必须与导出文件的顺序同源——
             # 否则追加感知重排后，书号会指向错书
-            _add, _lost, _notes = merge_append_order(sid, meta)
+            _add, _lost, _notes, _flags = merge_append_order(sid, meta)
             for n in _notes:
                 print("  " + n)
-                if n.startswith("[ERR]") or n.startswith("[WARN] 源库丢失"):
-                    had_issue = True
+            if _flags["hard"]:
+                # 硬中止必须在写 numbers.json 之前——书号表是位置索引，
+                # 护栏被绕过的顺序绝不能落盘
+                print(f"[ABORT] {sid} 旧导出读取失败，本次 numbers.json 未写出；"
+                      f"先修复 data/books/{sid}.json 再重跑（--allow-loss 不可放行）")
+                return 3
+            had_issue = had_issue or _flags["err"]
             rows = [[vi, bi, b["num"]]
                     for vi, v in enumerate(meta["volumes"], 1)
                     for bi, b in enumerate(v["books"]) if b.get("num")]
@@ -1382,11 +1406,16 @@ def export(only=None, numbers_only=False, allow_loss=False):
         if sid in LEGACY_ORDINAL_SERIES:
             _strip_legacy_num(meta, volumes_content)
         # 追加感知重导：老书保持旧导出顺序，新书追加到卷末（防索引位移）
-        _add, _lost, _notes = merge_append_order(sid, meta, volumes_content)
+        _add, _lost, _notes, _flags = merge_append_order(sid, meta, volumes_content)
         for n in _notes:
             print("  " + n)
-            if n.startswith("[ERR]") or n.startswith("[WARN] 源库丢失"):
-                had_issue = True
+        if _flags["hard"]:
+            # 硬中止必须在 write_volume_files 之前——损坏的旧 {sid}.json 保持原样
+            # 留给操作者查看/从备份恢复，不被半写覆盖
+            print(f"[ABORT] {sid} 旧导出读取失败，本系列文件未写出；"
+                  f"先修复 data/books/{sid}.json 再重跑（--allow-loss 不可放行）")
+            return 3
+        had_issue = had_issue or _flags["err"]
         meta_light = {
             "name": meta["name"],
             "volumes": [{"title": v["title"], "books": [
@@ -1408,8 +1437,9 @@ def export(only=None, numbers_only=False, allow_loss=False):
     print("")
     print(f"系列清单 -> {os.path.join(OUT, 'index.json')}（{len(series_index['series'])} 个系列）")
     if had_issue and not allow_loss:
-        print("[ABORT] 有系列存在丢书/结构异常（见上 [ERR]/[WARN] 源库丢失 行），"
-              "产物已写出但不完整；确认无碍可加 --allow-loss 重跑")
+        print("[ABORT] 有系列存在丢书 splice/卷数收缩/结构异常（见上 [ERR]/[WARN] 行），"
+              "产物已写出但不完整；确认无碍可加 --allow-loss 重跑（exit 2）。"
+              "（旧导出读取失败属 [FATAL]，写盘前直接 exit 3，--allow-loss 不可放行）")
         return 2
 
 
