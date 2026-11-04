@@ -6032,12 +6032,13 @@ function cnNum(n) {
 }
 
 /* 停靠抽屉的最小视口宽（与 style.css「停靠列」媒体查询同值，改一处必须同步另一处）：
-   340px 抽屉 + 480px 研读列会把正文挤到 901px 时 81px、1024px 时 204px，
-   一句经文一行只放得下一个字（2026-10-30 UI 评审 B1）。窄于此时抽屉退回浮层。 */
-const DRAWER_DOCK_MIN = 1200;
+   2026-10-30 由 901 抬到 1200（评审 B1）；2026-11-04 再抬到 1400（评审 F4）——
+   340 抽屉 + 480 研读列在 1280px 只给正文留 460px（≈25 字/行）。取 1400：1440 档屏
+   的 innerWidth≈1423（扣滚动条）也要停靠。窄于 1400 时抽屉退回浮层。 */
+const DRAWER_DOCK_MIN = 1400;
 function drawerWide() { return window.innerWidth >= DRAWER_DOCK_MIN; }
 
-// 桌面停靠判定：≥1200px + 用户未收起 + 非笔记管理模块 + 工作区
+// 桌面停靠判定：≥1400px + 用户未收起 + 非笔记管理模块 + 工作区
 function isDocked() {
   return drawerWide() && state.drawerDocked &&
     state.activeModule !== 'notes' && state.screen === 'work';
@@ -6535,7 +6536,7 @@ async function jumpDrawerBrowse(mod, r) {
 
 function bindDrawerEvents() {
   $('drawerOverlay').addEventListener('click', closeNavDrawer);
-  // 视口跨界停靠阈值（<1200 ↔ ≥1200）时重估停靠态：跨 900 不再需要重估，
+  // 视口跨界停靠阈值（<1400 ↔ ≥1400）时重估停靠态：跨 900 不再需要重估，
   // 901–1199 与移动端同为浮层（抽屉常显与否只由 DRAWER_DOCK_MIN 决定）
   let lastWide = drawerWide();
   window.addEventListener('resize', () => {

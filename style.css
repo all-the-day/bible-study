@@ -34,8 +34,8 @@
   /* ── 阅读主题 token（2026-10-16）：classic=原始值 1:1（默认，无 data-theme 即经典）；
      indigo / paper / minimal 三主题在文件末尾覆盖差异变量。新增样式一律用 token ── */
   /* 顶栏 */
-  --topbar-bg: linear-gradient(135deg, #667EEA, #5B67D4);
-  --topbar-solid: #667EEA;   /* iOS 26 Safari 顶部取色只读 background-color（渐变不参与） */
+  --topbar-bg: linear-gradient(135deg, #5B67D4, #4651B8);  /* 2026-11-04 评审 F3：两端加深——白字 4.84/6.71 ≥4.5（原浅端 3.66 不达标） */
+  --topbar-solid: #5B67D4;   /* iOS 26 Safari 顶部取色只读 background-color（渐变不参与） */
   --topbar-fg: #fff;
   --topbar-shadow: var(--shadow-md);
   --topbar-border: none;
@@ -61,7 +61,7 @@
   /* 纲目/节号（主题可微调层级策略） */
   --ol1-fs: calc(17px * var(--reading-scale));
   --ol2-color: var(--brand);
-  --vnum-color: var(--brand);
+  --vnum-color: var(--brand-dark);  /* 评审 F3：brand 3.54 → brand-dark 4.84（ref-link 同步） */
   /* 中性交互面 */
   --hover: #f0f4ff;
   --switch-track: #cbd5e1;
@@ -82,6 +82,7 @@
   /* 圆角/阴影/z-index 补档（关键浮层层位命名化） */
   --radius-lg: 12px;
   --radius-pill: 999px;
+  --prose-measure: 42rem;  /* 阅读行长上限（评审 F2）：正文内容限宽居中，超宽屏不失控 */
   --shadow-overlay: 0 8px 24px rgba(0,0,0,.18);
   --z-topbar: 30; --z-progress: 35; --z-backdrop: 80; --z-dock: 81; --z-floattool: 82;
   --z-overlay: 84; --z-popup: 85; --z-typo: 88; --z-update: 90; --z-toast: 90; --z-splash: 100;
@@ -402,6 +403,10 @@ body.hide-marks sup.xref-ref { display: none; }
   overflow-y: auto; min-height: 0;
   padding: 20px 28px 60px;
 }
+/* 阅读行长上限（2026-11-04 评审 F2）：正文内容限宽 42rem 居中，1920px 不再 55+ 字/行。
+   听书/笔记管理是操作界面不适用；全屏研读双栏在研读列（studyBody），不受影响。 */
+#textCol > * { max-width: min(var(--prose-measure), 100%); margin-left: auto; margin-right: auto; }
+#textCol > .audio-main, #textCol > .notes-main { max-width: none; }
 .chapter-theme {
   font-size: calc(15px * var(--reading-scale)); color: var(--text-muted);
   margin-bottom: 20px; line-height: 1.7;
@@ -492,8 +497,8 @@ sup.xref-ref:hover { color: var(--brand-dark); }
 
 /* 正文中的经文引用链接 */
 .ref-link {
-  color: var(--brand); cursor: pointer;
-  border-bottom: 1px dashed var(--brand);
+  color: var(--brand-dark); cursor: pointer;
+  border-bottom: 1px dashed var(--brand-dark);
 }
 .ref-link:hover { color: var(--brand-dark); }
 
@@ -1027,11 +1032,13 @@ body.scroll-locked { overflow: hidden; }
 .dw-hist-item .t { font-size: var(--fs-14); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dw-hist-item .sub { font-size: var(--fs-12); color: var(--text-muted); flex-shrink: 0; }
 
-/* ── 停靠列（桌面 ≥1200px）：抽屉常驻为左侧栏，可经 ☰/crumb 收起展开。
-   阈值 2026-10-30 由 901 抬到 1200（UI 评审 B1）：340 抽屉 + 480 研读列会把正文
-   挤到 901px 时 81px（一句经文一行一个字）、1024px 时 204px。901–1199 之间抽屉
-   退回浮层（☰ / crumb 唤出），正文吃满两列。JS 侧同阈值见 app.js DRAWER_DOCK_MIN。 ── */
-@media (min-width: 1200px) {
+/* ── 停靠列（桌面 ≥1400px）：抽屉常驻为左侧栏，可经 ☰/crumb 收起展开。
+   阈值 2026-10-30 由 901 抬到 1200（UI 评审 B1）；2026-11-04 再抬到 1400（评审 F4）：
+   340 抽屉 + 480 研读列在 1280px 只给正文留 460px（≈25 字/行）——最常见的笔记本档
+   反而最窄。取 1400 而非 1440：1440 档屏（innerWidth≈1423，扣滚动条）也要停靠。
+   1200–1399 退回浮层（☰ / crumb 唤出），正文吃满两列。
+   JS 侧同阈值见 app.js DRAWER_DOCK_MIN（两处必须同步）。 ── */
+@media (min-width: 1400px) {
   body.drawer-docked:not(.body-mod-notes) #navDrawer {
     top: 52px;   /* 从顶栏下缘开始，不遮挡 ☰/crumb */
     transform: translateX(0);
@@ -1081,7 +1088,7 @@ body.scroll-locked { overflow: hidden; }
 }
 .popup-btn.primary { background: var(--brand); border-color: var(--brand); color: var(--on-brand); }
 .popup-actions { display: flex; justify-content: flex-end; margin-top: 12px; }
-.popup-btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+.popup-btn.danger { background: var(--danger-deep); border-color: var(--danger-deep); color: #fff; }  /* 评审：白字 3.96→6.47 */
 .popup-btn:hover { opacity: .9; }
 
 /* ── 反馈表单 ── */
@@ -1103,7 +1110,7 @@ body.scroll-locked { overflow: hidden; }
   display: flex; align-items: center; justify-content: space-between;
   padding: 8px 0; border-bottom: 1px dashed var(--border); font-size: var(--fs-14);
 }
-.sync-row b.sync-st-on { color: var(--success); }
+.sync-row b.sync-st-on { color: var(--success-deep); }  /* 评审：3.19→7.13 */
 .sync-row b.sync-st-off { color: var(--text-soft); }
 .fb-input {
   width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--border);
@@ -1126,6 +1133,8 @@ body.home #menuBtn { display: none; }                  /* ☰ 只服务工作区
 body.home #modePill { display: none; }                 /* 首页是第三种态，隐藏读经|研读 pill */
 body.home #viewModeBtn, body.home #hideMarksBtn,
 body.home #studyFullBtn { display: none !important; }
+.brand-mark { display: none; font-size: var(--fs-17); font-weight: 700; letter-spacing: .02em; }  /* 评审 F6：首页身份锚点 */
+body.home .brand-mark { display: inline; }
 #homeView {
   position: fixed; inset: 52px 0 0; z-index: 20;       /* 顶栏 z30 之上、popup z60 之下 */
   background: var(--page-bg); overflow-y: auto; padding: 24px 16px 40px;

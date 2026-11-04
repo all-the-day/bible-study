@@ -33,7 +33,7 @@ async function main() {
 
   /* ============ 桌面视口（停靠列常驻） ============ */
   {
-    const { page, errors } = await newPage(browser, { width: 1280, height: 800 });
+    const { page, errors } = await newPage(browser, { width: 1600, height: 800 });
 
     // 1. 读经模块：停靠列常驻（drawer-docked + 可见 + layout margin）；双栏渲染 + 当前书卷/章高亮
     await page.evaluate(() => enterWork());
@@ -243,6 +243,39 @@ async function main() {
     check('11. notes 停靠隐藏+左栏树', r11.dockedOff && r11.navColVisible, `| 停靠关闭:${r11.dockedOff} 左栏显示:${r11.navColVisible}`);
 
     check('桌面无 JS 错误', errors.length === 0, errors.join('; ').slice(0, 200));
+    await page.close();
+  }
+
+  /* ============ 中档笔记本视口（1280px）：停靠默认收起（2026-11-04 评审 F4 回归） ============ */
+  {
+    const { page, errors } = await newPage(browser, { width: 1280, height: 800 });
+
+    // N1. 1280 不停靠：340 停靠会把正文挤到 460px（25 字/行），非停靠正文吃满两列
+    await page.evaluate(() => enterWork());
+    await wait(1500);
+    const n1 = await page.evaluate(() => ({
+      docked: document.body.classList.contains('drawer-docked'),
+      margin: parseFloat(getComputedStyle(document.querySelector('.layout')).marginLeft),
+      textW: Math.round(document.querySelector('#textCol').getBoundingClientRect().width),
+    }));
+    check('N1. 1280 不停靠（正文不被挤）', !n1.docked && n1.margin === 0 && n1.textW > 750,
+      `| 停靠:${n1.docked} margin:${n1.margin} 正文宽:${n1.textW}`);
+
+    // N2. ☰ 开浮层 + Esc 关
+    await page.click('#menuBtn');
+    await wait(600);
+    const n2 = await page.evaluate(() => ({
+      open: document.querySelector('#navDrawer').classList.contains('open'),
+      docked: document.body.classList.contains('drawer-docked'),
+      w: Math.round(document.querySelector('#navDrawer').getBoundingClientRect().width),
+    }));
+    await page.keyboard.press('Escape');
+    await wait(500);
+    const n3 = await page.evaluate(() => !document.querySelector('#navDrawer').classList.contains('open'));
+    check('N2. 1280 ☰ 开浮层+Esc 关', n2.open && !n2.docked && n2.w > 300 && n3,
+      `| 开:${n2.open} 停靠:${n2.docked} 宽:${n2.w} Esc关:${n3}`);
+
+    check('1280 无 JS 错误', errors.length === 0, errors.join('; ').slice(0, 200));
     await page.close();
   }
 
