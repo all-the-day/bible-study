@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="470" viewBox="0 0 560 470">
+  <style>
+    .t{font-family:'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif;}
+    .m{font-family:Consolas,Menlo,monospace;font-size:10px;fill:#be123c;}
+    .dim{stroke:#e11d48;stroke-width:1;fill:none;}
+    .cap{font-family:'PingFang SC',sans-serif;font-size:11px;fill:#475569;}
+    .nt{font-family:Consolas,Menlo,monospace;font-size:10px;fill:#6b7280;}
+    .hd{font-family:'PingFang SC',sans-serif;font-size:13px;font-weight:700;fill:#111827;}
+  </style>
+
+  <text class="hd" x="24" y="24">NavDrawer 导航抽屉（四阅读模块共用）</text>
+  <text class="nt" x="24" y="40">340px · 搜索 + Segment(浏览|历史) + 双栏主从 + 底部段切换 · cur 高亮同步任意跳转</text>
+
+  <!-- 宽度标注 -->
+  <g class="dim"><line x1="40" y1="52" x2="380" y2="52"/><line x1="40" y1="47" x2="40" y2="57"/><line x1="380" y1="47" x2="380" y2="57"/></g>
+  <text class="m" x="386" y="56">340</text>
+
+  <!-- 抽屉主体（停靠态） -->
+  <rect x="40" y="60" width="340" height="344" fill="#fafbff" stroke="#e6e8f0"/>
+  <!-- 搜索框 -->
+  <rect x="52" y="72" width="316" height="34" rx="8" fill="#fff" stroke="#e6e8f0"/>
+  <circle cx="70" cy="89" r="5" stroke="#6b7280" stroke-width="1.6" fill="none"/>
+  <line x1="73.5" y1="92.5" x2="78" y2="97" stroke="#6b7280" stroke-width="1.6" stroke-linecap="round"/>
+  <text class="t" x="86" y="93" font-size="13" fill="#6b7280">搜索书卷或「创24」…</text>
+  <!-- Segment -->
+  <rect x="52" y="114" width="154" height="28" rx="14" fill="#667eea"/>
+  <text class="t" x="129" y="132" font-size="13" font-weight="600" fill="#fff" text-anchor="middle">浏览</text>
+  <rect x="214" y="114" width="154" height="28" rx="14" fill="rgba(0,0,0,.05)"/>
+  <text class="t" x="291" y="132" font-size="13" fill="#6b7280" text-anchor="middle">历史</text>
+  <!-- 左列（层级一，无序号） -->
+  <rect x="52" y="152" width="148" height="32" rx="6" fill="rgba(102,126,234,.12)"/>
+  <text class="t" x="64" y="173" font-size="15" font-weight="600" fill="#5B67D4">创世记</text>
+  <text class="t" x="64" y="209" font-size="15" fill="#4b5563">出埃及记</text>
+  <text class="t" x="64" y="241" font-size="15" fill="#4b5563">利未记</text>
+  <text class="t" x="64" y="273" font-size="15" fill="#4b5563">民数记</text>
+  <text class="t" x="64" y="305" font-size="15" fill="#4b5563">申命记</text>
+  <!-- 分隔线 -->
+  <line x1="204" y1="152" x2="204" y2="336" stroke="#e6e8f0"/>
+  <!-- 右列（层级二） -->
+  <rect x="212" y="152" width="156" height="32" rx="6" fill="rgba(102,126,234,.12)"/>
+  <text class="t" x="224" y="173" font-size="15" font-weight="600" fill="#5B67D4">第一章</text>
+  <text class="t" x="224" y="209" font-size="15" fill="#4b5563">第二章</text>
+  <text class="t" x="224" y="241" font-size="15" fill="#4b5563">第三章</text>
+  <text class="t" x="224" y="273" font-size="15" fill="#4b5563">第四章</text>
+  <text class="t" x="224" y="305" font-size="15" fill="#4b5563">第五章</text>
+  <!-- 行高标注 -->
+  <g class="dim"><line x1="378" y1="152" x2="378" y2="184"/><line x1="374" y1="152" x2="382" y2="152"/><line x1="374" y1="184" x2="382" y2="184"/></g>
+  <text class="m" x="386" y="171">32</text>
+  <!-- 底部段切换 -->
+  <rect x="52" y="352" width="154" height="28" rx="14" fill="rgba(0,0,0,.05)"/>
+  <text class="t" x="129" y="370" font-size="13" fill="#6b7280" text-anchor="middle">旧约</text>
+  <rect x="214" y="352" width="154" height="28" rx="14" fill="#667eea"/>
+  <text class="t" x="291" y="370" font-size="13" font-weight="600" fill="#fff" text-anchor="middle">新约</text>
+
+  <!-- 浮层态示意 -->
+  <text class="cap" x="420" y="80">浮层态（&lt;1200px）</text>
+  <rect x="420" y="90" width="120" height="180" fill="rgba(31,41,55,.35)"/>
+  <rect x="436" y="90" width="88" height="180" fill="#fafbff" stroke="#e6e8f0"/>
+  <path d="M448 108h16M448 114h16M448 120h16" stroke="#4b5563" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+  <rect x="446" y="132" width="68" height="10" rx="5" fill="#667eea" opacity=".25"/>
+  <rect x="446" y="148" width="52" height="10" rx="5" fill="#e6e8f0"/>
+  <rect x="446" y="164" width="60" height="10" rx="5" fill="#e6e8f0"/>
+  <rect x="446" y="180" width="48" height="10" rx="5" fill="#e6e8f0"/>
+  <text class="nt" x="420" y="288">backdrop z-80</text>
+  <text class="nt" x="420" y="302">drawer z-81</text>
+  <text class="nt" x="420" y="316">Esc/点遮罩关闭</text>
+
+  <!-- 说明 -->
+  <text class="nt" x="40" y="428">层级一不带序号；层级二剥掉与正文重复的「第N篇/一/（一）」序号；扁平系列（十二篮）底部辑切换隐藏</text>
+  <text class="t" x="40" y="444" font-size="11" fill="#b91c1c">红线：停靠 340 + 研读 480 会挤死 901–1199px 正文 → 该区间必须浮层</text>
+  <text class="t" x="40" y="462" font-size="11" fill="#b91c1c">cur 高亮必须跟随抽屉/搜索/历史/引用点击任意跳转</text>
+</svg>

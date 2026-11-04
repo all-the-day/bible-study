@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-store">
+<title>bible-study · UI 规范稿画廊</title>
+<style>
+  :root {
+    --brand: #667eea; --brand-dark: #5B67D4;
+    --page-bg: #f0f3f9; --surface: #fafbff; --surface-alt: #f3f6fc;
+    --border: #e6e8f0; --text: #1f2937; --text-soft: #4b5563; --text-muted: #6b7280;
+    --radius-md: 8px; --radius-lg: 12px;
+    --shadow-sm: 0 1px 4px rgba(0,0,0,.06); --shadow-md: 0 6px 16px rgba(0,0,0,.08);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+         background: var(--page-bg); color: var(--text); font-size: 14px; line-height: 1.7; }
+  header.top { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 14px;
+               height: 56px; padding: 0 20px; color: #fff;
+               background: linear-gradient(135deg, #667EEA, #5B67D4); box-shadow: var(--shadow-md); }
+  header.top h1 { font-size: 17px; margin: 0; font-weight: 600; }
+  header.top .ver { font-size: 12px; opacity: .75; }
+  #q { margin-left: auto; width: min(280px, 40vw); height: 32px; border: 1px solid rgba(255,255,255,.4);
+       border-radius: 8px; background: rgba(255,255,255,.15); color: #fff; padding: 0 12px; font-size: 13px; outline: none; }
+  #q::placeholder { color: rgba(255,255,255,.65); }
+  .wrap { display: grid; grid-template-columns: 220px 1fr; min-height: calc(100vh - 56px); }
+  nav.side { background: var(--surface); border-right: 1px solid var(--border); padding: 16px 12px; position: sticky; top: 56px; height: calc(100vh - 56px); overflow-y: auto; }
+  nav.side h3 { font-size: 11px; color: var(--text-muted); margin: 14px 10px 6px; font-weight: 600; letter-spacing: .5px; }
+  nav.side a { display: block; padding: 7px 10px; border-radius: 6px; color: var(--text-soft); text-decoration: none; font-size: 13px; }
+  nav.side a:hover { background: var(--surface-alt); }
+  nav.side a.cur { background: rgba(102,126,234,.12); color: var(--brand-dark); font-weight: 600; }
+  main { padding: 24px 28px 60px; max-width: 1080px; }
+  main h2 { font-size: 20px; color: #111827; margin: 8px 0 4px; }
+  main h2 .en { font-size: 12px; color: var(--text-muted); font-weight: 400; margin-left: 8px; }
+  main .desc { font-size: 13px; color: var(--text-muted); margin: 0 0 16px; }
+  section.card { margin-bottom: 36px; }
+  .plate { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+           box-shadow: var(--shadow-sm); padding: 18px; display: flex; justify-content: center; }
+  .plate svg { display: block; max-width: 100%; height: auto; }
+  .src { margin-top: 10px; font-family: Consolas, Menlo, monospace; font-size: 11px; color: var(--text-muted); }
+  .doc-link { display: inline-block; margin: 4px 8px 4px 0; padding: 6px 14px; border-radius: 8px;
+              background: var(--surface); border: 1px solid var(--border); color: var(--text-soft);
+              text-decoration: none; font-size: 13px; }
+  .doc-link:hover { border-color: var(--brand); color: var(--brand-dark); }
+  pre.code { background: #1e2233; color: #dbe2f5; border-radius: var(--radius-md); padding: 18px 20px;
+             overflow-x: auto; font-family: Consolas, Menlo, monospace; font-size: 12px; line-height: 1.75;
+             tab-size: 2; }
+  .hidden { display: none; }
+  footer { padding: 20px; text-align: center; color: var(--text-muted); font-size: 12px; }
+  @media (max-width: 860px) { .wrap { grid-template-columns: 1fr; } nav.side { display: none; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>读经研读笔记 · UI 规范稿</h1><span class="ver">v1.0 · 基于 v1.0.69 · 2026-11-03</span>
+  <input id="q" type="search" placeholder="检索组件 / 文档…" aria-label="检索">
+</header>
+<div class="wrap">
+  <nav class="side" id="nav"></nav>
+  <main id="main"></main>
+</div>
+<footer>ui-spec/ · SVG 组件规格 + 规范文档 · 纯静态，可离线打开（JSX 复用模板见 jsx/ 目录）</footer>
+
+<script>
+/* 数据源：全部稿件清单 */
+const GROUPS = [
+  { id: 'g-found', label: '规范文档', items: [
+    { id: 'readme', title: 'README · 入口与使用纪律', file: 'README.md', kind: 'doc' },
+    { id: 'f1', title: '01 设计基础（token / 四主题）', file: 'docs/01-foundations.md', kind: 'doc' },
+    { id: 'f2', title: '02 布局系统（断点 / 三栏）', file: 'docs/02-layout.md', kind: 'doc' },
+    { id: 'f3', title: '03 组件解剖（核心 8 件全规格）', file: 'docs/03-components.md', kind: 'doc' },
+    { id: 'f4', title: '04 无障碍（对比度实测审计）', file: 'docs/04-accessibility.md', kind: 'doc' },
+    { id: 'f5', title: '05 状态覆盖与内容规范', file: 'docs/05-states-content.md', kind: 'doc' },
+  ]},
+  { id: 'g-comp', label: '组件规格稿（SVG）', items: [
+    { id: 'icons', title: '图标库 Icons', en: '24 枚 · 24px 网格', file: 'svg/icons.svg', kind: 'svg' },
+    { id: 'topbar', title: 'Topbar 顶栏', en: '52px · 三形态', file: 'svg/component-topbar.svg', kind: 'svg' },
+    { id: 'buttons', title: '按钮 / 分段器 / 开关', en: 'IconBtn·TopBtn·Segment·Switch', file: 'svg/component-buttons.svg', kind: 'svg' },
+    { id: 'navdrawer', title: 'NavDrawer 导航抽屉', en: '340px · 双栏主从', file: 'svg/component-navdrawer.svg', kind: 'svg' },
+    { id: 'reading', title: 'VerseCard 经文卡片', en: '纲目·五色标注·研读列', file: 'svg/component-reading.svg', kind: 'svg' },
+    { id: 'annotation', title: '标注工具条 / Toast / 占位', en: 'floattool·状态三件套', file: 'svg/component-annotation.svg', kind: 'svg' },
+    { id: 'home', title: 'HomeBlock 首页合集块', en: '网格·图标双渲染·最近阅读', file: 'svg/component-home.svg', kind: 'svg' },
+    { id: 'player', title: 'PlayerCard 听书播放器', en: '分段进度·控制行', file: 'svg/component-player.svg', kind: 'svg' },
+    { id: 'notes', title: 'NotesManager 笔记管理', en: '三列·作业单', file: 'svg/component-notes.svg', kind: 'svg' },
+    { id: 'modal', title: 'Modal 弹窗 / 设置 / Splash', en: 'z 层级·分组·启动', file: 'svg/component-modal.svg', kind: 'svg' },
+  ]},
+  { id: 'g-root', label: '设计系统蒸馏', items: [
+    { id: 'dmd', title: 'DESIGN.md · 项目根（AI 对齐入口）', file: '../DESIGN.md', kind: 'doc' },
+  ]},
+];
+const DOC_NOTE = 'Markdown 文档在仓库内阅读（画廊内只列目录）。';
+
+/* 构建 DOM */
+const nav = document.getElementById('nav');
+const main = document.getElementById('main');
+const plates = [];
+GROUPS.forEach(g => {
+  const h = document.createElement('h3'); h.textContent = g.label; nav.appendChild(h);
+  g.items.forEach(it => {
+    const a = document.createElement('a');
+    a.href = '#' + it.id; a.textContent = it.title; a.dataset.for = it.id;
+    nav.appendChild(a);
+    const sec = document.createElement('section');
+    sec.className = 'card'; sec.id = it.id;
+    sec.dataset.search = (it.title + ' ' + (it.en || '')).toLowerCase();
+    let body = '';
+    if (it.kind === 'svg') {
+      body = `<div class="plate" data-svg="${it.file}"><p style="color:var(--text-muted)">加载中…</p></div>`;
+    } else if (it.kind === 'code') {
+      body = `<pre class="code" data-code="${it.file}"></pre>`;
+    } else {
+      body = `<p class="desc">${DOC_NOTE}</p>`;
+    }
+    sec.innerHTML = `<h2>${it.title}${it.en ? `<span class="en">${it.en}</span>` : ''}</h2>
+      <p class="desc">${it.kind === 'doc' ? '路径：<code>' + it.file + '</code>' : it.file}</p>${body}`;
+    main.appendChild(sec);
+    plates.push(sec);
+  });
+});
+
+/* 全量加载：稿件总体 ~65KB，打开即载入，不依赖 IntersectionObserver 的帧调度 */
+const loadInto = async (el, file, mode) => {
+  try {
+    const res = await fetch(file, { cache: 'no-store' });
+    if (!res.ok) throw new Error(res.status);
+    const text = await res.text();
+    if (mode === 'svg') {
+      const wrap = document.createElement('div');
+      wrap.innerHTML = text;
+      const svg = wrap.querySelector('svg');
+      if (svg) { el.innerHTML = ''; el.appendChild(svg); }  // 保留原生 width/height：宽屏不拉伸，窄屏 max-width 缩放
+      else el.textContent = 'SVG 解析失败';
+    } else {
+      el.textContent = text;
+    }
+  } catch (e) {
+    el.innerHTML = `<p style="color:#b91c1c">无法加载 ${file}（${e.message}）——若以 file:// 打开，请用本地静态服务器：<code>python -m http.server</code></p>`;
+  }
+};
+plates.forEach(p => {
+  const svgEl = p.querySelector('[data-svg]');
+  const codeEl = p.querySelector('[data-code]');
+  if (svgEl) loadInto(svgEl, svgEl.dataset.svg, 'svg');
+  if (codeEl) loadInto(codeEl, codeEl.dataset.code, 'code');
+});
+
+/* 检索 */
+document.getElementById('q').addEventListener('input', e => {
+  const q = e.target.value.trim().toLowerCase();
+  plates.forEach(p => p.classList.toggle('hidden', q && !p.dataset.search.includes(q)));
+});
+
+/* 导航高亮 */
+const links = [...nav.querySelectorAll('a')];
+const onHash = () => links.forEach(a => a.classList.toggle('cur', a.getAttribute('href') === location.hash));
+addEventListener('hashchange', onHash); onHash();
+</script>
+</body>
+</html>

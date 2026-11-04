@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="540" height="450" viewBox="0 0 540 450">
+  <defs>
+    <linearGradient id="tg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#667EEA"/><stop offset="1" stop-color="#5B67D4"/>
+    </linearGradient>
+  </defs>
+  <style>
+    .t{font-family:'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif;}
+    .m{font-family:Consolas,Menlo,monospace;font-size:10px;fill:#be123c;}
+    .dim{stroke:#e11d48;stroke-width:1;fill:none;}
+    .cap{font-family:'PingFang SC',sans-serif;font-size:11px;fill:#475569;}
+    .nt{font-family:Consolas,Menlo,monospace;font-size:10px;fill:#6b7280;}
+    .rl{font-family:'PingFang SC',sans-serif;font-size:11px;fill:#b91c1c;}
+    .hd{font-family:'PingFang SC',sans-serif;font-size:13px;font-weight:700;fill:#111827;}
+  </style>
+
+  <text class="hd" x="24" y="24">Topbar 顶栏</text>
+  <text class="nt" x="24" y="40">sticky top · z-30 · height 52 · padding 0 12 · gap 12 · --topbar-solid 供 iOS 26 取色</text>
+
+  <!-- 宽度标注 -->
+  <g class="dim"><line x1="24" y1="60" x2="414" y2="60"/><line x1="24" y1="55" x2="24" y2="65"/><line x1="414" y1="55" x2="414" y2="65"/></g>
+  <text class="m" x="219" y="56" text-anchor="middle">390</text>
+
+  <!-- ① 读经 · 布局 flex：左簇 [12][☰ 20][12][标题 83.5][10][Segment 126] ‥‥ 右簇贴齐 [Aa 21][12][⚙ 20][12] -->
+  <g id="v1-reading">
+    <text class="cap" x="24" y="82">① 读经（含模式 Segment：读经 | 研读）</text>
+    <rect x="24" y="90" width="390" height="52" fill="url(#tg)"/>
+    <rect x="24" y="90" width="150" height="2" fill="#fff" opacity=".9"/>
+    <path d="M36 109h18M36 116h18M36 123h18" stroke="#fff" stroke-width="2" stroke-linecap="round" fill="none"/>
+    <text class="t" x="68" y="122" font-size="17" font-weight="600" fill="#fff">创世记 1章</text>
+    <rect x="162" y="103" width="62" height="26" rx="13" fill="#fff"/>
+    <text class="t" x="193" y="120" font-size="13" font-weight="700" fill="#5B67D4" text-anchor="middle">读经</text>
+    <rect x="226" y="103" width="62" height="26" rx="13" fill="rgba(255,255,255,.16)"/>
+    <text class="t" x="257" y="120" font-size="13" fill="rgba(255,255,255,.85)" text-anchor="middle">研读</text>
+    <text class="t" x="370" y="121" font-size="16" font-weight="600" fill="#fff" text-anchor="end">Aa</text>
+    <circle cx="392" cy="116" r="6.5" stroke="#fff" stroke-width="1.8" fill="none"/>
+    <path d="M392 106.5v3M392 122.5v3M382.5 116h3M401.5 116h3M385.3 109.3l2.1 2.1M398.6 120.6l2.1 2.1M385.3 122.7l2.1-2.1M398.6 111.4l2.1-2.1" stroke="#fff" stroke-width="2" stroke-linecap="round" fill="none"/>
+    <circle cx="392" cy="116" r="1.8" fill="#fff"/>
+  </g>
+  <!-- 高度标注 -->
+  <g class="dim"><line x1="14" y1="90" x2="14" y2="142"/><line x1="9" y1="90" x2="19" y2="90"/><line x1="9" y1="142" x2="19" y2="142"/></g>
+  <text class="m" x="2" y="120">52</text>
+  <text class="nt" x="24" y="156">.reading-progress 2px · 布局：左簇 ☰+12+标题+10+Segment · 右簇贴右 Aa+12+⚙（间距统一 12）</text>
+
+  <!-- ② 听书 · 布局 flex：左簇 [12][‹ 10][10][☰ 20][12][标题 201] ‥‥ 右簇贴齐 [反馈 46][12][⚙ 20][12] -->
+  <g id="v2-audio">
+    <text class="cap" x="24" y="196">② 听书（返回 + 标题 + 反馈 TopBtn + 设置）</text>
+    <rect x="24" y="204" width="390" height="52" fill="url(#tg)"/>
+    <polyline points="46,220 38,228 46,236" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M56 221h18M56 228h18M56 235h18" stroke="#fff" stroke-width="2" stroke-linecap="round" fill="none"/>
+    <text class="t" x="88" y="234" font-size="17" font-weight="600" fill="#fff">鸟瞰圣经 第35讲 腓立比书</text>
+    <rect x="322" y="214" width="48" height="28" rx="6" stroke="rgba(255,255,255,.5)" fill="none"/>
+    <text class="t" x="346" y="232" font-size="13" fill="#fff" text-anchor="middle">反馈</text>
+    <circle cx="392" cy="228" r="6.5" stroke="#fff" stroke-width="1.8" fill="none"/>
+    <path d="M392 218.5v3M392 234.5v3M382.5 228h3M401.5 228h3M385.3 221.3l2.1 2.1M398.6 232.6l2.1 2.1M385.3 234.7l2.1-2.1M398.6 223.4l2.1-2.1" stroke="#fff" stroke-width="2" stroke-linecap="round" fill="none"/>
+    <circle cx="392" cy="228" r="1.8" fill="#fff"/>
+    <text class="nt" x="24" y="270">TopBtn：1px --topbar-line 描边 · padding 4 10 · radius-sm 6 · hover=--topbar-btn(.15)</text>
+  </g>
+
+  <!-- ③ 首页 · 布局 flex：左簇 [12][标题 102] ‥‥ 右簇贴齐 [⚙ 20][12] -->
+  <g id="v3-home">
+    <text class="cap" x="24" y="310">③ 首页（隐藏 ☰：标题 + 设置）</text>
+    <rect x="24" y="318" width="390" height="52" fill="url(#tg)"/>
+    <text class="t" x="36" y="350" font-size="17" font-weight="600" fill="#fff">读经研读笔记</text>
+    <circle cx="392" cy="344" r="6.5" stroke="#fff" stroke-width="1.8" fill="none"/>
+    <path d="M392 334.5v3M392 350.5v3M382.5 344h3M401.5 344h3M385.3 337.3l2.1 2.1M398.6 348.6l2.1 2.1M385.3 350.7l2.1-2.1M398.6 339.4l2.1-2.1" stroke="#fff" stroke-width="2" stroke-linecap="round" fill="none"/>
+    <circle cx="392" cy="344" r="1.8" fill="#fff"/>
+    <text class="nt" x="24" y="384">首页/书报合集层不承载抽屉 → 隐藏 ☰；笔记管理（桌面）分类树常驻，同样隐藏</text>
+  </g>
+
+  <text class="rl" x="24" y="412">红线：右侧新增按钮必须同步移动端 .crumb 的 right；书名 shrink:99 不出半字碎屑</text>
+  <text class="rl" x="24" y="430">红线：paper/minimal 顶栏融合页面底、墨字 + 1px 下边线（主题矩阵见 01-foundations §7）</text>
+</svg>

@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="430" viewBox="0 0 560 430">
+  <style>
+    .t{font-family:'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif;}
+    .m{font-family:Consolas,Menlo,monospace;font-size:10px;fill:#be123c;}
+    .dim{stroke:#e11d48;stroke-width:1;fill:none;}
+    .cap{font-family:'PingFang SC',sans-serif;font-size:11px;fill:#475569;}
+    .nt{font-family:Consolas,Menlo,monospace;font-size:10px;fill:#6b7280;}
+    .hd{font-family:'PingFang SC',sans-serif;font-size:13px;font-weight:700;fill:#111827;}
+  </style>
+
+  <text class="hd" x="24" y="24">AnnotationToolbar 标注工具条 + Toast + 状态占位</text>
+  <text class="nt" x="24" y="40">floattool z-82 · 选中文本浮现 · 点色即存 · 改色/改笔记/删除分离</text>
+
+  <!-- 选中文本上下文 -->
+  <text class="t" x="24" y="76" font-size="18" fill="#1f2937">…神看光是<tspan fill="#667eea" text-decoration="underline">好的</tspan>，就把光暗分开了…</text>
+
+  <!-- 工具条 -->
+  <rect x="24" y="92" width="280" height="48" rx="12" fill="#1c1e2a" opacity=".94"/>
+  <g>
+    <circle cx="52" cy="116" r="10" fill="#FFEB3B" stroke="#fff" stroke-width="1.5"/>
+    <circle cx="78" cy="116" r="10" fill="#4CAF50" stroke="#fff" stroke-width="1.5"/>
+    <circle cx="104" cy="116" r="10" fill="#9C27B0" stroke="#fff" stroke-width="1.5"/>
+    <circle cx="130" cy="116" r="10" fill="#2196F3" stroke="#fff" stroke-width="1.5"/>
+    <circle cx="156" cy="116" r="10" fill="#F44336" stroke="#fff" stroke-width="1.5"/>
+  </g>
+  <line x1="176" y1="102" x2="176" y2="130" stroke="rgba(255,255,255,.25)"/>
+  <path d="M196 110h.01M196 116h.01M196 122h.01" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
+  <text class="t" x="212" y="121" font-size="13" fill="#fff">笔记</text>
+  <rect x="246" y="104" width="16" height="16" rx="3" stroke="#fff" stroke-width="1.6" fill="none"/>
+  <rect x="250" y="108" width="16" height="16" rx="3" stroke="#fff" stroke-width="1.6" fill="none"/>
+  <g class="dim"><line x1="24" y1="152" x2="304" y2="152"/><line x1="24" y1="148" x2="24" y2="156"/><line x1="304" y1="148" x2="304" y2="156"/></g>
+  <text class="m" x="150" y="166">280</text>
+  <text class="nt" x="330" y="110">深底 rgba(28,30,42,.92) 系</text>
+  <text class="nt" x="330" y="124">与 Toast 同族</text>
+  <text class="nt" x="330" y="138">五色圆点 r=10 · 白描边</text>
+
+  <!-- Toast -->
+  <text class="cap" x="24" y="196">Toast（底部居中 · 入场上浮 10px + 淡入 · max-width 86vw）</text>
+  <rect x="140" y="208" width="280" height="40" rx="20" fill="rgba(28,30,42,.92)"/>
+  <text class="t" x="280" y="233" font-size="14" fill="#fff" text-anchor="middle">已复制（出处：创世记 1:3）</text>
+  <path d="M280 206 l-4 -8 h8 z" fill="none"/>
+  <text class="nt" x="330" y="262">bottom = 64px + safe-area · z-90</text>
+
+  <!-- LoadingHint -->
+  <text class="cap" x="24" y="306">状态占位：LoadingHint / ErrorHint / EmptyHint</text>
+  <rect x="24" y="318" width="164" height="76" rx="8" fill="#fafbff" stroke="#e6e8f0"/>
+  <circle cx="76" cy="348" r="9" stroke="#e6e8f0" stroke-width="2.5" fill="none"/>
+  <path d="M76 339 a9 9 0 0 1 9 9" stroke="#667eea" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  <text class="t" x="92" y="353" font-size="14" fill="#6b7280">缓冲中…</text>
+  <rect x="204" y="318" width="164" height="76" rx="8" fill="#fafbff" stroke="#e6e8f0"/>
+  <text class="t" x="240" y="348" font-size="14" fill="#6b7280">音频加载失败</text>
+  <rect x="232" y="358" width="52" height="22" rx="6" fill="#f3f6fc" stroke="#e6e8f0"/>
+  <text class="t" x="258" y="373" font-size="13" fill="#4b5563" text-anchor="middle">重试</text>
+  <rect x="384" y="318" width="152" height="76" rx="8" fill="#fafbff" stroke="#e6e8f0"/>
+  <text class="t" x="460" y="348" font-size="14" fill="#6b7280" text-anchor="middle">本章还没有笔记</text>
+  <text class="t" x="460" y="368" font-size="12" fill="#667eea" text-anchor="middle">在正文中划线即可添加</text>
+  <text class="nt" x="24" y="414">spinner 18px（border 2px，border 轨 + brand 顶弧）· 空态是行动邀请，不是死胡同</text>
+</svg>

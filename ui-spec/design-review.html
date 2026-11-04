@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-store">
+<title>bible-study · UI 设计评审与改版提案（2026-11-03）</title>
+<style>
+  :root{
+    --brand:#667eea; --brand-dark:#5B67D4; --brand-deep:#4651B8;
+    --page-bg:#f0f3f9; --surface:#fafbff; --surface-alt:#f3f6fc; --border:#e6e8f0;
+    --text:#1f2937; --text-soft:#4b5563; --text-muted:#6b7280; --heading:#111827;
+    --danger:#d9534f; --danger-deep:#b91c1c; --success:#16a34a;
+    --r-sm:6px; --r-md:8px; --r-lg:12px;
+    --sh-sm:0 1px 4px rgba(0,0,0,.06); --sh-md:0 6px 16px rgba(0,0,0,.08);
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;font-family:-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif;
+       background:var(--page-bg);color:var(--text);font-size:15px;line-height:1.75}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 20px 80px}
+  header.hero{background:linear-gradient(135deg,var(--brand-deep),var(--brand-dark));color:#fff;
+              padding:44px 20px 36px;margin-bottom:28px}
+  header.hero .in{max-width:1080px;margin:0 auto}
+  header.hero h1{margin:0 0 6px;font-size:26px;font-weight:700;letter-spacing:-.01em}
+  header.hero p{margin:0;opacity:.85;font-size:14px}
+  .scorebar{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+  .score{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);border-radius:var(--r-md);
+         padding:10px 14px;min-width:128px}
+  .score b{font-size:22px;font-weight:700;display:block;line-height:1.1}
+  .score span{font-size:12px;opacity:.85}
+  nav.toc{position:sticky;top:0;z-index:20;background:rgba(250,251,255,.92);backdrop-filter:blur(6px);
+          border-bottom:1px solid var(--border);padding:10px 20px;display:flex;gap:8px;flex-wrap:wrap}
+  nav.toc a{color:var(--text-soft);text-decoration:none;font-size:13px;padding:5px 10px;border-radius:999px}
+  nav.toc a:hover{background:var(--surface-alt);color:var(--brand-dark)}
+  nav.toc a.p0{background:#fdecec;color:var(--danger-deep);font-weight:600}
+  nav.toc a.p1{background:#fff7e8;color:#9a6b1f;font-weight:600}
+  nav.toc a.p2{background:#eef2ff;color:var(--brand-dark);font-weight:600}
+  h2.sect{font-size:21px;color:var(--heading);margin:44px 0 6px;letter-spacing:-.01em}
+  p.sect-sub{color:var(--text-muted);font-size:13px;margin:0 0 16px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
+        box-shadow:var(--sh-sm);padding:22px 24px;margin-bottom:22px}
+  .card h3{margin:0 0 2px;font-size:17px;color:var(--heading)}
+  .tag{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;margin-right:6px;vertical-align:2px}
+  .tag.p0{background:#fdecec;color:var(--danger-deep)} .tag.p1{background:#fff7e8;color:#9a6b1f} .tag.p2{background:#eef2ff;color:var(--brand-dark)}
+  .tag.eff{background:var(--surface-alt);color:var(--text-muted);font-weight:400}
+  .card .why{font-size:13.5px;color:var(--text-soft);margin:8px 0 14px}
+  .demo{background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--r-md);padding:18px}
+  .demo-head{display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+  .demo-head .lbl{font-size:12px;color:var(--text-muted)}
+  .seg{display:inline-flex;border:1px solid var(--border);border-radius:999px;overflow:hidden;background:#fff}
+  .seg button{border:0;background:transparent;padding:5px 16px;font-size:12.5px;cursor:pointer;color:var(--text-muted);font-family:inherit}
+  .seg button.on{background:var(--brand);color:#fff;font-weight:600}
+  .meta{font-size:12px;color:var(--text-muted);margin-top:12px}
+  .meta code{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-size:11px}
+  .shot{width:100%;border:1px solid var(--border);border-radius:var(--r-md);display:block}
+  details.ev{margin-top:12px;font-size:13px;color:var(--text-soft)}
+  details.ev summary{cursor:pointer;font-weight:600;color:var(--brand-dark)}
+  details.ev img{margin-top:10px}
+  /* ── 顶栏 demo ── */
+  .tb{height:52px;display:flex;align-items:center;gap:12px;padding:0 12px;color:#fff;font-size:17px;font-weight:600;border-radius:var(--r-sm) var(--r-sm) 0 0}
+  .tb .cur{flex:1;min-width:0;overflow:hidden;white-space:nowrap}
+  .tb .btn{font-size:13px;font-weight:400;border:1px solid rgba(255,255,255,.4);border-radius:6px;padding:4px 10px}
+  .tb .ic{width:20px;text-align:center;font-weight:400}
+  .tb.now{background:linear-gradient(135deg,#667EEA,#5B67D4)}
+  .tb.prop{background:linear-gradient(135deg,#5B67D4,#4651B8)}
+  .cv{display:flex;gap:6px;align-items:center;margin-top:8px;font-size:11px;font-family:Consolas,Menlo,monospace}
+  .cv i{font-style:normal;padding:2px 8px;border-radius:4px;color:#fff}
+  .cv i.ok{background:var(--success)} .cv i.bad{background:var(--danger-deep)}
+  /* ── 阅读排版 demo ── */
+  .reader-mock{background:#fff;border:1px solid var(--border);border-radius:var(--r-md);padding:18px 20px;max-height:280px;overflow:hidden}
+  .reader-mock p.v{margin:0 0 12px;font-size:16px;line-height:2;color:var(--text)}
+  .reader-mock.capped p.v{max-width:40em;margin-left:auto;margin-right:auto}
+  .ruler{height:6px;border-radius:3px;background:var(--brand);opacity:.25;margin:4px auto 0;position:relative}
+  .ruler::after{content:attr(data-w);position:absolute;right:0;top:-20px;font:10px Consolas,Menlo,monospace;color:var(--text-muted)}
+  /* ── 暗色主题 demo ── */
+  .theme-strip{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}
+  .sw{width:132px;border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden;font-size:11px}
+  .sw .c{height:52px;display:flex} .sw .c i{flex:1}
+  .sw .n{padding:6px 8px;background:#fff;color:var(--text-soft)}
+  .mini-reader{border-radius:var(--r-md);overflow:hidden;border:1px solid var(--border)}
+  .mini-reader .bar{height:40px;display:flex;align-items:center;padding:0 12px;font-size:13px;font-weight:600}
+  .mini-reader .body{padding:14px 16px;font-size:14px;line-height:1.95}
+  .mini-reader .body p{margin:0 0 10px}
+  .mini-reader .body .vnum{font-weight:700;margin-right:6px}
+  .mini-reader.light{background:var(--surface);color:var(--text)} .mini-reader.light .bar{background:linear-gradient(135deg,#667EEA,#5B67D4);color:#fff}
+  .mini-reader.dark{background:#191b22;color:#e7e9f0;border-color:rgba(255,255,255,.09)} .mini-reader.dark .bar{background:#15161d;color:#e7e9f0;border-bottom:1px solid rgba(255,255,255,.09)}
+  .mini-reader.dark .vnum{color:#8b96ff} .mini-reader.light .vnum{color:#667eea}
+  .mk{padding:0 2px;border-radius:2px}
+  .mini-reader.light .mk{opacity:.5}
+  .mini-reader.dark .m1{background:rgba(255,235,59,.25)} .mini-reader.dark .m2{background:rgba(76,175,80,.3)}
+  .mini-reader.light .m1{background:rgba(255,235,59,.5)} .mini-reader.light .m2{background:rgba(76,175,80,.5)}
+  .duo{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media (max-width:760px){.duo{grid-template-columns:1fr}}
+  /* ── 布局示意图 ── */
+  .lay{display:flex;gap:4px;font:11px Consolas,Menlo,monospace;color:#fff;text-align:center;margin-top:10px}
+  .lay div{border-radius:4px;padding:10px 0}
+  .lay .a{background:#8b96ff}.lay .b{background:#667eea}.lay .c{background:#5B67D4}
+  .lay .warn{color:#ffd7d7}
+  /* ── 首页块 demo ── */
+  .hb{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);
+      box-shadow:0 1px 5px rgba(102,126,234,.2);padding:22px 18px;text-align:center;width:150px}
+  .hb .ic{height:40px;display:flex;align-items:center;justify-content:center;margin-bottom:10px;color:var(--brand)}
+  .hb .t{font-weight:600;font-size:14.5px}
+  .hb .s{font-size:11.5px;color:var(--text-muted);margin-top:2px}
+  .emj{font-size:34px;line-height:40px}
+  /* ── 迷你播放条 ── */
+  .mini-bar{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);
+            border-radius:10px;box-shadow:var(--sh-md);padding:8px 12px;margin-top:12px}
+  .mini-bar .pp{width:34px;height:34px;border-radius:50%;background:var(--brand);display:flex;align-items:center;justify-content:center;flex:none}
+  .mini-bar .ti{flex:1;min-width:0} .mini-bar .ti b{font-size:13px;display:block} .mini-bar .ti span{font-size:11px;color:var(--text-muted)}
+  .mini-bar .pr{height:3px;background:#dfe3ee;border-radius:2px;margin-top:5px;position:relative}
+  .mini-bar .pr i{position:absolute;left:0;top:0;bottom:0;width:38%;background:var(--brand);border-radius:2px}
+  /* ── 标注工具条 ── */
+  .atb-context{background:#fff;border:1px solid var(--border);border-radius:var(--r-md);padding:16px;font-size:15px;line-height:2}
+  .atb{display:inline-flex;align-items:center;gap:6px;background:#1c1e2a;border-radius:12px;padding:7px 12px;margin:6px 0}
+  .atb .dot{width:15px;height:15px;border-radius:50%;border:1.5px solid #fff;flex:none}
+  .atb .sep{width:1px;height:18px;background:rgba(255,255,255,.25)}
+  .atb .tx{color:#fff;font-size:12.5px}
+  .sel{background:rgba(102,126,234,.28);border-radius:2px}
+  .atb2 .preview{display:block;background:rgba(255,255,255,.1);color:rgba(255,255,255,.85);font-size:11px;
+                 border-radius:6px 6px 0 0;padding:4px 10px;margin:0 0 -2px;max-width:340px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  .atb2 .row{display:inline-flex;align-items:center;gap:8px;background:#1c1e2a;border-radius:0 10px 10px 10px;padding:9px 14px}
+  .atb2 .dot{width:19px;height:19px} .atb2 .dot.cur{outline:2px solid #fff;outline-offset:1.5px}
+  .atb2 .hit{font:10px Consolas,Menlo,monospace;color:rgba(255,255,255,.55);margin-left:4px}
+  /* ── 字体 demo ── */
+  .verse-serif{font-family:"Noto Serif SC","Source Han Serif SC","Songti SC",SimSun,serif}
+  /* ── 路线图 ── */
+  table.road{width:100%;border-collapse:collapse;font-size:13.5px}
+  table.road th,table.road td{border:1px solid var(--border);padding:9px 12px;text-align:left;vertical-align:top}
+  table.road th{background:var(--surface-alt);font-size:12.5px;color:var(--text-soft)}
+  .pill-ok{color:var(--success);font-weight:600} .pill-warn{color:#9a6b1f;font-weight:600}
+  footer{color:var(--text-muted);font-size:12px;text-align:center;padding:26px 0 8px}
+  @media (max-width:700px){ header.hero h1{font-size:21px} .card{padding:16px} }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="in">
+    <h1>bible-study · UI 设计评审与改版提案</h1>
+    <p>2026-11-03 · 评审对象：v1.0.69 全应用 UI（基于真实截图 + style.css 实测数据）· 建议阅读 8 分钟</p>
+    <div class="scorebar">
+      <div class="score"><b>7.0</b><span>综合（/10）</span></div>
+      <div class="score"><b>6.0</b><span>视觉打磨</span></div>
+      <div class="score"><b>7.0</b><span>阅读工效</span></div>
+      <div class="score"><b>7.5</b><span>交互效率</span></div>
+      <div class="score"><b>8.0</b><span>信息架构</span></div>
+      <div class="score"><b>6.5</b><span>无障碍</span></div>
+    </div>
+  </div>
+</header>
+
+<nav class="toc">
+  <a href="#f1" class="p0">P0 深色主题</a>
+  <a href="#f2" class="p0">P0 行长失控</a>
+  <a href="#f3" class="p0">P0 顶栏对比度</a>
+  <a href="#f4" class="p0">P0 中档屏正文过窄</a>
+  <a href="#f5" class="p1">P1 首页图标</a>
+  <a href="#f6" class="p1">P1 首页身份</a>
+  <a href="#f7" class="p1">P1 迷你播放条</a>
+  <a href="#f8" class="p1">P1 标注工具条</a>
+  <a href="#f9" class="p2">P2 经文字体</a>
+  <a href="#road">路线图</a>
+</nav>
+
+<div class="wrap">
+
+  <h2 class="sect">总评</h2>
+  <p class="sect-sub">一句话：骨架优秀、内容扎实，但视觉打磨与几个关键阅读工效问题拉低了整体水准。</p>
+  <div class="card">
+    <p style="margin:0 0 8px"><b>做得好的</b>：信息架构清晰（首页 + 六模块 + 统一抽屉）；排版控制力罕见地强（字号/行距可调且全正文生效）；断点有真实依据（900/1200）；错误恢复细节到位（重试保留播放位置、复制带出处）；书号直达（「创24」）是超出同类产品的效率设计。</p>
+    <p style="margin:0"><b>拖后腿的</b>：① 没有深色主题——阅读类应用的 bedtime 场景硬伤；② 宽屏行长失控与中档屏正文过窄——两个相反方向上的阅读工效漏洞；③ classic 主题 5 处对比度不达标（已实测）；④ 首页 emoji 图标与缺失的品牌身份，让第一印象停在「模板感」。</p>
+  </div>
+
+  <h2 class="sect" id="f1">F1 · 深色 / 夜间主题缺失</h2>
+  <p class="sect-sub"><span class="tag p0">P0</span><span class="tag eff">工作量：中（1 个主题覆盖块 + 标注透明度调整）</span></p>
+  <div class="card">
+    <p class="why">读经应用的高频场景之一是睡前与弱光环境。现有 indigo / paper / minimal 三主题全部是浅色，而 token 体系已经把颜色收敛到 <code>:root</code>——新增一个 <code>[data-theme=dark]</code> 覆盖块就能落地，成本远低于用户价值。唯一要专项处理的是五色标注：暗底上 50% 透明度会让正文对比度跌到 3.2:1（不达标），需降到 ~25% 或改下划线式。</p>
+    <div class="demo">
+      <div class="demo-head"><span class="lbl">提案预览（同一章经文，两种主题）</span></div>
+      <div class="duo">
+        <div class="mini-reader light">
+          <div class="bar">创世记 1章 · classic</div>
+          <div class="body">
+            <p><span class="vnum">1</span>起初，神创造诸天与地，</p>
+            <p><span class="vnum">2</span>而地变为<span class="mk m1">荒废空虚</span>，渊面黑暗。</p>
+            <p><span class="vnum">3</span>神说，要有光，就有了光。</p>
+            <p><span class="vnum">4</span>神看光是<span class="mk m2">好的</span>，就把光暗分开了。</p>
+          </div>
+        </div>
+        <div class="mini-reader dark">
+          <div class="bar">创世记 1章 · dark（提案）</div>
+          <div class="body">
+            <p><span class="vnum">1</span>起初，神创造诸天与地，</p>
+            <p><span class="vnum">2</span>而地变为<span class="mk m1">荒废空虚</span>，渊面黑暗。</p>
+            <p><span class="vnum">3</span>神说，要有光，就有了光。</p>
+            <p><span class="vnum">4</span>神看光是<span class="mk m2">好的</span>，就把光暗分开了。</p>
+          </div>
+        </div>
+      </div>
+      <div class="theme-strip" style="margin-top:14px">
+        <div class="sw"><div class="c"><i style="background:#111318"></i><i style="background:#191b22"></i><i style="background:#8b96ff"></i></div><div class="n">dark 提案：bg/面/accent</div></div>
+        <div class="sw"><div class="c"><i style="background:#f0f3f9"></i><i style="background:#fafbff"></i><i style="background:#667eea"></i></div><div class="n">classic 现状对照</div></div>
+      </div>
+      <div class="meta">提案 token：page #111318 · surface #191b22 · text #e7e9f0 · border rgba(255,255,255,.09) · brand 提亮 #8b96ff · 标注透明度 50%→25%（对比度回到 6.5:1）。遵循「暗色不纯黑纯白」规范。</div>
+    </div>
+  </div>
+
+  <h2 class="sect" id="f2">F2 · 宽屏行长失控（正文无度量上限）</h2>
+  <p class="sect-sub"><span class="tag p0">P0</span><span class="tag eff">工作量：小（一条 max-width）</span></p>
+  <div class="card">
+    <p class="why">正文列是 <code>1fr</code> 且无 <code>max-width</code>：1440px 屏约 33 字/行尚可，但 1920px 屏达到 <b>55+ 字/行</b>——远超中文舒适阅读区（30–40 字）。眼睛回行距离过长，是长时阅读疲劳的直接来源。修法极便宜：正文内容限宽 <code>40em</code> 居中，剩余留白还给页面。</p>
+    <div class="demo">
+      <div class="demo-head">
+        <span class="lbl">对比（切到「建议」看 40em 限宽）</span>
+        <div class="seg" data-demo="f2"><button class="on" data-v="now">现状 · 全宽</button><button data-v="prop">建议 · 40em 上限</button></div>
+      </div>
+      <div class="reader-mock" id="f2-demo" style="width:920px;max-width:100%">
+        <p class="v">1 起初，神创造诸天与地。2 而地变为荒废空虚，渊面黑暗。3 神说，要有光，就有了光。4 神看光是好的，就把光暗分开了。5 神称光为昼，称暗为夜。有晚上，有早晨，这是第一日。6 神说，诸水之间要有广阔的空间，将水分为上下。7 神就造出天空，将天空以下的水与天空以上的水分开。事就这样成了。</p>
+        <div class="ruler" data-w="≈ 55 字 / 行（1920px 实测）"></div>
+      </div>
+      <div class="meta">落点：<code>.text-col</code> 内正文容器 <code>max-width:40em; margin-inline:auto</code>——不动栅格，不影响研读列。</div>
+    </div>
+  </div>
+
+  <h2 class="sect" id="f3">F3 · classic 顶栏对比度 3.66:1（白字 on 渐变浅端）</h2>
+  <p class="sect-sub"><span class="tag p0">P0</span><span class="tag eff">工作量：小（渐变两端加深，方案已量化）</span></p>
+  <div class="card">
+    <p class="why">顶栏是每屏常驻的最高频阅读面，白字对 <code>#667EEA</code> 只有 <b>3.66:1</b>（正文门槛 4.5）。深端 4.84 达标——问题只在浅端。提案：渐变改为 <code>#5B67D4 → #4651B8</code>，两端分别为 4.84 / 6.71，全达标；顺带消除「紫蓝渐变」的模板感（indigo 主题的纯色 5.21 也证明此方向成立）。classic 基线纪律的取舍见文末路线图。</p>
+    <div class="demo">
+      <div class="demo-head"><span class="lbl">现状 vs 提案（含实测对比度）</span></div>
+      <div class="tb now"><span class="ic">☰</span><span class="cur">创世记 1章</span><span class="btn">反馈</span><span class="ic">Aa</span><span class="ic">⚙</span></div>
+      <div class="cv"><i class="bad">浅端 #667EEA · 白字 3.66 ✗</i><i class="ok">深端 #5B67D4 · 4.84 ✓</i></div>
+      <div style="height:12px"></div>
+      <div class="tb prop"><span class="ic">☰</span><span class="cur">创世记 1章</span><span class="btn">反馈</span><span class="ic">Aa</span><span class="ic">⚙</span></div>
+      <div class="cv"><i class="ok">#5B67D4 · 4.84 ✓</i><i class="ok">#4651B8 · 6.71 ✓</i></div>
+    </div>
+  </div>
+
+  <h2 class="sect" id="f4">F4 · 1200–1439px 档：正文列被挤到 380–546px</h2>
+  <p class="sect-sub"><span class="tag p0">P0</span><span class="tag eff">工作量：小（停靠默认态按断点调整）</span></p>
+  <div class="card">
+    <p class="why">≥1200px 抽屉停靠常驻（340px）+ 研读列（480px）：在 <b>1280×800</b>——最常见的笔记本档——正文只剩 <b>460px ≈ 25 字/行</b>；1200px 时仅 380px。最主流的屏幕上，核心阅读区反而最窄。提案：<b>停靠阈值抬到 1400px</b>（覆盖 1440 档屏的 innerWidth≈1423；1200–1399 抽屉默认收起，☰ 呼出浮层），正文立刻拿回 340px；已有收起动画与浮层机制，零新组件。</p>
+    <div class="demo">
+      <div class="demo-head"><span class="lbl">1280px 宽度下的栅格（数字为正文列宽）</span></div>
+      <div class="lay" style="max-width:640px"><div class="a" style="width:27%">抽屉 340<br>（停靠）</div><div class="b warn" style="width:36%">正文 460<br>现状</div><div class="c" style="width:37%">研读 480</div></div>
+      <div class="lay" style="max-width:640px"><div class="b" style="width:63%">正文 800 · 抽屉默认收起后</div><div class="c" style="width:37%">研读 480</div></div>
+      <div class="meta">断点改法：<code>≥1400</code> 停靠常驻（原 ≥1200；1440 档屏 innerWidth≈1423 仍停靠）｜<code>&lt;1400</code> 浮层（不变）。</div>
+    </div>
+  </div>
+
+  <h2 class="sect" id="f5">F5 · 首页 emoji 图标拉低质感（线性图标已内建却未启用）</h2>
+  <p class="sect-sub"><span class="tag p1">P1</span><span class="tag eff">工作量：小（切换默认渲染 + 网格 3→4 列）</span></p>
+  <div class="card">
+    <p class="why">经典主题的合集块用系统 emoji（📖📚🔥📝🎧）：多彩、风格不统一、跨平台形状不可控，与克制的靛蓝体系冲突——这是「模板感」的最大来源。而线性 SVG 图标集（34px、stroke=currentColor、跟主题）<b>已经为其他主题做好了</b>，只差把默认渲染换过来。另外 1440px 下 3 列网格造成 8 块 3+3+2 的参差收尾，建议桌面 4 列（4+4），并补上每块的统计副文案增强信息量。</p>
+    <div class="demo">
+      <div class="demo-head">
+        <span class="lbl">同一合集块（切换图标方案）</span>
+        <div class="seg" data-demo="f5"><button class="on" data-v="now">现状 · emoji</button><button data-v="prop">建议 · 线性图标 + 副文案</button></div>
+      </div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;padding:6px 0">
+        <div class="hb" id="f5-demo">
+          <div class="ic"><span class="emj" data-now="📖" data-prop="svg">📖</span></div>
+          <div class="t">读经</div>
+          <div class="s" data-now="" data-prop="66 卷 · 恢复本"></div>
+        </div>
+        <div class="hb" id="f5-demo2">
+          <div class="ic"><span class="emj" data-now="🎧" data-prop="svg">🎧</span></div>
+          <div class="t">听书</div>
+          <div class="s" data-now="" data-prop="1 合集 · 41 讲"></div>
+        </div>
+      </div>
+      <div class="meta">副文案数据全部现成（卷数/篇数/合集数在导出脚本产物里）；图标即 ui-spec/svg/icons.svg 的 book / headphones。</div>
+    </div>
+  </div>
+
+  <h2 class="sect" id="f6">F6 · 首页顶栏没有品牌身份，「反馈」位置过重</h2>
+  <p class="sect-sub"><span class="tag p1">P1</span><span class="tag eff">工作量：小</span></p>
+  <div class="card">
+    <p class="why">首页顶栏左侧整段空白（见下方截图），应用名只存在于 splash——用户截图分享、多窗口切换时没有身份锚点。同时「反馈」以描边按钮占据顶栏正位，但它是低频动作。提案：左侧加字标「读经研读笔记」，「反馈」降级收进 ⚙ 菜单；顶栏右簇只留 Aa + ⚙。</p>
+    <div class="demo">
+      <div class="demo-head"><span class="lbl">现状截图（1440px 实拍）</span></div>
+      <img class="shot" src="assets/review-1440-home-c3d4.png" alt="1440px 首页现状：顶栏左空、emoji 图标块">
+      <details ev class="ev" open><summary>提案预览（示意）</summary>
+        <div style="margin-top:10px">
+          <div class="tb now"><span style="font-weight:700">读经研读笔记</span><span class="cur" style="font-size:12px;font-weight:400;opacity:.7;margin-left:10px">你的话是我脚前的灯</span><span class="btn">反馈</span><span class="ic">Aa</span><span class="ic">⚙</span></div>
+          <div class="cv"><i class="ok">提案：左侧字标 + 反馈收进设置菜单，右簇只留 Aa/⚙</i></div>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <h2 class="sect" id="f7">F7 · 听书离开模块后没有迷你播放条</h2>
+  <p class="sect-sub"><span class="tag p1">P1</span><span class="tag eff">工作量：中（全局组件 + 播放状态桥接）</span></p>
+  <div class="card">
+    <p class="why">音频在离开听书模块后继续播放（断点续听已做），但界面里没有任何常驻控制：用户边听边读经时，想暂停或跳一段必须退回暖书模块。提案：非听书界面底部常驻<b>迷你播放条</b>（标题 + 播放/暂停 + 细进度），点标题回听书模块。这是「边听边读」场景的最后一块拼图。</p>
+    <div class="demo">
+      <div class="demo-head">
+        <span class="lbl">读经界面底部（切换迷你条）</span>
+        <div class="seg" data-demo="f7"><button class="on" data-v="now">现状 · 无</button><button data-v="prop">提案 · 显示</button></div>
+      </div>
+      <div class="reader-mock" id="f7-demo" style="position:relative;padding-bottom:74px">
+        <p class="v" style="max-width:none">1 起初，神创造诸天与地。2 而地变为荒废空虚，渊面黑暗。3 神说，要有光，就有了光。</p>
+        <div id="f7-bar" style="display:none;position:absolute;left:14px;right:14px;bottom:14px">
+          <div class="mini-bar">
+            <div class="pp"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14M16 5v14" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg></div>
+            <div class="ti"><b>腓立比书 · 第一段</b><span>鸟瞰圣经 第35讲 · 6:01 / 24:10</span><div class="pr"><i></i></div></div>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" stroke-linecap="round"><path d="M17.3 6.7A7.5 7.5 0 1 0 17.3 17.3"/><path d="M17.3 6.7l-2.5.5M17.3 6.7l.5 2.5"/></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" stroke-linecap="round" transform="scale(-1,1) translate(-24,0)"><path d="M17.3 6.7A7.5 7.5 0 1 0 17.3 17.3"/><path d="M17.3 6.7l-2.5.5M17.3 6.7l.5 2.5"/></svg>
+          </div>
+        </div>
+      </div>
+      <div class="meta">规则：仅音频播放中且不在听书模块时显示；高度 50px + safe-area；与 Toast 错开（Toast 上移）。</div>
+    </div>
+  </div>
+
+  <h2 class="sect" id="f8">F8 · 标注工具条 v2：选中预览 + 24px 命中 + 常用色前置</h2>
+  <p class="sect-sub"><span class="tag p1">P1</span><span class="tag eff">工作量：中</span></p>
+  <div class="card">
+    <p class="why">现状工具条弹出后往往<b>盖住所选文字</b>，用户确认不了自己在标哪句；色点视觉 Ø20 也低于 24px 触摸门槛。v2 提案：① 条上方加选中文字预览 chip（截断省略）；② 色点 19px 视觉 + 24px 命中；③ 上次使用的颜色排首位并加环（高频用户 80% 只用 1–2 色）；④ 补「删除」入口（现状改色/改笔记/删除分离但删除要二次进菜单）。</p>
+    <div class="demo">
+      <div class="demo-head"><span class="lbl">v1 现状（上）与 v2 提案（下）</span></div>
+      <div class="atb-context">
+        神看光是<span class="sel">好的</span>，就把光暗分开了。神称光为昼，称暗为夜。
+        <div style="text-align:center">
+          <div class="atb" style="margin-top:10px">
+            <span class="dot" style="background:#FFEB3B"></span><span class="dot" style="background:#4CAF50"></span><span class="dot" style="background:#9C27B0"></span><span class="dot" style="background:#2196F3"></span><span class="dot" style="background:#F44336"></span>
+            <span class="sep"></span><span class="tx">笔记</span><span class="tx">复制</span>
+          </div>
+        </div>
+        <div style="height:10px"></div>
+        <div style="text-align:center">
+          <span class="atb2"><span class="preview">…神看光是好的，就把光暗分开了…</span><span class="row">
+            <span class="dot" style="background:#2196F3" title="最近使用"></span><span class="dot" style="background:#FFEB3B"></span><span class="dot" style="background:#4CAF50"></span><span class="dot" style="background:#9C27B0"></span><span class="dot" style="background:#F44336"></span>
+            <span class="sep"></span><span class="tx">笔记</span><span class="tx">复制</span><span class="tx" style="color:#ff9b97">删除</span>
+            <span class="hit">dot 24px hit</span>
+          </span></span>
+        </div>
+      </div>
+      <div class="meta">「最近色」记忆存 localStorage（与排版偏好同层，不入云同步）。</div>
+    </div>
+  </div>
+
+  <h2 class="sect" id="f9">F9 · 经文字体选项：宋体/楷体一档</h2>
+  <p class="sect-sub"><span class="tag p2">P2</span><span class="tag eff">工作量：小（Aa 面板加一行 + 一个 token）</span></p>
+  <div class="card">
+    <p class="why">经文长读场景里，衬线（宋/楷）是许多读者的偏好——同为读经工具的头部产品均提供字体选择。实现：Aa 面板新增「正文字体：黑体 / 宋体」，落到新 token <code>--reading-font</code>，与 scale/lh 同为本地偏好。试读感受见下方切换。</p>
+    <div class="demo">
+      <div class="demo-head">
+        <span class="lbl">同一节经文（切换字体方案）</span>
+        <div class="seg" data-demo="f9"><button class="on" data-v="now">现状 · 黑体</button><button data-v="prop">提案 · 宋体</button></div>
+      </div>
+      <div class="reader-mock" id="f9-demo">
+        <p class="v" id="f9-verse">1 起初，神创造诸天与地。2 而地变为荒废空虚，渊面黑暗。3 神说，要有光，就有了光。4 神看光是好的，就把光暗分开了。</p>
+      </div>
+      <div class="meta">字体栈：系统宋体优先（PingFang 用户装且命中），不引 webfont——零包体成本；经文白名单样式同步。</div>
+    </div>
+  </div>
+
+  <h2 class="sect">已建档问题（本轮不重复展开）</h2>
+  <p class="sect-sub">以下已在与本次同批交付的无障碍审计与状态规范中有量化方案，列入路线图直接执行即可。</p>
+  <div class="card">
+    <p style="margin:0 0 6px">① classic 其余 3 处对比度欠账（vnum/链接 3.54 → brand-dark 4.84；fn-ref 3.42；见 docs/04 §1.2）；② <code>.popup-btn.danger</code> 白字 3.96 → <code>--danger-deep</code> 6.47；③ <code>.sync-st-on</code> 3.19 → <code>--success-deep</code> 7.13；④ Toast 悬停暂停（WCAG 2.2.1）；⑤ 重试指数退避；⑥ 空态统一带 CTA；⑦ 抽屉 0 结果回显查询词（docs/05）。</p>
+  </div>
+
+  <h2 class="sect" id="road">落地路线图</h2>
+  <p class="sect-sub">按「价值/成本比」分三批；均不触碰标注语义与数据契约。</p>
+  <div class="card">
+    <table class="road">
+      <tr><th style="width:90px">批次</th><th>内容</th><th style="width:120px">工作量</th><th style="width:170px">纪律注意</th></tr>
+      <tr>
+        <td><b>第一批<br>快速见效</b></td>
+        <td>F2 行长 40em 上限 · F3 顶栏渐变加深 · F4 停靠阈值抬到 1400 · vnum/链接换 brand-dark · popup-btn.danger / sync-st-on 换 deep 色 · 首页顶栏加字标</td>
+        <td>半天</td>
+        <td>classic 基线纪律：渐变加深与字色属主题覆盖块，建议作为「经典主题 v1.1 一次性修」整体评审后落，不动五色与布局契约</td>
+      </tr>
+      <tr>
+        <td><b>第二批<br>体验跃升</b></td>
+        <td>F1 深色主题（token 覆盖块 + 标注 25% 透明度 + 主题列表新增项）· F7 迷你播放条</td>
+        <td>1–2 天</td>
+        <td>新主题走 <code>[data-theme=dark]</code>；播放桥接复用现有播放状态，不新建播放器</td>
+      </tr>
+      <tr>
+        <td><b>第三批<br>打磨</b></td>
+        <td>F5 首页线性图标 + 4 列网格 + 副文案 · F8 标注工具条 v2 · F9 经文字体选项 · Toast 悬停暂停 · 重试退避</td>
+        <td>1 天</td>
+        <td>图标切换保留 emoji 为可选偏好；标注工具条改动须回归划线定位测试</td>
+      </tr>
+    </table>
+    <div class="meta">每批落地后按既定 CR 流程验收：Chrome headless 渲染目检 + getBBox 量宽 + 对比度脚本复测。</div>
+  </div>
+
+  <footer>bible-study UI 评审 · 证据与测量脚本在 ui-spec/.tmp-shots/ · 规格基线见 ui-spec/docs/ 与项目根 DESIGN.md</footer>
+</div>
+
+<script>
+/* 现状/建议 切换 */
+document.querySelectorAll('.seg[data-demo]').forEach(seg => {
+  seg.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    seg.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    const v = b.dataset.v, id = seg.dataset.demo;
+    if (id === 'f2') document.getElementById('f2-demo').classList.toggle('capped', v === 'prop');
+    if (id === 'f5') document.querySelectorAll('#f5-demo, #f5-demo2').forEach(card => {
+      const ic = card.querySelector('.emj'), sub = card.querySelector('.s');
+      if (v === 'prop') {
+        const icons = {
+          'f5-demo': '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5c3-1.5 5-1.5 8 0 3-1.5 5-1.5 8 0v13c-3-1.5-5-1.5-8 0-3-1.5-5-1.5-8 0zM12 5v13"/></svg>',
+          'f5-demo2': '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3" transform="rotate(0 12 8)"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5v3.5M8.5 21h7"/></svg>'
+        };
+        ic.innerHTML = icons[card.id]; ic.classList.add('svg');
+        sub.textContent = sub.dataset.prop;
+      } else {
+        ic.textContent = ic.dataset.now; ic.classList.remove('svg');
+        sub.textContent = sub.dataset.now;
+      }
+    });
+    if (id === 'f7') document.getElementById('f7-bar').style.display = v === 'prop' ? 'block' : 'none';
+    if (id === 'f9') document.getElementById('f9-verse').classList.toggle('verse-serif', v === 'prop');
+  });
+});
+</script>
+</body>
+</html>

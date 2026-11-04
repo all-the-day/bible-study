@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="510" viewBox="0 0 560 510">
+  <defs>
+    <linearGradient id="tg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#667EEA"/><stop offset="1" stop-color="#5B67D4"/>
+    </linearGradient>
+  </defs>
+  <style>
+    .t{font-family:'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif;}
+    .m{font-family:Consolas,Menlo,monospace;font-size:10px;fill:#be123c;}
+    .dim{stroke:#e11d48;stroke-width:1;fill:none;}
+    .cap{font-family:'PingFang SC',sans-serif;font-size:11px;fill:#475569;}
+    .nt{font-family:Consolas,Menlo,monospace;font-size:10px;fill:#6b7280;}
+    .hd{font-family:'PingFang SC',sans-serif;font-size:13px;font-weight:700;fill:#111827;}
+    .ic{stroke:#475569;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+  </style>
+
+  <text class="hd" x="24" y="24">HomeBlock 首页合集块 + 最近阅读</text>
+  <text class="nt" x="24" y="40">home-grid 数据驱动 · classic=emoji 34px，其余主题=线性图标（stroke 跟 --brand）</text>
+
+  <!-- 搜索 -->
+  <rect x="24" y="56" width="512" height="40" rx="8" fill="#fff" stroke="#e6e8f0"/>
+  <circle cx="46" cy="76" r="6" stroke="#6b7280" stroke-width="1.8" fill="none"/>
+  <line x1="50.5" y1="80.5" x2="56" y2="86" stroke="#6b7280" stroke-width="1.8" stroke-linecap="round"/>
+  <text class="t" x="64" y="81" font-size="14" fill="#6b7280">搜索全部内容…</text>
+
+  <!-- 合集块 2×3 -->
+  <g>
+    <rect x="24" y="112" width="160" height="88" rx="8" fill="#fafbff" stroke="#e6e8f0"/>
+    <text class="t" x="44" y="152" font-size="30">📖</text>
+    <text class="t" x="44" y="177" font-size="15" font-weight="600" fill="#1f2937">读经</text>
+    <text class="t" x="44" y="191" font-size="12" fill="#6b7280">66 卷 · 恢复本</text>
+  </g>
+  <g>
+    <rect x="200" y="112" width="160" height="88" rx="8" fill="#fafbff" stroke="#e6e8f0"/>
+    <g transform="translate(220,128)"><path class="ic" d="M12 3l9 5-9 5-9-5zM3 12.5l9 5 9-5" stroke="#667eea"/></g>
+    <text class="t" x="220" y="177" font-size="15" font-weight="600" fill="#1f2937">生命读经</text>
+    <text class="t" x="220" y="191" font-size="12" fill="#6b7280">2,000+ 篇</text>
+  </g>
+  <g>
+    <rect x="376" y="112" width="160" height="88" rx="8" fill="#fafbff" stroke="#e6e8f0"/>
+    <text class="t" x="396" y="152" font-size="30">📚</text>
+    <text class="t" x="396" y="177" font-size="15" font-weight="600" fill="#1f2937">书报</text>
+    <text class="t" x="396" y="191" font-size="12" fill="#6b7280">32 系列 · 551 本</text>
+  </g>
+  <g>
+    <rect x="24" y="216" width="160" height="88" rx="8" fill="#fafbff" stroke="#e6e8f0"/>
+    <text class="t" x="44" y="256" font-size="30">✍️</text>
+    <text class="t" x="44" y="281" font-size="15" font-weight="600" fill="#1f2937">倪文集</text>
+    <text class="t" x="44" y="295" font-size="12" fill="#6b7280">3 辑 62 本</text>
+  </g>
+  <g>
+    <rect x="200" y="216" width="160" height="88" rx="8" fill="#fafbff" stroke="#e6e8f0"/>
+    <text class="t" x="220" y="256" font-size="30">🎧</text>
+    <text class="t" x="220" y="281" font-size="15" font-weight="600" fill="#1f2937">听书</text>
+    <text class="t" x="220" y="295" font-size="12" fill="#6b7280">1 合集 · 41 讲</text>
+  </g>
+  <g>
+    <rect x="376" y="216" width="160" height="88" rx="8" fill="#fafbff" stroke="#e6e8f0"/>
+    <text class="t" x="396" y="256" font-size="30">📝</text>
+    <text class="t" x="396" y="281" font-size="15" font-weight="600" fill="#1f2937">我的笔记</text>
+    <text class="t" x="396" y="295" font-size="12" fill="#6b7280">五类 + 专题</text>
+  </g>
+  <g class="dim"><line x1="24" y1="314" x2="184" y2="314"/><line x1="24" y1="310" x2="24" y2="318"/><line x1="184" y1="310" x2="184" y2="318"/></g>
+  <text class="m" x="96" y="328">160</text>
+  <text class="nt" x="24" y="328">hover 上浮</text>
+
+  <!-- 最近阅读 -->
+  <text class="cap" x="24" y="352">RecentList 最近阅读（5 条 · 无历史整块不渲染）</text>
+  <rect x="24" y="362" width="512" height="32" rx="6" fill="#f3f6fc"/>
+  <text class="t" x="36" y="383" font-size="14" fill="#1f2937">创世记 1章</text>
+  <text class="t" x="120" y="383" font-size="12" fill="#6b7280">读经 · 昨天</text>
+  <rect x="24" y="398" width="512" height="32" rx="6" fill="#f3f6fc"/>
+  <text class="t" x="36" y="419" font-size="14" fill="#1f2937">腓立比书（第 35 讲）</text>
+  <text class="t" x="168" y="419" font-size="12" fill="#6b7280">听书 · 3 天前</text>
+
+  <text class="t" x="24" y="456" font-size="11" fill="#b91c1c">红线：书报二级合集层与首页同构复用 home-grid；新顶层入口必须尾部 syncRoute()</text>
+  <text class="nt" x="24" y="476">块图标：classic=emoji 30px；其余主题=线性 SVG 34px（stroke 跟 --brand，minimal 用 --text-soft）</text>
+  <text class="nt" x="24" y="494">活力八块 → #/topic/vitality8 作业单页</text>
+</svg>

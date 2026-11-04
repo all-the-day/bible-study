@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="590" viewBox="0 0 560 590">
+  <style>
+    .t{font-family:'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif;}
+    .m{font-family:Consolas,Menlo,monospace;font-size:10px;fill:#be123c;}
+    .dim{stroke:#e11d48;stroke-width:1;fill:none;}
+    .cap{font-family:'PingFang SC',sans-serif;font-size:11px;fill:#475569;}
+    .nt{font-family:Consolas,Menlo,monospace;font-size:10px;fill:#6b7280;}
+    .hd{font-family:'PingFang SC',sans-serif;font-size:13px;font-weight:700;fill:#111827;}
+  </style>
+
+  <text class="hd" x="24" y="24">VerseCard 经文卡片 + 研读列</text>
+  <text class="nt" x="24" y="40">.verse：card-bg + 1px border + radius-md 8 + padding 8 18 + margin 10 0 + card-shadow</text>
+  <text class="nt" x="24" y="54">vtext=18px×--reading-scale · 行距=--reading-lh(1.5–2.4) · vnum=--vnum-color(classic=brand)</text>
+
+  <!-- 纲目行 -->
+  <text class="t" x="24" y="86" font-size="17" font-weight="600" fill="#1f2937">壹 神的创造</text>
+  <text class="t" x="36" y="112" font-size="14" fill="#667eea">一 神的心愿和目的</text>
+  <text class="t" x="44" y="134" font-size="14" fill="#4b5563">1 神原初的创造</text>
+  <text class="nt" x="200" y="86">ol1：17px×scale 600</text>
+  <text class="nt" x="200" y="112">ol2：--ol2-color(brand)</text>
+  <text class="nt" x="200" y="134">ol3+：text-soft · 10 级不逐级缩进</text>
+
+  <!-- 经文卡片 -->
+  <rect x="24" y="152" width="440" height="132" rx="8" fill="#fafbff" stroke="#e6e8f0"/>
+  <rect x="24" y="152" width="440" height="132" rx="8" fill="none" stroke="rgba(102,126,234,.20)" stroke-width="2" opacity=".5"/>
+  <!-- 行1：mark.c2 绿 on 神 + fn sup 1 -->
+  <rect x="114" y="164" width="18" height="23" rx="2" fill="rgba(76,175,80,.5)"/>
+  <text class="t" y="182" font-size="18" fill="#1f2937"><tspan x="42" font-weight="700" fill="#667eea">1</tspan><tspan x="60">起初，</tspan><tspan x="114" font-weight="600" fill="#0f7b6c">神</tspan><tspan x="132">创造诸天与地，</tspan></text>
+  <text class="t" x="97" y="169" font-size="11" font-weight="700" fill="#c07818">1</text>
+  <!-- 行2：mark.c1 黄 on 荒废空虚 -->
+  <rect x="132" y="198" width="72" height="23" rx="2" fill="rgba(255,235,59,.5)"/>
+  <text class="t" y="216" font-size="18" fill="#1f2937"><tspan x="42" font-weight="700" fill="#667eea">2</tspan><tspan x="60">而地变为</tspan><tspan x="132">荒废空虚</tspan><tspan x="204">，渊面黑暗。</tspan></text>
+  <!-- 行3 -->
+  <text class="t" y="250" font-size="18" fill="#1f2937"><tspan x="42" font-weight="700" fill="#667eea">3</tspan><tspan x="60">神说，要有光，就有了光。</tspan></text>
+  <text class="t" x="162" y="237" font-size="11" font-weight="700" fill="#c07818">a</text>
+  <!-- padding 标注 -->
+  <g class="dim"><line x1="24" y1="296" x2="42" y2="296"/><line x1="24" y1="292" x2="24" y2="300"/><line x1="42" y1="292" x2="42" y2="300"/></g>
+  <text class="m" x="26" y="310">18</text>
+  <text class="nt" x="80" y="310">左 padding 18 · 上下 8 · 卡片描边=classic 品牌蓝阴影 rgba(102,126,234,.20)</text>
+
+  <!-- 标注示意 -->
+  <text class="cap" x="24" y="344">五色标注（语义锁定）· FnRef 注脚 · PersonLink 人物</text>
+  <g font-family="'PingFang SC',sans-serif" font-size="15" fill="#1f2937">
+    <rect x="24" y="356" width="58" height="24" rx="2" fill="rgba(255,235,59,.5)"/><text x="26" y="373">重要的</text>
+    <rect x="92" y="356" width="58" height="24" rx="2" fill="rgba(76,175,80,.5)"/><text x="94" y="373" fill="#fff">耶和华</text>
+    <rect x="160" y="356" width="42" height="24" rx="2" fill="rgba(156,39,176,.5)"/><text x="162" y="373" fill="#fff">我是</text>
+    <rect x="214" y="356" width="42" height="24" rx="2" fill="rgba(33,150,243,.5)"/><text x="216" y="373" fill="#fff">喜爱</text>
+    <rect x="268" y="356" width="42" height="24" rx="2" fill="rgba(244,67,54,.5)"/><text x="270" y="373" fill="#fff">审判</text>
+  </g>
+  <text class="nt" x="330" y="368">c1 黄 · c2 绿 · c3 紫</text>
+  <text class="nt" x="330" y="382">c4 蓝 · c5 红</text>
+  <text class="t" x="24" y="416" font-size="15" fill="#0f7b6c" text-decoration="underline">亚伯拉罕</text>
+  <text class="t" x="92" y="416" font-size="15" fill="#1f2937">在摩利亚山地献上以撒；<tspan font-size="11" font-weight="700" fill="#c07818">注2</tspan></text>
+  <text class="nt" x="24" y="438">PersonLink #0f7b6c 可点弹人物小传 · FnRef 上标 11px×scale #c07818</text>
+
+  <!-- 研读列 -->
+  <text class="cap" x="24" y="472">StudyPanel 研读列（480px · surface-alt · 左 1px border · resize-handle 6px 拖拽）</text>
+  <rect x="24" y="482" width="6" height="60" fill="#d8dce8" rx="3"/>
+  <rect x="30" y="482" width="434" height="60" fill="#f3f6fc" stroke="#e6e8f0"/>
+  <text class="t" x="52" y="502" font-size="14" font-weight="600" fill="#5B67D4">注解</text>
+  <line x1="52" y1="510" x2="88" y2="510" stroke="#667eea" stroke-width="2"/>
+  <text class="t" x="112" y="502" font-size="14" fill="#4b5563">生命读经</text>
+  <text class="t" x="180" y="502" font-size="14" fill="#4b5563">我的笔记</text>
+  <text class="nt" x="52" y="532">tabs：flex:1 · padding 10 4 · 激活 2px 品牌下边线</text>
+  <text class="t" x="24" y="566" font-size="11" fill="#b91c1c">红线：标注定位基于源文本偏移 + text/prefix/suffix 自愈——渲染器改动必须保持 data-base 坐标一致</text>
+</svg>

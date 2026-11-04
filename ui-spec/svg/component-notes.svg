@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="520" viewBox="0 0 560 520">
+  <style>
+    .t{font-family:'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif;}
+    .m{font-family:Consolas,Menlo,monospace;font-size:10px;fill:#be123c;}
+    .dim{stroke:#e11d48;stroke-width:1;fill:none;}
+    .cap{font-family:'PingFang SC',sans-serif;font-size:11px;fill:#475569;}
+    .nt{font-family:Consolas,Menlo,monospace;font-size:10px;fill:#6b7280;}
+    .hd{font-family:'PingFang SC',sans-serif;font-size:13px;font-weight:700;fill:#111827;}
+  </style>
+
+  <text class="hd" x="24" y="24">NotesManager 笔记管理（三列）</text>
+  <text class="nt" x="24" y="40">分类树（常驻左栏）/ 条目列表（来源 tab·颜色筛选·搜索·排序·批量）/ 编辑面板</text>
+
+  <!-- 三列 -->
+  <rect x="24" y="56" width="140" height="240" fill="#fafbff" stroke="#e6e8f0"/>
+  <text class="t" x="36" y="78" font-size="12" fill="#6b7280">分类</text>
+  <text class="t" x="36" y="104" font-size="14" font-weight="600" fill="#5B67D4">全部 128</text>
+  <text class="t" x="36" y="130" font-size="14" fill="#4b5563">经文 46</text>
+  <text class="t" x="36" y="156" font-size="14" fill="#4b5563">生命读经 31</text>
+  <text class="t" x="36" y="182" font-size="14" fill="#4b5563">书报 38</text>
+  <text class="t" x="36" y="208" font-size="14" fill="#4b5563">听抄 11</text>
+  <text class="t" x="36" y="234" font-size="14" fill="#4b5563">专题 2</text>
+
+  <rect x="164" y="56" width="200" height="240" fill="#fff" stroke="#e6e8f0"/>
+  <!-- 工具条 -->
+  <rect x="172" y="64" width="184" height="24" rx="6" fill="#f3f6fc"/>
+  <text class="t" x="180" y="80" font-size="12" fill="#4b5563">搜索笔记…</text>
+  <text class="t" x="338" y="80" font-size="12" fill="#4b5563">筛选 ▾</text>
+  <!-- 颜色点 -->
+  <circle cx="180" cy="100" r="5" fill="#FFEB3B"/><circle cx="196" cy="100" r="5" fill="#4CAF50"/><circle cx="212" cy="100" r="5" fill="#9C27B0"/><circle cx="228" cy="100" r="5" fill="#2196F3"/><circle cx="244" cy="100" r="5" fill="#F44336"/>
+  <text class="t" x="262" y="104" font-size="11" fill="#6b7280">按颜色</text>
+  <!-- 条目 -->
+  <rect x="172" y="114" width="184" height="44" rx="6" fill="rgba(102,126,234,.10)"/>
+  <rect x="176" y="120" width="3" height="32" rx="1.5" fill="#FFEB3B"/>
+  <text class="t" x="186" y="132" font-size="13" fill="#1f2937">起初，神创造诸天与地</text>
+  <text class="t" x="186" y="150" font-size="11" fill="#6b7280">创世记 1:1 · 昨天</text>
+  <rect x="172" y="164" width="184" height="44" rx="6" fill="#fff" stroke="#e6e8f0"/>
+  <rect x="176" y="170" width="3" height="32" rx="1.5" fill="#4CAF50"/>
+  <text class="t" x="186" y="182" font-size="13" fill="#1f2937">耶和华我的神</text>
+  <text class="t" x="186" y="200" font-size="11" fill="#6b7280">创世记 2 章 · 3 天前</text>
+  <rect x="172" y="214" width="184" height="44" rx="6" fill="#fff" stroke="#e6e8f0"/>
+  <rect x="176" y="220" width="3" height="32" rx="1.5" fill="#2196F3"/>
+  <text class="t" x="186" y="232" font-size="13" fill="#1f2937">神所喜爱、赞赏的</text>
+  <text class="t" x="186" y="250" font-size="11" fill="#6b7280">生命读经 · 上周</text>
+
+  <!-- 编辑面板 -->
+  <rect x="364" y="56" width="172" height="240" fill="#fafbff" stroke="#e6e8f0"/>
+  <rect x="376" y="68" width="148" height="62" rx="6" fill="rgba(255,235,59,.5)"/>
+  <text class="t" x="386" y="88" font-size="13" fill="#1f2937">起初，神创造诸天与</text>
+  <text class="t" x="386" y="108" font-size="13" fill="#1f2937">地，</text>
+  <!-- 色点行（独立于高亮卡） -->
+  <circle cx="386" cy="148" r="8" fill="#FFEB3B" stroke="#667eea" stroke-width="2"/>
+  <circle cx="408" cy="148" r="8" fill="#4CAF50" stroke="#fff" stroke-width="1.5"/>
+  <circle cx="430" cy="148" r="8" fill="#9C27B0" stroke="#fff" stroke-width="1.5"/>
+  <circle cx="452" cy="148" r="8" fill="#2196F3" stroke="#fff" stroke-width="1.5"/>
+  <circle cx="474" cy="148" r="8" fill="#F44336" stroke="#fff" stroke-width="1.5"/>
+  <text class="nt" x="492" y="152">改色</text>
+  <!-- 笔记卡 -->
+  <rect x="376" y="166" width="148" height="52" rx="6" fill="#fff" stroke="#e6e8f0"/>
+  <text class="t" x="386" y="184" font-size="12" fill="#6b7280">笔记</text>
+  <text class="t" x="386" y="204" font-size="12" fill="#1f2937">创造的次序预表生命</text>
+  <!-- 操作按钮 -->
+  <rect x="376" y="230" width="72" height="24" rx="6" fill="#f3f6fc" stroke="#e6e8f0"/>
+  <text class="t" x="412" y="246" font-size="12" fill="#4b5563" text-anchor="middle">定位跳转</text>
+  <rect x="456" y="230" width="52" height="24" rx="6" fill="rgba(217,83,79,.08)" stroke="rgba(217,83,79,.35)"/>
+  <text class="t" x="482" y="246" font-size="12" fill="#b91c1c" text-anchor="middle">删除</text>
+  <text class="nt" x="376" y="278">编辑面板：改色/改笔记/删除/定位</text>
+
+  <!-- 作业单 -->
+  <text class="cap" x="24" y="330">TopicSheet 活力八 · 作业单（#/topic/vitality8）</text>
+  <rect x="24" y="342" width="512" height="130" rx="8" fill="#fafbff" stroke="#e6e8f0"/>
+  <text class="t" x="44" y="368" font-size="15" font-weight="700" fill="#111827">第 8 周 · 所学章号</text>
+  <text class="t" x="220" y="368" font-size="12" fill="#6b7280">作业单为链接聚合，正文不复制</text>
+  <text class="t" x="44" y="396" font-size="14" fill="#667eea">📖 原文 · 创世记 1–2 章</text>
+  <text class="t" x="44" y="420" font-size="14" fill="#667eea">📄 生命读经 1/3 · 第一篇</text>
+  <text class="t" x="44" y="444" font-size="14" fill="#667eea">📚 指定书报 · 第 3 页</text>
+  <text class="t" x="44" y="468" font-size="14" fill="#9ca3af">✝ 背经 · 待填</text>
+  <rect x="300" y="452" width="120" height="24" rx="12" fill="none" stroke="#e6e8f0" stroke-dasharray="4 3"/>
+  <text class="t" x="360" y="468" font-size="12" fill="#9ca3af" text-anchor="middle">待填行（不可点）</text>
+  <text class="t" x="24" y="500" font-size="11" fill="#b91c1c">红线：未录入条目显示虚化「待填」不可点；作业单在 scripts/build-topics.py 维护，改完重跑脚本</text>
+</svg>

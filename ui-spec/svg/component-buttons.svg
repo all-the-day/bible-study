@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="540" height="500" viewBox="0 0 540 500">
+  <defs>
+    <linearGradient id="tg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#667EEA"/><stop offset="1" stop-color="#5B67D4"/>
+    </linearGradient>
+  </defs>
+  <style>
+    .t{font-family:'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif;}
+    .m{font-family:Consolas,Menlo,monospace;font-size:10px;fill:#be123c;}
+    .dim{stroke:#e11d48;stroke-width:1;fill:none;}
+    .wl{font-family:'PingFang SC',sans-serif;font-size:10px;fill:rgba(255,255,255,.8);text-anchor:middle;}
+    .bl{font-family:'PingFang SC',sans-serif;font-size:10px;fill:#6b7280;}
+    .nt{font-family:Consolas,Menlo,monospace;font-size:10px;fill:#6b7280;}
+    .hd{font-family:'PingFang SC',sans-serif;font-size:13px;font-weight:700;fill:#111827;}
+  </style>
+
+  <text class="hd" x="24" y="24">按钮 · 分段器 · 开关</text>
+  <text class="nt" x="24" y="40">IconBtn 20px 图标 · TopBtn 13px 描边 · Segment 两种皮肤 · Switch 40×24 · ch-item 38×34</text>
+
+  <!-- on-brand 区 -->
+  <rect x="24" y="56" width="492" height="96" rx="12" fill="url(#tg)"/>
+  <path d="M48 92h18M48 99h18M48 106h18" stroke="#fff" stroke-width="2" stroke-linecap="round" fill="none"/>
+  <text class="t" x="100" y="105" font-size="16" font-weight="600" fill="#fff">Aa</text>
+  <rect x="146" y="86" width="46" height="24" rx="6" stroke="rgba(255,255,255,.5)" fill="none"/>
+  <text class="t" x="169" y="102" font-size="13" fill="#fff" text-anchor="middle">反馈</text>
+  <rect x="210" y="86" width="46" height="24" rx="6" stroke="rgba(255,255,255,.5)" fill="rgba(255,255,255,.15)"/>
+  <text class="t" x="233" y="102" font-size="13" fill="#fff" text-anchor="middle">反馈</text>
+  <rect x="304" y="86" width="62" height="26" rx="13" fill="#fff"/>
+  <text class="t" x="335" y="103" font-size="13" font-weight="700" fill="#5B67D4" text-anchor="middle">读经</text>
+  <rect x="368" y="86" width="62" height="26" rx="13" fill="rgba(255,255,255,.16)"/>
+  <text class="t" x="399" y="103" font-size="13" fill="rgba(255,255,255,.85)" text-anchor="middle">研读</text>
+  <text class="wl" x="57" y="136">IconBtn</text>
+  <text class="wl" x="105" y="136">IconBtn</text>
+  <text class="wl" x="169" y="136">TopBtn</text>
+  <text class="wl" x="233" y="136">TopBtn:hover</text>
+  <text class="wl" x="367" y="136">Segment(on-brand)</text>
+
+  <!-- on-surface 区 -->
+  <rect x="24" y="172" width="492" height="158" rx="12" fill="#fafbff" stroke="#e6e8f0"/>
+  <!-- 行A：控件 -->
+  <rect x="48" y="190" width="64" height="28" rx="14" fill="#667eea"/>
+  <text class="t" x="80" y="208" font-size="13" font-weight="600" fill="#fff" text-anchor="middle">浏览</text>
+  <rect x="114" y="190" width="64" height="28" rx="14" fill="rgba(0,0,0,.05)"/>
+  <text class="t" x="146" y="208" font-size="13" fill="#6b7280" text-anchor="middle">历史</text>
+  <rect x="220" y="192" width="40" height="24" rx="12" fill="#cbd5e1"/>
+  <circle cx="232" cy="204" r="10" fill="#fff" stroke="rgba(0,0,0,.08)"/>
+  <rect x="284" y="192" width="40" height="24" rx="12" fill="#667eea"/>
+  <circle cx="312" cy="204" r="10" fill="#fff"/>
+  <rect x="360" y="190" width="40" height="26" rx="13" fill="#f3f6fc" stroke="#e6e8f0"/>
+  <text class="t" x="380" y="207" font-size="13" fill="#4b5563" text-anchor="middle">1×</text>
+  <!-- 尺寸标注 -->
+  <g class="dim"><line x1="220" y1="224" x2="260" y2="224"/><line x1="220" y1="220" x2="220" y2="228"/><line x1="260" y1="220" x2="260" y2="228"/></g>
+  <text class="m" x="232" y="238">40</text>
+  <!-- 行注（左对齐短标签，避免重叠） -->
+  <text class="bl" x="48" y="254">Segment(on-surface)</text>
+  <text class="bl" x="220" y="254">Switch 40×24</text>
+  <text class="bl" x="360" y="254">SpeedPill</text>
+  <!-- 行C：ch-item 与列表项 -->
+  <rect x="48" y="266" width="38" height="34" rx="6" fill="none" stroke="#e6e8f0"/>
+  <text class="t" x="67" y="287" font-size="14" fill="#4b5563" text-anchor="middle">1</text>
+  <rect x="94" y="266" width="38" height="34" rx="6" fill="#f0f4ff"/>
+  <text class="t" x="113" y="287" font-size="14" fill="#4b5563" text-anchor="middle">2</text>
+  <rect x="140" y="266" width="38" height="34" rx="6" fill="#667eea"/>
+  <text class="t" x="159" y="287" font-size="14" font-weight="600" fill="#fff" text-anchor="middle">3</text>
+  <g class="dim"><line x1="48" y1="306" x2="86" y2="306"/><line x1="48" y1="302" x2="48" y2="310"/><line x1="86" y1="302" x2="86" y2="310"/></g>
+  <text class="m" x="58" y="320">38</text>
+  <rect x="220" y="268" width="180" height="30" rx="6" fill="#f3f6fc"/>
+  <text class="t" x="232" y="288" font-size="15" fill="#4b5563">出埃及记</text>
+  <rect x="220" y="298" width="180" height="28" rx="6" fill="rgba(102,126,234,.12)"/>
+  <text class="t" x="232" y="317" font-size="15" font-weight="600" fill="#5B67D4">利未记</text>
+  <!-- 行注 -->
+  <text class="bl" x="48" y="344">ChItem（normal / hover / active）</text>
+  <text class="bl" x="220" y="344">NavListItem（normal / cur·active）</text>
+
+  <text class="nt" x="24" y="378">IconBtn hit 区 padding 4 8 · radius-sm 6 · hover=--topbar-btn</text>
+  <text class="nt" x="24" y="396">Segment(on-brand)：激活白底 + --brand-dark 字；on-surface：激活 --brand 底白字</text>
+  <text class="nt" x="24" y="414">Switch 滑块 20px · --ring 白 · transition .2s · track=--switch-track</text>
+
+  <text class="t" x="24" y="446" font-size="11" fill="#b91c1c">红线：移动端「读经|研读」pill 为研读列唯一入口（≤900px）；倍速档固定 0.75/1/1.25/1.5/2×</text>
+  <text class="t" x="24" y="466" font-size="11" fill="#b91c1c">红线：ch-item 为章网格专用（38×34 wrap gap 4），不得与抽屉列表项混用尺寸</text>
+</svg>

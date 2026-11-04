@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="590" viewBox="0 0 560 590">
+  <defs>
+    <linearGradient id="sg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5B67D4"/><stop offset="1" stop-color="#667eea"/>
+    </linearGradient>
+  </defs>
+  <style>
+    .t{font-family:'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif;}
+    .m{font-family:Consolas,Menlo,monospace;font-size:10px;fill:#be123c;}
+    .dim{stroke:#e11d48;stroke-width:1;fill:none;}
+    .cap{font-family:'PingFang SC',sans-serif;font-size:11px;fill:#475569;}
+    .nt{font-family:Consolas,Menlo,monospace;font-size:10px;fill:#6b7280;}
+    .hd{font-family:'PingFang SC',sans-serif;font-size:13px;font-weight:700;fill:#111827;}
+  </style>
+
+  <text class="hd" x="24" y="24">Modal 弹窗骨架 + SettingsList 设置分组</text>
+  <text class="nt" x="24" y="40">backdrop z-84 · popup z-85 · 卡片 radius-lg 12 · --shadow-overlay · Esc 关闭</text>
+
+  <!-- Modal -->
+  <rect x="24" y="56" width="360" height="330" rx="12" fill="#fff" stroke="#e6e8f0"/>
+  <rect x="24" y="56" width="360" height="330" rx="12" fill="none" stroke="rgba(0,0,0,.10)"/>
+  <text class="t" x="48" y="88" font-size="17" font-weight="600" fill="#111827">设置</text>
+  <path d="M364 72l12 12M376 72l-12 12" stroke="#6b7280" stroke-width="2" stroke-linecap="round"/>
+  <line x1="24" y1="104" x2="384" y2="104" stroke="#e6e8f0"/>
+
+  <!-- 设置分组卡 -->
+  <rect x="40" y="118" width="328" height="160" rx="8" fill="#f3f6fc"/>
+  <text class="t" x="54" y="138" font-size="12" fill="#6b7280">阅读</text>
+  <text class="t" x="54" y="166" font-size="14" fill="#1f2937">阅读主题</text>
+  <text class="t" x="314" y="166" font-size="13" fill="#4b5563">经典</text>
+  <text class="t" x="334" y="166" font-size="16" fill="#6b7280">›</text>
+  <line x1="40" y1="182" x2="368" y2="182" stroke="#e6e8f0"/>
+  <text class="t" x="54" y="210" font-size="14" fill="#1f2937">隐藏注号</text>
+  <rect x="316" y="192" width="40" height="24" rx="12" fill="#cbd5e1"/>
+  <circle cx="328" cy="204" r="10" fill="#fff" stroke="rgba(0,0,0,.08)"/>
+  <line x1="40" y1="226" x2="368" y2="226" stroke="#e6e8f0"/>
+  <text class="t" x="54" y="254" font-size="14" fill="#1f2937">云同步</text>
+  <rect x="300" y="242" width="56" height="24" rx="12" fill="rgba(22,163,74,.12)"/>
+  <text class="t" x="328" y="258" font-size="11" fill="#16a34a" text-anchor="middle">已连接</text>
+
+  <!-- theme-list -->
+  <rect x="40" y="290" width="328" height="76" rx="8" fill="#f3f6fc"/>
+  <circle cx="58" cy="310" r="7" fill="#667eea"/><circle cx="74" cy="310" r="7" fill="#f0f3f9" stroke="#e6e8f0"/>
+  <text class="t" x="86" y="314" font-size="14" font-weight="700" fill="#667eea">经典</text>
+  <text class="t" x="352" y="314" font-size="14" font-weight="700" fill="#667eea">✓</text>
+  <line x1="40" y1="326" x2="368" y2="326" stroke="#e6e8f0"/>
+  <circle cx="58" cy="348" r="7" fill="#5662CE"/><circle cx="74" cy="348" r="7" fill="#faf7f1" stroke="#eae3d5"/><circle cx="90" cy="348" r="7" fill="#f6f6f8" stroke="#e6e6ea"/>
+  <text class="t" x="104" y="352" font-size="14" fill="#1f2937">靛蓝 / 暖纸 / 素灰</text>
+  <text class="nt" x="24" y="404">settings-row padding 12 14 · 行间 1px border · badge on=success 色 · theme-list 单选</text>
+
+  <!-- Splash -->
+  <text class="cap" x="24" y="436">Splash 首屏（z-100 · 内联 CSS 与 style.css 双份同步）</text>
+  <rect x="24" y="446" width="200" height="96" rx="0" fill="url(#sg)"/>
+  <text class="t" x="124" y="482" font-size="18" font-weight="700" fill="#fff" text-anchor="middle" letter-spacing="2">读经研读笔记</text>
+  <text class="t" x="124" y="502" font-size="10" fill="rgba(255,255,255,.85)" text-anchor="middle">你的话是我脚前的灯</text>
+  <rect x="64" y="512" width="120" height="3" rx="1.5" fill="rgba(255,255,255,.25)"/>
+  <rect x="64" y="512" width="76" height="3" rx="1.5" fill="#fff"/>
+  <circle cx="256" cy="494" r="10" stroke="rgba(255,255,255,.25)" stroke-width="3" fill="none"/>
+  <path d="M256 484 a10 10 0 0 1 10 10" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <text class="nt" x="284" y="490">进度条 240×4 白 fill</text>
+  <text class="nt" x="284" y="504">失败=文案+白底重试按钮</text>
+
+  <text class="t" x="24" y="568" font-size="11" fill="#b91c1c">红线：Modal 内业务结构由各模块填充（注脚/人物/指定篇目/更新），骨架不含业务 DOM</text>
+</svg>

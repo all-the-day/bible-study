@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="580" viewBox="0 0 560 580">
+  <style>
+    .t{font-family:'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif;}
+    .m{font-family:Consolas,Menlo,monospace;font-size:10px;fill:#be123c;}
+    .dim{stroke:#e11d48;stroke-width:1;fill:none;}
+    .cap{font-family:'PingFang SC',sans-serif;font-size:11px;fill:#475569;}
+    .nt{font-family:Consolas,Menlo,monospace;font-size:10px;fill:#6b7280;}
+    .hd{font-family:'PingFang SC',sans-serif;font-size:13px;font-weight:700;fill:#111827;}
+    .ctl{stroke:#4b5563;stroke-width:1.8;fill:none;stroke-linecap:round;}
+  </style>
+
+  <text class="hd" x="24" y="24">PlayerCard 听书播放器 + SegmentList</text>
+  <text class="nt" x="24" y="40">单列模块（无研读列）· 进度条=当前分段 · 标题时长=整讲 · 断点续听 讲/段/秒</text>
+
+  <!-- 标题区 -->
+  <text class="t" x="24" y="72" font-size="13" fill="#6b7280">第 35 讲 · 新约</text>
+  <text class="t" x="24" y="100" font-size="22" font-weight="700" fill="#111827">腓立比书</text>
+  <text class="t" x="24" y="120" font-size="13" fill="#6b7280">2 小时 25 分 · 5 段 · 王生台</text>
+
+  <!-- 播放器卡片 -->
+  <rect x="24" y="134" width="400" height="186" rx="12" fill="#fff" stroke="#e6e8f0"/>
+  <text class="t" x="44" y="160" font-size="12" fill="#6b7280">第一段 · 共 5 段</text>
+  <text class="t" x="44" y="184" font-size="12" fill="#4b5563">6:01</text>
+  <text class="t" x="404" y="184" font-size="12" fill="#4b5563" text-anchor="end">24:10</text>
+  <!-- 进度条 -->
+  <rect x="44" y="192" width="360" height="4" rx="2" fill="#dfe3ee"/>
+  <rect x="44" y="192" width="90" height="4" rx="2" fill="#667eea"/>
+  <circle cx="134" cy="194" r="7" fill="#667eea" stroke="#fff" stroke-width="2"/>
+  <!-- 控制行 -->
+  <!-- 回退15秒：开口圆弧 + 实心箭头（逆时针），15 居中圈内 -->
+  <path class="ctl" d="M92 256.5 A14 14 0 1 0 108 256.5"/>
+  <path d="M101.4 251.9 L110.6 252.8 L105.4 260.2 Z" fill="#4b5563"/>
+  <text class="t" x="100" y="272.5" font-size="11" font-weight="700" fill="#4b5563" text-anchor="middle">15</text>
+  <!-- 播放 -->
+  <circle cx="210" cy="267" r="28" fill="#667eea"/>
+  <path d="M203 255 l16 12 -16 12z" fill="#fff"/>
+  <!-- 前进15秒（顺时针） -->
+  <path class="ctl" d="M338 256.5 A14 14 0 1 1 322 256.5"/>
+  <path d="M328.6 251.9 L319.4 252.8 L324.6 260.2 Z" fill="#4b5563"/>
+  <text class="t" x="330" y="272.5" font-size="11" font-weight="700" fill="#4b5563" text-anchor="middle">15</text>
+  <!-- 倍速 -->
+  <rect x="368" y="253" width="44" height="28" rx="14" fill="#f3f6fc" stroke="#e6e8f0"/>
+  <text class="t" x="390" y="271" font-size="13" fill="#4b5563" text-anchor="middle">1×</text>
+  <!-- 播放钮直径标注 -->
+  <g class="dim"><line x1="16" y1="239" x2="16" y2="295"/><line x1="12" y1="239" x2="20" y2="239"/><line x1="12" y1="295" x2="20" y2="295"/></g>
+  <text class="m" x="4" y="270">56</text>
+  <text class="nt" x="44" y="338">播放钮 56px 品牌圆 · ±15s 图标 · SpeedPill（0.75/1/1.25/1.5/2×）· 时间 tabular-nums</text>
+
+  <!-- 分段列表 -->
+  <text class="t" x="24" y="372" font-size="15" font-weight="600" fill="#111827">分段</text>
+  <rect x="24" y="382" width="400" height="40" rx="8" fill="#fff" stroke="rgba(102,126,234,.35)"/>
+  <path d="M40 396 l10 7 -10 7z" fill="#667eea"/>
+  <text class="t" x="60" y="407" font-size="14" font-weight="700" fill="#5B67D4">第一段</text>
+  <text class="t" x="408" y="407" font-size="13" fill="#6b7280" text-anchor="end">24:11</text>
+  <rect x="24" y="428" width="400" height="36" rx="8" fill="none"/>
+  <circle cx="45" cy="446" r="3" fill="#d1d5db"/>
+  <text class="t" x="60" y="451" font-size="14" fill="#4b5563">第二段</text>
+  <text class="t" x="408" y="451" font-size="13" fill="#6b7280" text-anchor="end">35:21</text>
+  <rect x="24" y="470" width="400" height="36" rx="8" fill="none"/>
+  <circle cx="45" cy="488" r="3" fill="#d1d5db"/>
+  <text class="t" x="60" y="493" font-size="14" fill="#4b5563">第三段</text>
+  <text class="t" x="408" y="493" font-size="13" fill="#6b7280" text-anchor="end">25:14</text>
+  <text class="nt" x="24" y="524">当前段=白卡 + 品牌边线 + 播放三角；其余=圆点行；单分片讲次不渲染列表</text>
+
+  <text class="t" x="24" y="550" font-size="11" fill="#b91c1c">红线：进度条走当前分段（24:10），与标题区整讲时长（2:25:00）不是一个口径</text>
+  <text class="t" x="24" y="568" font-size="11" fill="#b91c1c">——UI 用段标签区分两者，不可合并显示</text>
+</svg>
