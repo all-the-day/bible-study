@@ -250,7 +250,7 @@
     </div>
   </div>
 
-  <h2 class="sect" id="f5">F5 · 首页 emoji 图标拉低质感（线性图标已内建却未启用）</h2>
+  <h2 class="sect" id="f5">F5 · 首页 emoji 图标拉低质感 <span class="tag p1">✅ 2026-11-04 已落地</span></h2>
   <p class="sect-sub"><span class="tag p1">P1</span><span class="tag eff">工作量：小（切换默认渲染 + 网格 3→4 列）</span></p>
   <div class="card">
     <p class="why">经典主题的合集块用系统 emoji（📖📚🔥📝🎧）：多彩、风格不统一、跨平台形状不可控，与克制的靛蓝体系冲突——这是「模板感」的最大来源。而线性 SVG 图标集（34px、stroke=currentColor、跟主题）<b>已经为其他主题做好了</b>，只差把默认渲染换过来。另外 1440px 下 3 列网格造成 8 块 3+3+2 的参差收尾，建议桌面 4 列（4+4），并补上每块的统计副文案增强信息量。</p>
@@ -315,10 +315,10 @@
     </div>
   </div>
 
-  <h2 class="sect" id="f8">F8 · 标注工具条 v2：选中预览 + 24px 命中 + 常用色前置</h2>
+  <h2 class="sect" id="f8">F8 · 标注工具条 v2：选中预览 + 常用色前置 <span class="tag p1">✅ 2026-11-04 已落地</span></h2>
   <p class="sect-sub"><span class="tag p1">P1</span><span class="tag eff">工作量：中</span></p>
   <div class="card">
-    <p class="why">现状工具条弹出后往往<b>盖住所选文字</b>，用户确认不了自己在标哪句；色点视觉 Ø20 也低于 24px 触摸门槛。v2 提案：① 条上方加选中文字预览 chip（截断省略）；② 色点 19px 视觉 + 24px 命中；③ 上次使用的颜色排首位并加环（高频用户 80% 只用 1–2 色）；④ 补「删除」入口（现状改色/改笔记/删除分离但删除要二次进菜单）。</p>
+    <p class="why">现状工具条弹出后往往<b>盖住所选文字</b>，用户确认不了自己在标哪句。v2 落地：① 条上方加选中文字预览 chip（截断省略）；② 上次使用的颜色排首位并加环（高频用户 80% 只用 1–2 色）。<b>两处修正</b>：色点实测 26×26（此前评审稿误估 Ø20，本已达标）；「删除」入口撤回——删除属于已标注菜单（marktool）的职责，对新选区无意义。</p>
     <div class="demo">
       <div class="demo-head"><span class="lbl">v1 现状（上）与 v2 提案（下）</span></div>
       <div class="atb-context">
@@ -338,7 +338,7 @@
           </span></span>
         </div>
       </div>
-      <div class="meta">「最近色」记忆存 localStorage（与排版偏好同层，不入云同步）。</div>
+      <div class="meta">「最近色」记忆存 localStorage（与排版偏好同层，不入云同步）。<span class="pill-ok">✅ 2026-11-04 已落地</span></div>
     </div>
   </div>
 
@@ -382,7 +382,7 @@
         <td>新主题走 <code>[data-theme=dark]</code>；播放桥接复用现有播放状态，不新建播放器</td>
       </tr>
       <tr>
-        <td><b>第三批<br>打磨</b></td>
+        <td><b>第三批<br>打磨</b><br><span class="pill-ok">✅ 2026-11-04 已落地（feat/ui-refactor）</span></td>
         <td>F5 首页线性图标 + 4 列网格 + 副文案 · F8 标注工具条 v2 · F9 经文字体选项 · Toast 悬停暂停 · 重试退避</td>
         <td>1 天</td>
         <td>图标切换保留 emoji 为可选偏好；标注工具条改动须回归划线定位测试</td>

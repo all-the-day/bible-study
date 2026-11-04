@@ -30,9 +30,10 @@ const LS_VCONSOLE = 'bible-study.vconsole';          // 调试模式（PageSpy�
 const LS_TYPO = 'bible-study.typography';            // {scale, lh} 阅读排版（字号倍率 / 行距），纯本地不入云同步
 const LS_THEME = 'bible-study.theme';                // 阅读主题：classic|indigo|paper|minimal，纯本地不入云同步（index.html 头部 early script 同步读）
 const LS_TOPIC_NOTES = 'bible-study.topicNotes';     // 旧版（1.0.59）专题屏级笔记：作业单页已无正文，只保留旧数据与云同步通道
+const LS_LAST_MARK = 'bible-study.lastMark';         // 最近使用的标注色（评审 F8，纯本地）
 const LS_AUDIO_LAST = 'bible-study.audioLast';       // {collection, lecture, track, time} 听书断点（纯本地，不进云同步）
 // 阅读排版取值约束（必须在 state 初始化前声明：state.typography 依赖 normalizeTypo 读取这两个常量）
-const TYPO_DEFAULTS = { scale: 1, lh: 2 };
+const TYPO_DEFAULTS = { scale: 1, lh: 2, font: 'sans' };
 const TYPO_RANGE = { scale: [0.85, 2], lh: [1.5, 2.4] };   // 字号上限 2.0：满足 WCAG 1.4.4「文字可放大 200%」
 const TYPO_STEP = 0.05;
 // 各模块正文基准字号（对应 style.css 的 calc(Npx * var(--reading-scale))，仅用于面板上的 px 显示）
@@ -148,14 +149,14 @@ const state = {
 /* 合集注册表（数据驱动）：首页块列表，点击 = 直接进入对应阅读器模块。
    晨兴/书报数据导出后各加一行即可上块，UI 零改动 */
 const COLLECTIONS = [
-  { id: 'bible', title: '读经', icon: '📖', entry: () => enterModule('bible') },
-  { id: 'lifereading', title: '生命读经', icon: '📗', entry: () => enterModule('lifereading') },
-  { id: 'vitality8', title: '活力八', icon: '🔥', entry: () => openTopic('vitality8') },
-  { id: 'notes', title: '我的笔记', icon: '📝', entry: () => enterModule('notes') },
-  { id: 'morning', title: '听抄', icon: '🌅', entry: () => enterModule('morning') },
-  { id: 'audio', title: '听书', icon: '🎧', entry: () => enterModule('audio') },
-  { id: 'ni', title: '倪文集', icon: '📚', entry: () => enterModule('books', { series: 'ni' }) },
-  { id: 'bookhub', title: '书报', icon: '🗂️', entry: () => openBookHub() },
+  { id: 'bible', title: '读经', sub: '旧约 + 新约 · 66 卷', icon: '📖', entry: () => enterModule('bible') },
+  { id: 'lifereading', title: '生命读经', sub: '66 卷 · 逐卷研读', icon: '📗', entry: () => enterModule('lifereading') },
+  { id: 'vitality8', title: '活力八', sub: '每周作业单', icon: '🔥', entry: () => openTopic('vitality8') },
+  { id: 'notes', title: '我的笔记', sub: '划线 · 领受 · 汇总', icon: '📝', entry: () => enterModule('notes') },
+  { id: 'morning', title: '听抄', sub: '特会逐篇文稿', icon: '🌅', entry: () => enterModule('morning') },
+  { id: 'audio', title: '听书', sub: '1 合集 · 41 讲', icon: '🎧', entry: () => enterModule('audio') },
+  { id: 'ni', title: '倪文集', sub: '3 辑 62 册', icon: '📚', entry: () => enterModule('books', { series: 'ni' }) },
+  { id: 'bookhub', title: '书报', sub: '31 个系列', icon: '🗂️', entry: () => openBookHub() },
 ];
 
 /* 专题注册表（见 AGENTS.md「专题」节）：页面只是作业单的链接聚合，
@@ -186,7 +187,7 @@ const THEME_ICONS = {
   bible: _thSvg('<path d="M12 5.5C10 3.9 7.5 3.5 4.5 3.7v14c3-.2 5.5.2 7.5 1.8 2-1.6 4.5-2 7.5-1.8v-14C16.5 3.5 14 3.9 12 5.5z"/><path d="M12 5.5v14"/>'),
   lifereading: _thSvg('<path d="M6 3.5h12v17l-6-3.5-6 3.5z"/><path d="M9.5 3.5v7l2.5-1.8 2.5 1.8v-7"/>'),
   notes: _thSvg('<rect x="5" y="4" width="14" height="16" rx="2"/><path d="M8.5 9h7M8.5 13h7M8.5 17h4"/>'),
-  morning: _thSvg('<path d="M4.5 13.5a7.5 7.5 0 0 1 15 0"/><rect x="3.5" y="13.5" width="4" height="6.5" rx="1.6"/><rect x="16.5" y="13.5" width="4" height="6.5" rx="1.6"/>'),
+  morning: _thSvg('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5v3.5M8.5 21h7"/>'),
   audio: _thSvg('<path d="M7.5 14.5V9a4.5 4.5 0 0 1 9 0v5.5"/><rect x="4.5" y="13" width="3.5" height="6" rx="1.5"/><rect x="16" y="13" width="3.5" height="6" rx="1.5"/>'),
   ni: _thSvg('<path d="M5 6.5h11M7 10h11M9 13.5h11"/><path d="M4 17.5l3.2-11h2"/>'),
   bookhub: _thSvg('<path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>'),
@@ -573,6 +574,7 @@ function initDebugMode() {
 // 读入值归一：越界钳制到边界（步进越界时停在上下限，不能跳回默认），非数字/缺失回退默认
 function normalizeTypo(v) {
   const out = { ...TYPO_DEFAULTS };
+  out.font = (v && v.font === 'serif') ? 'serif' : 'sans';   /* 评审 F9 */
   ['scale', 'lh'].forEach((k) => {
     const n = v ? v[k] : undefined;
     const [lo, hi] = TYPO_RANGE[k];
@@ -588,6 +590,7 @@ function normalizeTypo(v) {
 function applyTypography() {
   const root = document.documentElement.style;
   root.setProperty('--reading-scale', String(state.typography.scale));
+  root.setProperty('--reading-font', state.typography.font === 'serif' ? '"Noto Serif SC","Source Han Serif SC","Songti SC",SimSun,serif' : 'inherit');
   root.setProperty('--reading-lh', String(state.typography.lh));
 }
 
@@ -604,6 +607,13 @@ function syncTypoUI() {
   lh.value = Math.round(state.typography.lh * 100);
   $('fsVal').textContent = typoFsLabel();
   $('lhVal').textContent = state.typography.lh.toFixed(2);
+  const serif = state.typography.font === 'serif';
+  const fsSans = $('fontSans'), fsSerif = $('fontSerif');
+  if (fsSans && fsSerif) {
+    fsSans.classList.toggle('on', !serif);
+    fsSerif.classList.toggle('on', serif);
+    $('fontVal').textContent = serif ? '宋体' : '黑体';
+  }
 }
 
 function setTypography(patch) {
@@ -1216,6 +1226,7 @@ function renderHome() {
     <div class="home-block" data-entry="${c.id}" role="button" tabindex="0">
       <div class="home-block-icon">${blockIconHtml(c.icon, c.id)}</div>
       <div class="home-block-title">${c.title}</div>
+      <div class="home-block-sub">${c.sub || ''}</div>
     </div>`).join('');
   renderHomeHistory();
 }
@@ -4485,6 +4496,9 @@ function showToast(text, cls) {
     t = document.createElement('div');
     t.id = 'toast';
     t.className = 'toast';
+    t.setAttribute('role', 'status');
+    t.addEventListener('mouseenter', () => clearTimeout(t._timer));
+    t.addEventListener('mouseleave', () => { clearTimeout(t._timer); t._timer = setTimeout(() => t.classList.remove('show'), 1200); });   /* 悬停暂停（评审 F10） */
     document.body.appendChild(t);
   }
   t.textContent = text;
@@ -5522,7 +5536,7 @@ function ensureAudioEl() {
   // 缓冲/失败要落到界面（反馈 #32）：waiting → 「缓冲中…」，error → 卡片内重试 + 按钮回 ▶。
   // 只靠 error 的 toast 不够：toast 2.6s 消失后界面会一直停在「正在播放 0:00」。
   a.addEventListener('waiting', () => { state.audioBuffering = true; audioSyncStatus(); });
-  a.addEventListener('playing', () => { state.audioBuffering = false; audioSyncStatus(); });
+  a.addEventListener('playing', () => { state.audioBuffering = false; state.audioRetryCount = 0; state.audioRetryUntil = 0; audioSyncStatus(); });
   a.addEventListener('error', audioSyncMini);
   a.addEventListener('canplay', () => { if (!a.paused) { state.audioBuffering = false; audioSyncStatus(); } });
   a.addEventListener('ended', () => {
@@ -5597,8 +5611,10 @@ function audioSetSource(autoplay) {
 function audioRetry() {
   const a = ensureAudioEl();
   const prev = a.currentTime || 0;
+  state.audioRetryCount = (state.audioRetryCount || 0) + 1;
   state.audioError = false;
   state.audioBuffering = false;
+  state.audioRetryUntil = Date.now() + (state.audioRetryCount > 1 ? Math.min(8000, 2000 * Math.pow(2, state.audioRetryCount - 2)) : 0);   /* 退避 0/2/4/8s */
   a.load();
   a._resumeAt = prev > 0 ? prev : 0;
   audioSetSource(true);
@@ -5715,9 +5731,17 @@ function audioSyncStatus() {
   if (state.audioError) {
     el.hidden = false;
     el.className = 'au-status error';
-    if (!el.querySelector('[data-arety]')) {
-      el.innerHTML = `<span>音频加载失败，请检查网络</span><button class="au-retry" data-arety>重试</button>`;
+    /* 重试退避（评审）：失败次数越多重试键冷却越长（0/2/4/8s），倒计时期间禁点 */
+    const cnt = state.audioRetryCount || 0;
+    const left = Math.max(0, Math.ceil(((state.audioRetryUntil || 0) - Date.now()) / 1000));
+    const wait = left > 0;
+    const key = wait ? String(left) : 'go';
+    if (el.dataset.cd !== key) {
+      el.dataset.cd = key;
+      el.innerHTML = `<span>${cnt >= 2 ? `已连续失败 ${cnt} 次 · ` : ''}音频加载失败，请检查网络</span><button class="au-retry" data-arety${wait ? ' disabled' : ''}>${wait ? `重试（${left}s）` : '重试'}</button>`;
     }
+    clearInterval(state.audioRetryCdTimer);
+    if (wait) state.audioRetryCdTimer = setInterval(audioSyncStatus, 400);
   } else if (state.audioBuffering) {
     el.hidden = false;
     el.className = 'au-status';
@@ -5725,6 +5749,7 @@ function audioSyncStatus() {
       el.innerHTML = `<span class="au-spin" aria-hidden="true"></span><span>缓冲中…</span>`;
     }
   } else {
+    clearInterval(state.audioRetryCdTimer);
     // 状态行隐藏会移除正持有焦点的「重试」按钮 → 焦点交回播放键，键盘用户不必重 Tab 整页
     if (el.contains(document.activeElement)) { try { $('auPlay').focus(); } catch (e) { /* 忽略 */ } }
     el.hidden = true;
@@ -6735,6 +6760,8 @@ function bindEvents() {  // 首页：合集块点击 + 顶部搜索 + ⌂ 回首
   $('typoModal').addEventListener('click', (e) => { if (e.target === $('typoModal')) closeTypoModal(); });
   $('fsRange').addEventListener('input', (e) => setTypography({ scale: +e.target.value / 100 }));
   $('lhRange').addEventListener('input', (e) => setTypography({ lh: +e.target.value / 100 }));
+  $('fontSans').addEventListener('click', () => setTypography({ font: 'sans' }));
+  $('fontSerif').addEventListener('click', () => setTypography({ font: 'serif' }));
   $('fsMinus').addEventListener('click', () => stepTypography('scale', -TYPO_STEP));
   $('fsPlus').addEventListener('click', () => stepTypography('scale', TYPO_STEP));
   $('lhMinus').addEventListener('click', () => stepTypography('lh', -TYPO_STEP));
@@ -7133,10 +7160,19 @@ function showFloatTool(rect) {
   const tool = $('floatTool');
   tool.hidden = false;
   tool.innerHTML = '';
-  // 5 色
-  COLORS.forEach(c => {
+  // 选中预览（评审 F8）：工具条可能盖住选区，首行回显选中文本
+  const selText = (selectedPlainText() || '').trim();
+  if (selText) {
+    const pv = document.createElement('div');
+    pv.className = 'ft-preview';
+    pv.textContent = `「${selText.slice(0, 24)}${selText.length > 24 ? '…' : ''}」`;
+    tool.appendChild(pv);
+  }
+  // 5 色（最近使用的颜色排首位并加环，评审 F8）
+  const lastMark = localStorage.getItem(LS_LAST_MARK);
+  [...COLORS].sort((x, y) => (y.id === lastMark) - (x.id === lastMark)).forEach(c => {
     const sw = document.createElement('div');
-    sw.className = `sw ${c.id}`;
+    sw.className = `sw ${c.id}${c.id === lastMark ? ' active' : ''}`;
     sw.title = `${c.name}：${c.desc}`;
     bindPress(sw, () => applyColor(c.id));
     tool.appendChild(sw);
@@ -7338,7 +7374,8 @@ function addAnnotation(partial) {
   hideFloatTool();
 }
 
-function applyColor(colorId) { addAnnotation({ colorId, underline: false }); }
+function applyColor(colorId) {
+  try { localStorage.setItem(LS_LAST_MARK, colorId); } catch (e) { /* 忽略 */ } addAnnotation({ colorId, underline: false }); }
 function applyUnderline() { addAnnotation({ underline: true, colorId: null }); }
 
 /* 标注变更后的定向重渲染（保留滚动位置） */

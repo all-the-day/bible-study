@@ -28,7 +28,7 @@ async function main() {
     }
   });
 
-  // 1. 启动进首页 + 无副标题 + splash 隐藏后经节非空
+  // 1. 启动进首页 + 8 块副文案（2026-11-04 评审 F5）+ splash 隐藏后经节非空
   await page.evaluateOnNewDocument(() => { window.BIBLE_SKIP_UPDATE = true; });   // 跳过启动静默更新检查（省 GitHub API 配额）
   await page.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'networkidle0', timeout: 30000 });
   await page.waitForSelector('#homeGrid .home-block', { timeout: 15000 });
@@ -39,7 +39,7 @@ async function main() {
     splashHidden: document.querySelector('#splash')?.classList.contains('hidden'),
     verse: document.querySelector('#splashVerse')?.textContent.trim() || '',
   }));
-  console.log('1. 启动进首页:', homeOk.bodyHome ? '✓' : '✗', '| 块:', homeOk.blocks.join(','), '| 副标题数:', homeOk.subCount, homeOk.subCount === 0 ? '✓' : '✗',
+  console.log('1. 启动进首页:', homeOk.bodyHome ? '✓' : '✗', '| 块:', homeOk.blocks.join(','), '| 副标题数:', homeOk.subCount, homeOk.subCount === 8 ? '✓' : '✗',
     '| splash已隐藏:', homeOk.splashHidden ? '✓' : '✗', '| 经节:', homeOk.verse.slice(0, 12));
 
   // 2. 读经块 → 直接进上次章节(预置 创24)，无弹窗

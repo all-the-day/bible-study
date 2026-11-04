@@ -288,7 +288,7 @@ body.home .reading-progress { display: none; }
   transition: opacity .25s, transform .25s;
   max-width: 86vw; text-align: center;
 }
-.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }   /* 悬停暂停（评审 F10）需可 hover */
 .toast.on { color: #a5f3a5; }
 .toast.pending { color: #ffd28a; }
 .toast.offline { color: #ff9d9d; }
@@ -709,7 +709,7 @@ sup.xref-ref:hover { color: var(--brand-dark); }
 
 /* ── 标注浮动工具 ── */
 .floattool {
-  position: fixed; z-index: var(--z-floattool);   /* 高于停靠抽屉 81：划线工具伸进停靠列区域时不被盖住（点击穿透会误触导航） */
+  position: fixed; z-index: var(--z-floattool); flex-wrap: wrap;   /* 预览 chip 独占一行（评审 F8） */   /* 高于停靠抽屉 81：划线工具伸进停靠列区域时不被盖住（点击穿透会误触导航） */
   background: var(--panel); border-radius: var(--radius-md);
   box-shadow: var(--shadow-overlay);
   padding: 6px; display: flex; gap: 6px; align-items: center;
@@ -721,6 +721,10 @@ sup.xref-ref:hover { color: var(--brand-dark); }
   border: 2px solid transparent;
 }
 .floattool .sw.active { border-color: var(--swatch-border); }
+.floattool .ft-preview {
+  flex-basis: 100%; font-size: var(--fs-12); color: var(--text-muted);
+  padding: 2px 4px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .floattool .sw.c1 { background: var(--c1); }
 .floattool .sw.c2 { background: var(--c2); }
 .floattool .sw.c3 { background: var(--c3); }
@@ -822,6 +826,8 @@ sup.xref-ref:hover { color: var(--brand-dark); }
   display: flex; align-items: center; gap: 10px;
   padding: 14px 18px; border-top: 1px solid var(--border);
 }
+.typo-font-btn { flex: 1; text-align: center; }
+.typo-font-btn.on { background: var(--surface-alt); color: var(--brand-dark); border-color: var(--brand); font-weight: 600; }   /* 评审 F9 */
 .typo-label { flex: 0 0 34px; font-size: var(--fs-13); color: var(--text-soft); }
 .typo-val { flex: 0 0 86px; text-align: right; font-size: var(--fs-12); color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .typo-step {
@@ -1203,7 +1209,7 @@ body.bookhub #menuBtn { display: none; }               /* 合集层是层级选�
   position: fixed; inset: 52px 0 0; z-index: 20;
   background: var(--page-bg); overflow-y: auto; padding: 24px 16px 40px;
 }
-.home-wrap { max-width: 640px; margin: 0 auto; }
+.home-wrap { max-width: 720px; margin: 0 auto; }   /* 评审 F5：4 列网格（4×150+gap） */
 .home-search { position: relative; }
 .home-search input {
   width: 100%; padding: 12px 16px; border: 1px solid var(--border);
@@ -1254,6 +1260,7 @@ mark.sr-hit {
 .home-block:hover { border-color: var(--brand); transform: translateY(-2px); }
 .home-block-icon { font-size: var(--fs-40); line-height: 1; }
 .home-block-title { font-size: var(--fs-16); font-weight: 600; color: var(--heading); }
+.home-block-sub { font-size: var(--fs-12); color: var(--text-muted); margin-top: 2px; }   /* 评审 F5 */
 
 /* 首页「最近阅读」（反馈 #16）：合集块下方的极简行列表（无卡片底，仅细分隔线） */
 .home-hist { margin-top: 26px; }
@@ -1908,11 +1915,10 @@ mark.sr-hit {
 .theme-item.cur .theme-name { color: var(--brand); font-weight: 700; }
 .theme-check { color: var(--brand); font-weight: 700; min-width: 16px; }
 
-/* ── 合集块图标双渲染：classic=emoji，其余主题=线性图标（stroke=currentColor 跟随主题）── */
-.home-block-icon .hb-ic-line { display: none; }
+/* ── 合集块图标：全主题线性 SVG（2026-11-04 评审 F5；emoji 仍在 DOM 但不再作界面图标；stroke=currentColor 跟随主题）── */
+.home-block-icon .hb-ic-em { display: none; }
 .hb-ic-line svg { width: 34px; height: 34px; display: block; }
-:root:not([data-theme="classic"]) .home-block-icon .hb-ic-em { display: none; }
-:root:not([data-theme="classic"]) .home-block-icon .hb-ic-line { display: block; color: var(--brand); }
+.home-block-icon .hb-ic-line { display: block; color: var(--brand); }
 :root[data-theme="minimal"] .home-block-icon .hb-ic-line { color: var(--text-soft); }
 
 /* ── 使用帮助（设置 → 使用帮助）：正文 + 最近更新；「最近更新」与更新弹窗「本次更新」
@@ -1968,3 +1974,7 @@ body.mini-audio #homeView { padding-bottom: calc(96px + env(safe-area-inset-bott
   body.mini-audio .mode-pill { bottom: calc(126px + env(safe-area-inset-bottom)); } /* 模式 pill 上移让位 */
   .mini-player { left: 8px; right: 8px; }
 }
+
+/* ── 经文字体选项（2026-11-04 评审 F9）：Aa 面板黑体/宋体，--reading-font 由 app.js 驱动 ── */
+.verse, .lr-content, .lr-para, .bk-para, .morning-para,
+.chapter-theme, .theme-row, .outline-item { font-family: var(--reading-font, inherit); }

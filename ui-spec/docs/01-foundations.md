@@ -85,6 +85,7 @@
 | 书报正文 | 15px | 同上 |
 | 章纲目 / 主题行 | 14–15px | 同上 |
 | 注脚上标 | 11px | 同上 |
+| 字体 | 黑体（默认）/ 宋体 | 评审 F9：`--reading-font` 由 Aa 面板驱动，宋体栈 Noto Serif SC → Songti SC → SimSun；仅作用于阅读正文（.verse/.lr-content/.lr-para/.bk-para/.morning-para/纲目行），节号与 UI 保持无衬线 |
 
 UI 控件一律不进白名单。
 
