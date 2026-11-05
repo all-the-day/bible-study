@@ -80,7 +80,7 @@
     <text class="t" x="486" y="438" font-size="12" font-weight="600" fill="#fff"> </text>
     <text class="t" x="492" y="438" font-size="12" font-weight="600" fill="#fff">Aa</text>
     <text class="t" x="520" y="438" font-size="13" fill="#fff" text-anchor="middle">⚙️</text>
-    <text class="nt" x="24" y="472">桌面无 mode-pill（display:none 基础规则）· reading-progress 2px 白条随 #textCol 滚动（body.home 隐藏）· ⚙️ 为 emoji 字符</text>
+    <text class="nt" x="24" y="472">桌面无 mode-pill（display:none 基础规则）· reading-progress 2px 白条随 #textCol 滚动（body.home 隐藏）· ⌂/☰/⚙️ 为 Lucide 内联 SVG（house/menu/settings，2026-11-05 起）</text>
   </g>
 
   <!-- ⑤ 听书/其他模块 · 桌面（右簇矩阵） -->
