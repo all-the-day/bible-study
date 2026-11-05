@@ -36,7 +36,7 @@
 
 - **用途**：四阅读模块共用的层级浏览 + 搜索 + 历史。
 - **解剖**：搜索框 → Segment(浏览|历史) → 双栏主从（层级一无序号 / 层级二剥序号）→ 底部段切换；宽 340。
-- **变体**：停靠（≥1200 常驻，`margin-left .25s`）/ 浮层（<1200，backdrop z-80 + 抽屉 z-81）。
+- **变体**：停靠（≥1400 常驻，`margin-left .25s`；评审 F4 由 1200 抬到 1400）/ 浮层（<1400，backdrop z-80 + 抽屉 z-81）。
 - **状态**：`cur` 高亮（跟随任意跳转）/ hover `--hover` / 浮层遮罩。
 - **键盘**：Esc 关浮层（已实现）；Enter 进列表项；方向键导航=待补（见 05）。
 - **无障碍**：`role="dialog"`（浮层态）+ `aria-modal`；遮罩点击关闭；焦点关闭后归还 ☰。
@@ -51,7 +51,7 @@
 - **变体**：classic 卡片化 / paper 去卡片化（`--verse-sep` 分隔线 + `--vnum-color` 换挡）。
 - **状态**：标注 5 色 mark（50% 透明底）/ fn-ref hover 加深 / ref-link 可点。
 - **键盘**：fn-ref、ref-link、person 为 Tab 可达的内联控件（Inline 例外，目标尺寸豁免）。
-- **无障碍**：标注底对比 c1–c5 = 12.89/8.84/6.00/8.23/7.26 全 PASS（04 §1.1）；vnum 用 brand 3.54 ✗ → 建议换 brand-dark。
+- **无障碍**：标注底对比 c1–c5 = 12.89/8.84/6.00/8.23/7.26 全 PASS（04 §1.1）；vnum/ref-link 已换 brand-dark 4.84 ✓（评审落地）。
 - **Token**：`--card-bg/-border/-shadow`、`--vnum-color`、`--c1..c5`、`--fn-ref`、`--person`。
 - **Do**：标注定位基于源文本偏移+`text/prefix/suffix` 自愈，`data-base` 坐标神圣。**Don't**：改五色语义；硬编码经文正文；重排（卷,位置）索引。
 - **代码**：`.verse/.vtext/mark.c*/sup.fn-ref` @ style.css；渲染器 @ app.js。
@@ -71,8 +71,8 @@
 ### D1 HomeBlock 合集块
 
 - **用途**：首页与书报合集层的入口磁贴（数据驱动）。
-- **解剖**：卡片（radius-md+border+shadow）> 图标（classic=emoji 30px / 其余=线性 SVG 34px stroke currentColor）+ 标题 15/600 + 副文案 12 muted。
-- **变体**：主题双渲染（emoji/线性）；hover 上浮。
+- **解剖**：卡片（radius-md+border+shadow）> 图标（全主题线性 SVG 34px，Lucide 官方路径，stroke currentColor 跟 `--brand`）+ 标题 15/600 + 副文案 12 muted（真实统计数据）。
+- **变体**：全主题统一线性渲染（Lucide，2026-11-04 评审 F5 落地，classic 不再用 emoji）；hover 上浮。
 - **状态**：default / hover（上浮+阴影加深）/ focus-visible。
 - **无障碍**：整块为单个 `<a href>`；图标装饰性 `alt=""`，标题承载语义；副文案数字真实（不发明指标）。
 - **Token**：`--surface/-border/-radius-md`、`--brand`。
@@ -84,7 +84,7 @@
 - **用途**：听书模块的播放控制中枢（单列布局）。
 - **解剖**：段标签 → 时间行（tabular-nums）→ 进度条（track 4px+brand 已播+圆点）→ 控制行（±15s 图标、56px 品牌圆钮、SpeedPill）。
 - **属性**：`segment{index,total,current,duration,ratio}` `state=buffering|error|ready` `speeds[0.75,1,1.25,1.5,2]`。
-- **状态**：缓冲中… / 错误+重试（保留位置）/ 播放中（钮=暂停）/ 拖动中（横拖跟随，纵滑仍滚动）。
+- **状态**：缓冲中… / 错误+重试（保留位置 + 退避冷却 0/2/4/8s，连败计数展示）/ 播放中（钮=暂停）/ 拖动中（横拖跟随，纵滑仍滚动）。
 - **键盘**：空格播放暂停；←→ ±15s；进度条 `role="slider"` + `aria-valuenow`（补）。
 - **无障碍**：时间 tabular-nums ✓；状态变化用 `role="status"` 播报「已切至第 N 段」（建议）。
 - **Token**：`--slider-track`、`--brand`、`--radius-md`。
@@ -119,7 +119,7 @@
 | SettingsList 设置分组 | surface-alt 卡 · row 12/14 · 行间 1px | 分组标签 12px muted | modal |
 | Badge 状态徽标 | 11px · radius 10 · on=success | 文字用深档（04 §1.2） | modal |
 | AnnotationToolbar 标注条 | 深底 pill · 5 色点 r10 · z-82 | 点色即存；改色/改笔记/删除分离 | annotation |
-| Toast 轻提示 | 底部居中 · 上浮 10px · z-90 | `role="status"`；可悬停暂停（待补） | annotation |
+| Toast 轻提示 | 底部居中 · 上浮 10px · z-90 | `role="status"`；悬停暂停已实现（评审 F10） | annotation |
 | MiniPlayer 迷你播放条 | fixed 底部 · max-w 720 · z-79 · 34px 播放钮 + 标题/时间/细进度 | 仅「已加载音频且不在听书模块」显示；toast/mode-pill 让位；正文列补底部 padding；标题点击回听书；`body.mini-audio` 驱动 | design-review F7 |
 | LoadingHint/ErrorHint/EmptyHint | spinner 18px · 错误三问 · 空态带 CTA | 永不无限转 | annotation |
 | RefLink 引用链接 | 品牌色内联 → 跳对应章 | 3.54 ✗ 建议换 brand-dark | reading |

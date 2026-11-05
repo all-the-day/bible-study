@@ -44,8 +44,8 @@
   <text class="t" x="86" y="314" font-size="14" font-weight="700" fill="#667eea">经典</text>
   <text class="t" x="352" y="314" font-size="14" font-weight="700" fill="#667eea">✓</text>
   <line x1="40" y1="326" x2="368" y2="326" stroke="#e6e8f0"/>
-  <circle cx="58" cy="348" r="7" fill="#5662CE"/><circle cx="74" cy="348" r="7" fill="#faf7f1" stroke="#eae3d5"/><circle cx="90" cy="348" r="7" fill="#f6f6f8" stroke="#e6e6ea"/>
-  <text class="t" x="104" y="352" font-size="14" fill="#1f2937">靛蓝 / 暖纸 / 素灰</text>
+  <circle cx="58" cy="348" r="7" fill="#5662CE"/><circle cx="74" cy="348" r="7" fill="#faf7f1" stroke="#eae3d5"/><circle cx="90" cy="348" r="7" fill="#f6f6f8" stroke="#e6e6ea"/><circle cx="106" cy="348" r="7" fill="#111318" stroke="rgba(255,255,255,.3)"/>
+  <text class="t" x="120" y="352" font-size="14" fill="#1f2937">靛蓝 / 暖纸 / 素灰 / 暗夜</text>
   <text class="nt" x="24" y="404">settings-row padding 12 14 · 行间 1px border · badge on=success 色 · theme-list 单选</text>
 
   <!-- Splash -->

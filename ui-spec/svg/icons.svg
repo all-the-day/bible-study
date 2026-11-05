@@ -9,7 +9,7 @@
     .sub{font-family:Consolas,Menlo,monospace;font-size:10px;fill:#6b7280;}
   </style>
   <text class="hd" x="24" y="24">图标库 Icons</text>
-  <text class="sub" x="24" y="40">24px 网格 · stroke=currentColor(1.8) · 首页块内 34px · 非经典主题替换 emoji</text>
+  <text class="sub" x="24" y="40">24px 网格 · stroke=currentColor(1.8) · 首页块内 34px · 全主题线性（2026-11-04 起，Lucide 路径）</text>
 
   <!-- row 1 -->
   <g transform="translate(24,60)">

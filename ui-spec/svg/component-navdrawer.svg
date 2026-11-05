@@ -53,7 +53,7 @@
   <text class="t" x="291" y="370" font-size="13" font-weight="600" fill="#fff" text-anchor="middle">新约</text>
 
   <!-- 浮层态示意 -->
-  <text class="cap" x="420" y="80">浮层态（&lt;1200px）</text>
+  <text class="cap" x="420" y="80">浮层态（&lt;1400px）</text>
   <rect x="420" y="90" width="120" height="180" fill="rgba(31,41,55,.35)"/>
   <rect x="436" y="90" width="88" height="180" fill="#fafbff" stroke="#e6e8f0"/>
   <path d="M448 108h16M448 114h16M448 120h16" stroke="#4b5563" stroke-width="1.6" stroke-linecap="round" fill="none"/>

@@ -27,14 +27,14 @@
 
 | Token | classic 值 |
 |---|---|
-| `--topbar-bg` | `linear-gradient(135deg, #667EEA, #5B67D4)` |
-| `--topbar-solid` | `#667eea`（iOS 26 Safari 顶部取色专用，渐变不参与） |
+| `--topbar-bg` | `linear-gradient(135deg, #5B67D4, #4651B8)`（2026-11-04 评审 F3 加深） |
+| `--topbar-solid` | `#5B67D4`（iOS 26 Safari 顶部取色专用，渐变不参与） |
 | `--topbar-fg` | `#fff` |
 | `--topbar-shadow` | `var(--shadow-md)` |
 | `--topbar-line` / `-strong` | `rgba(255,255,255,.4)` / `.5` |
 | `--topbar-btn` / `-on` | `rgba(255,255,255,.15)` / `.25` |
 
-白字对 `#667eea` 对比度约 3.7:1（大字号档）；顶栏文字均为 17px/600 或图标，不放置小号正文。
+白字对渐变两端 4.84 / 6.71（2026-11-04 评审 F3 加深后全部 ≥4.5）。顶栏文字均为 17px/600 或图标，不放置小号正文。
 
 ### 1.3 功能色
 
@@ -42,7 +42,7 @@
 |---|---|---|
 | `--danger` / `-soft` / `-deep` | `#d9534f` / `rgba(217,83,79,.08)` / `#b91c1c` | 删除、危险操作 |
 | `--success` / `-soft` / `-deep` | `#16a34a` / （soft/deep 同构） | 云同步已连接徽标 |
-| `--fn-ref` / `-hover` | `#c07818` / `#e08000` | 注脚上标（数字偏橙） |
+| `--fn-ref` / `-hover` | `#a36112` / `#c2410c`（评审整改后 4.76/5.02） | 注脚上标（数字偏橙） |
 | `--person` / `-dark` | `#0f7b6c` / `#0a5c51` | 人物链接（正文人名） |
 | `--note-wavy` / `--note-soft` | `#eb6c05` / `rgba(235,108,5,.08)` | 笔记波浪线 |
 
@@ -86,6 +86,7 @@
 | 章纲目 / 主题行 | 14–15px | 同上 |
 | 注脚上标 | 11px | 同上 |
 | 字体 | 黑体（默认）/ 宋体 | 评审 F9：`--reading-font` 由 Aa 面板驱动，宋体栈 Noto Serif SC → Songti SC → SimSun；仅作用于阅读正文（.verse/.lr-content/.lr-para/.bk-para/.morning-para/纲目行），节号与 UI 保持无衬线 |
+| 度量 | `--prose-measure: 42rem` | 正文限宽（评审 F2），`#textCol > *` 消费（`min(42rem,100%)` 窄列退化），听书/笔记管理豁免 |
 
 UI 控件一律不进白名单。
 
@@ -111,7 +112,7 @@ UI 控件一律不进白名单。
 
 ```
 splash 100 › toast 90 ≈ update 90 › typo 88 › popup 85 › overlay 84
-› floattool 82 › dock 81 › backdrop 80 › progress 35 › topbar 30
+› floattool 82 › dock 81 › backdrop 80 › mini 79（迷你播放条）› progress 35 › topbar 30
 ```
 
 浮层从下往上：抽屉（backdrop/dock）→ 标注工具条 → 弹窗 → 排版面板 → 更新/Toast → Splash。
@@ -143,7 +144,7 @@ splash 100 › toast 90 ≈ update 90 › typo 88 › popup 85 › overlay 84
 | 经文分隔 | 无（卡片化） | 无 | `1px solid #f0eadd` | 卡片保留 |
 | 首页块图标 | emoji | 线性图标 | 线性图标 | 线性（灰） |
 
-主题选型备注（来自代码注释）：paper 明度 ≥96%，避免挤压 c1 黄标注；minimal 走 iOS 灰阶 + 单一靛蓝 accent。**五色标注、字号、圆角、层级在各主题下不变。**
+主题选型备注（来自代码注释）：paper 明度 ≥96%，避免挤压 c1 黄标注；minimal 走 iOS 灰阶 + 单一靛蓝 accent。**五色标注语义与字号、圆角、层级在各主题下不变；dark 主题下标注透明度降至 25–35%（暗底对比 6.9–10.9）。**
 
 ### 暗夜 dark（2026-11-04 评审 F1 新增）
 
@@ -157,7 +158,7 @@ splash 100 › toast 90 ≈ update 90 › typo 88 › popup 85 › overlay 84
 
 - **三字重制**：400 正文 / 600 强调与 UI 标签 / 700 稀用（大标题、激活 pill）。全应用不出现 500/800。
 - **字距**：中文界面默认 0；小号（≤13px）可 +0.01em；若引入英文全大写标签必须 +0.06em 起。
-- **行宽**：正文列建议 ≤38em（900–1200px 区间约 30–45em，靠研读列 480px 兑底）；长文段落禁 `justify`（书报标题行除外）。
+- **行宽**：正文限宽 42rem 已落地（`--prose-measure`，`min(42rem, 100%)` 窄列退化自动全宽）；长文段落禁 `justify`（书报标题行除外）。
 - **数字**：时间/计数用 tabular-nums（播放器时间已遵守，抽屉计数建议跟进）。
 - **标题层级**：视觉字号与语义层级独立；一屏一个 h1，不跳级。
 
