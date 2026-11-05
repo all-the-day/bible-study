@@ -194,7 +194,7 @@ body.home .reading-progress { display: none; }
    书卷/训练期名在抽屉与正文里都有，章/篇名才是「我在读哪一段」；
    放得下时（读经「创世记 1章」）与改前逐像素一致。 */
 .crumb #bookName { white-space: nowrap; flex: 0 99 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.crumb #chapterLabel { font-weight: 400; opacity: .9; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crumb #chapterLabel { font-weight: 400; opacity: .9; white-space: nowrap; flex: 0 0 auto; }   /* 评审 P1-2：章号永不截断，书名单一 ellipsis 点（消灭「提摩太… 5…」双截断） */
 .topbar-actions { display: flex; gap: 4px; align-items: center; }
 @media (max-width: 900px) {
   .crumb { flex: 1; }
@@ -1978,3 +1978,21 @@ body.mini-audio #homeView { padding-bottom: calc(96px + env(safe-area-inset-bott
 /* ── 经文字体选项（2026-11-04 评审 F9）：Aa 面板黑体/宋体，--reading-font 由 app.js 驱动 ── */
 .verse, .lr-content, .lr-para, .bk-para, .morning-para,
 .chapter-theme, .theme-row, .outline-item { font-family: var(--reading-font, inherit); }
+
+/* ── 2026-11-05 评审修复批次（第二轮） ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }   /* P1-3：跟随系统减弱动态 */
+}
+@media (pointer: coarse) {
+  .fb-select, .fb-textarea, .fb-input, .dw-search input { font-size: 16px; }   /* P1-4：≥16px 防 iOS 聚焦视口缩放（触屏全体，含 iPad 横屏） */
+}
+@media (max-width: 900px) {
+  .fb-select, .fb-textarea, .fb-input, .dw-search input { font-size: 16px; }   /* P1-4 宽度兜底：与 pointer:coarse 并列双保险 */
+}
+@media (min-width: 1400px) {
+  body.drawer-docked .crumb { cursor: default; }   /* P2-10：停靠展开态点击 no-op，不谎报可点 */
+}
+.toast-action { border: 1px solid rgba(255,255,255,.55); background: transparent; color: #fff; border-radius: 6px; padding: 2px 10px; margin-left: 10px; font-size: var(--fs-13); cursor: pointer; }
+.toast-action:hover { background: rgba(255,255,255,.15); }
+.empty-cta { margin-top: 12px; padding: 6px 16px; border-radius: 8px; border: 1px solid var(--brand); color: var(--brand-dark); background: transparent; cursor: pointer; font-size: var(--fs-13); }
+.empty-cta:hover { background: rgba(102,126,234,.1); }

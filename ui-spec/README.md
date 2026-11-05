@@ -56,3 +56,4 @@ ui-spec/
 | 2026-11-05 | v1.1.3 | 顶栏图标钮 Lucide 化：⌂/☰/⚙️ unicode 字形（真机字重不齐、对齐漂移、⚙️ 彩色 emoji 出戏）换 house/menu/cog 内联 SVG（齿轮用 cog：settings 花瓣造型小尺寸像花朵），icon-btn svg 22px 规则入 03 |
 | 2026-11-05 | audit | UI 最佳实践评审：audit-best-practices-2026-11-05.html——7 维评分 8.1，P1×3（副文案溢出/长书名双截断/reduced-motion）P2×8，做好项 8 条钉回退风险 |
 | 2026-11-05 | v1.1.4 | 首页副文案整体移除（评审 P1-1 处置，用户洞察：统计型对目标读者冗余）——磁贴回归 icon+title 两件套与书报二级层同构；规范稿/03/02 同步，home-test 断言 0 |
+| 2026-11-05 | v1.1.5 | 评审修复批次：P1-2 章号不截断（flex 0 0 auto）/P1-3 reduced-motion/P1-4 输入框 16px 双断点/P2-1 删除撤销（toast 动作按钮）/P2-4 空态 CTA/P2-9 theme-color 随主题/P2-10 停靠态 cursor——全部 CDP 实测，评分 8.2→8.6 |

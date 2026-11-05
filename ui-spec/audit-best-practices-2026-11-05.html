@@ -27,20 +27,23 @@
   .p1 { border-left: 4px solid var(--bad); }
   .p2 { border-left: 4px solid var(--warn); }
   .done { border-left: 4px solid #94a3b8; background: #f8fafc; }
+  .fixed { border-left: 4px solid var(--ok); }
   .tag { display: inline-block; font-size: 11px; font-weight: 700; border-radius: 20px; padding: 1px 10px; margin-right: 8px; vertical-align: 2px; }
   .tag.p1 { background: #fee2e2; color: var(--bad); }
   .tag.p2 { background: #fef3c7; color: var(--warn); }
   .tag.good { background: #dcfce7; color: var(--ok); }
   .tag.done { background: #e2e8f0; color: #475569; }
-  .new { display: inline-block; font-size: 10px; font-weight: 700; color: #fff; background: var(--bad); border-radius: 4px; padding: 0 5px; margin-right: 6px; vertical-align: 2px; }
+  .tag.fixed { background: #dcfce7; color: #166534; }
+  .res { background: #dcfce7; border-radius: 6px; padding: 6px 10px; font-size: 13px; color: #166534; margin: 8px 0; }
   .evi { font-size: 12.5px; color: var(--muted); background: #f1f5f9; border-radius: 6px; padding: 6px 10px; margin: 8px 0; }
   table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin: 10px 0; }
   th, td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; }
   th { background: #f1f5f9; font-weight: 600; }
   td.id { white-space: nowrap; color: var(--muted); font-family: Consolas,monospace; font-size: 12px; }
+  .st { white-space: nowrap; font-weight: 700; font-size: 12px; }
+  .st.ok { color: var(--ok); } .st.open { color: var(--warn); }
   .fix { color: var(--soft); }
   .fix b { color: var(--ink); }
-  img.evi-img { max-width: 100%; border: 1px solid var(--line); border-radius: 8px; margin: 8px 0; display: block; }
   s { color: var(--muted); }
   .foot { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12.5px; }
   @media print { body { background:#fff } .card { break-inside: avoid } }
@@ -50,72 +53,59 @@
 <div class="wrap">
 
 <h1>UI 最佳实践评审 · 第二轮</h1>
-<div class="meta">评审对象：feat/ui-refactor @ 726364d+（ui-spec v1.1.4）· 方法升级：① 先校准仪器再取证 ② 每个候选问题先问「该不该存在」③ 客观维度直接判、品味类给选项 ④ 被否方案留档 · 证据：+4 张新实测（360、设置弹窗）+ 代码级排查（输入字号/meta/touch-action）</div>
+<div class="meta">评审对象：feat/ui-refactor @ 修复批次后（ui-spec v1.1.5）· 方法：① 仪器校准 ② 先问「该不该存在」③ 客观维度直接判 ④ 被否留档 · 证据：16 张实测截图 + 代码级排查 + CDP 计算样式度量</div>
 
-<p class="lead">第二轮结论：P1-1 已按你的洞察处置（副文案整体移除）；<b>换口径后又发现一个新 P1——三个高频输入框 14px 字号会在 iOS 聚焦时强制缩放视口</b>（首页搜索框是 16px，说明规则已知但未覆盖全）。另新增两条客观 P2。caret 提案已撤回留档。</p>
+<p class="lead">第二轮完整闭环：第一轮 8.1 → 你的副文案洞察处置 P1-1 → 换口径扫出 3 个新问题 → <b>本批全部修复并逐项 CDP 实测验证</b>。P1 清零，P2 剩键盘导航等 5 项低频项。综合 <b>8.6 / 10</b>。</p>
 
 <div class="scores">
   <div class="score"><b>9.0</b><span>图标与资产</span></div>
-  <div class="score"><b>7.5</b><span>排版与内容</span></div>
+  <div class="score"><b>8.5 <span class="delta up">+1.0</span></b><span>排版与内容</span></div>
   <div class="score"><b>9.0</b><span>色彩与状态</span></div>
-  <div class="score"><b>8.5 <span class="delta up">+0.5</span></b><span>布局与间距</span></div>
-  <div class="score"><b>7.5 <span class="delta down">-0.5</span></b><span>多视口</span></div>
-  <div class="score"><b>8.0</b><span>可访问性</span></div>
-  <div class="score"><b>7.5</b><span>交互反馈</span></div>
+  <div class="score"><b>8.5</b><span>布局与间距</span></div>
+  <div class="score"><b>8.5 <span class="delta up">+1.0</span></b><span>多视口</span></div>
+  <div class="score"><b>8.5 <span class="delta up">+0.5</span></b><span>可访问性</span></div>
+  <div class="score"><b>8.5 <span class="delta up">+1.0</span></b><span>交互反馈</span></div>
 </div>
-<div class="total">综合 8.1 → 8.2。布局 +0.5（副文案移除后块高对齐、网格清爽）；多视口 -0.5（新发现的 iOS 输入缩放属移动体验硬伤，且恰恰出在最高频的抽屉搜索上）。</div>
+<div class="total">7 项修复均已实测：章号永不截断（flexShrink 0）、360 副文案问题随移除消解、reduced-motion 全局降级、390 下 fb/dw 输入 16px、theme-color 随主题（classic #5B67D4 / dark #15161d）、停靠展开 cursor 归位、撤销链路 restored=true、空态 CTA 在位。</div>
 
-<h2>一、处置追踪（第一轮 → 现在）</h2>
+<h2>一、处置总账</h2>
 
-<div class="card done"><span class="tag done">已处置</span><b>P1-1 副文案溢出</b> —— 你的洞察：副文案本身多余。已整体移除（726364d）：磁贴回归 icon+title 两件套，与书报二级层同构；360 实测块高完全对齐（.tmp-shots/nosub-360.png）。原 ellipsis 补丁方案作废。</div>
-<div class="card done"><span class="tag done">已撤回</span><b>crumb ▾ 尖角提案</b> —— 试用后你觉得不对，撤回（9b1ba7e）。留档备选：chip 容器 / 维持现状。贴合成组（left 88）保留。</div>
-<div class="card done"><span class="tag done">进行中</span><b>P1-2 长书名双截断</b> · <b>P1-3 reduced-motion</b> —— 方案已列，未动工。</div>
+<div class="card fixed"><span class="tag fixed">已修</span><b>P1-1 副文案溢出</b> —— 整体移除（你的洞察，726364d）。统计型对目标读者冗余；磁贴 icon+title 两件套与书报层同构。</div>
+<div class="card fixed"><span class="tag fixed">已修</span><b>P1-2 长书名双截断</b> —— <code>#chapterLabel { flex: 0 0 auto }</code>：章号永不截断，书名单一 ellipsis 点。390 实测「提摩太前书 5章」完整显示（书名省略中=False）。</div>
+<div class="card fixed"><span class="tag fixed">已修</span><b>P1-3 reduced-motion</b> —— 全局 <code>@media (prefers-reduced-motion: reduce)</code> 降级：动画/过渡时长归零、scroll-behavior:auto。</div>
+<div class="card fixed"><span class="tag fixed">已修</span><b>P1-4 输入框 iOS 聚焦缩放</b> —— <code>pointer: coarse</code> + <code>max-width: 900px</code> 双保险，fb-* / dw-search 移动端 16px。390 实测计算字号 16px ✓。</div>
+<div class="card fixed"><span class="tag fixed">已修</span><b>P2-9 theme-color 停更</b> —— applyTheme 同步读各主题 <code>--topbar-solid</code>（classic #5B67D4 / dark #15161d 实测通过）+ index.html 初始值修正。</div>
+<div class="card fixed"><span class="tag fixed">已修</span><b>P2-10 crumb 谎报可点</b> —— ≥1400 停靠展开态 cursor 归 default（实测 default ✓）。</div>
+<div class="card fixed"><span class="tag fixed">已修</span><b>P2-1 删除无撤销</b> —— showToast 升级支持动作按钮；deleteAnn 附 5s「撤销」：恢复走与新增同路径的 save()（outbox 删除在前恢复在后，并集合并终态正确），墓碑桩随内存数组写回自动清除。CDP 链路验证 restored=true。</div>
+<div class="card fixed"><span class="tag fixed">已修</span><b>P2-4 空态裸文案</b> —— 笔记真空态加 CTA「去读经 · 划第一处」（直跳读经模块）；筛选空态保持文案（有明确语义）。</div>
+<div class="card done"><span class="tag done">已撤回</span><b>crumb ▾ 尖角提案</b> —— 试用后不对，撤回（9b1ba7e）。备选留档：chip 容器 / 维持现状。</div>
 
-<h2>二、新发现（本轮换口径后浮出）</h2>
+<h2>二、做得好的（防回退钉子，复核全部在位）</h2>
 
-<div class="card p1">
-  <span class="tag p1">P1-4</span><span class="new">NEW</span><b>高频输入框 14px → iOS 聚焦强制缩放视口</b>
-  <div class="evi">证据（代码级，客观判据）：style.css —— <code>.fb-select / .fb-textarea / .fb-input: var(--fs-14)</code>（反馈弹窗三件）、<code>.dw-search input: var(--fs-14)</code>（抽屉搜索，选卷选章的高频入口）；对照 <code>.home-search input: var(--fs-16)</code>——同一份 CSS 里规则共存，说明「≥16px 防 iOS 缩放」已知但未覆盖全。</div>
-  <p class="fix"><b>机制</b>：iOS Safari 聚焦 font-size &lt;16px 的输入框时会自动放大视口（用户没法关），输入完弹回——每次搜索/反馈都被顶一下。<br>
-  <b>建议</b>：移动端断点内 <code>@media (max-width:900px){ .fb-select,.fb-textarea,.fb-input,.dw-search input{ font-size:16px; } }</code>——桌面排版不动。<b>工作量：0.25h</b>。</p>
-</div>
+<div class="card good"><span class="tag good">决策</span><b>副文案移除的决策质量</b> —— 磁贴职责=识别+启动；回复原状前先回看本页。</div>
+<div class="card good"><span class="tag good">基座</span><b>移动基座四件齐全</b> —— viewport-fit=cover · theme-color（已随主题）· safe-area 链路 · 输入框 16px 防缩放（本轮补全）。</div>
+<div class="card good"><span class="tag good">色彩</span><b>对比度体系化</b> —— 四主题全量实测 ≥4.5:1，注脚上标 4.76 这类边角都覆盖。</div>
+<div class="card good"><span class="tag good">图标</span><b>图标系统收敛</b> —— Lucide 内联、单 stroke、currentColor、emoji 清零、品牌图形白名单。</div>
+<div class="card good"><span class="tag good">触控</span><b>44×44 热区显式化</b> —— 三枚图标钮显式 44px + 成组间距。</div>
+<div class="card good"><span class="tag good">性能感</span><b>感知性能三件套</b> —— splash 字节级进度、SW 二访秒开、音频退避重试状态落卡。</div>
+<div class="card good"><span class="tag good">响应式</span><b>真重排而非缩放</b> —— 移动单列重排、底部翻章导航、mini 播放条 safe-area 补偿。</div>
+<div class="card good"><span class="tag good">导航</span><b>深链与历史</b> —— hash 路由、replace/push 语义、非法 hash 净化。</div>
+<div class="card good"><span class="tag good">治理</span><b>层级与状态文档化</b> —— z 链、五状态覆盖、组件 Do/Don't。</div>
+<div class="card good"><span class="tag good">阅读</span><b>正文阅读工程</b> —— 42rem、三轴可调、tabular-nums、五色标注四主题恒定。</div>
 
-<div class="card p2">
-  <span class="tag p2">P2-9</span><span class="new">NEW</span><b>theme-color meta 未随顶栏加深/主题切换更新</b>
-  <div class="evi">证据：index.html <code>&lt;meta name="theme-color" content="#667eea"&gt;</code>——顶栏渐变 F3 已加深至 #5B67D4，iOS Safari 浏览器框染色比页面顶栏浅一档；暗夜主题下更明显。</div>
-  <p class="fix">JS 在主题/初始渲染时同步 <code>meta[name=theme-color]</code>（classic=#5B67D4，dark=暗夜顶栏值）。<b>工作量：0.25h</b>。</p>
-</div>
-
-<div class="card p2">
-  <span class="tag p2">P2-10</span><span class="new">NEW</span><b>桌面 crumb 停靠展开态 cursor:pointer 但点击 no-op</b>
-  <div class="evi">证据：app.js 6718「桌面=收起时展开停靠列（已展开 no-op）」；.crumb 无条件 cursor:pointer。</div>
-  <p class="fix">affordance honesty：≥1400 且停靠展开时 crumb 恢复 default cursor（或改为 title 提示「点 ☰ 收起」）。<b>工作量：0.25h</b>。</p>
-</div>
-
-<h2>三、做得好的（新增两条钉子）</h2>
-
-<div class="card good"><span class="tag good">决策</span><b>副文案移除的决策质量</b> —— 「该不该存在」级别的洞察；且书报二级层早已是无副文案同构，应用内先例支持这个方向。回复原状（重加统计）前先回看本页。</div>
-<div class="card good"><span class="tag good">基座</span><b>移动基座三件齐全</b> —— viewport-fit=cover、theme-color、safe-area 全链路在位（缺的只是 theme-color 的值更新）；.home-search 主动用 16px 防缩放——有意识，只是没铺完。</div>
-<div class="card good"><span class="tag good">已有八条</span> —— 对比度体系化 · 图标收敛 · 44px 热区 · 感知性能三件套 · 真重排 · 深链历史 · 层级/状态文档化 · 正文阅读工程（第一轮钉下，本轮复核全部在位）。</div>
-
-<h2>四、遗留台账（按优先级）</h2>
+<h2>三、遗留台账（全部低频/低危）</h2>
 
 <table>
-  <tr><th style="width:70px">编号</th><th>事项</th><th style="width:80px">量</th></tr>
-  <tr><td class="id">P1-4</td><td>移动端输入框 16px（.fb-* / .dw-search input）</td><td>0.25h</td></tr>
-  <tr><td class="id">P1-3</td><td>prefers-reduced-motion 全局降级</td><td>0.5h</td></tr>
-  <tr><td class="id">P1-2</td><td>长书名双截断（书名保底 2 字 or 合并单串 or 缩写映射）</td><td>1h</td></tr>
-  <tr><td class="id">P2-9</td><td>theme-color 随主题/顶栏值更新</td><td>0.25h</td></tr>
-  <tr><td class="id">P2-10</td><td>crumb cursor 停靠展开态恢复 default</td><td>0.25h</td></tr>
-  <tr><td class="id">P2-1</td><td>删除标注 toast+撤销（替代确认弹窗思路）</td><td>1.5h</td></tr>
-  <tr><td class="id">P2-4</td><td>空态 CTA（笔记/抽屉 0 结果一并）</td><td>1h</td></tr>
-  <tr><td class="id">P2-2/3</td><td>抽屉方向键 · 关浮层焦点返回</td><td>2h</td></tr>
-  <tr><td class="id">P2-5/6/7</td><td>0 结果回显查询词 · 计数 tabular-nums · 搜索命中高亮</td><td>2h</td></tr>
-  <tr><td class="id">P2-8</td><td>弹窗长列表键盘可达验证</td><td>0.5h</td></tr>
+  <tr><th style="width:70px">编号</th><th>事项</th><th style="width:70px">状态</th></tr>
+  <tr><td class="id">P2-2</td><td>抽屉方向键导航（↑↓ + Enter）</td><td class="st open">开放</td></tr>
+  <tr><td class="id">P2-3</td><td>关浮层后焦点返回触发钮</td><td class="st open">开放</td></tr>
+  <tr><td class="id">P2-5</td><td>抽屉 0 结果回显查询词</td><td class="st open">开放</td></tr>
+  <tr><td class="id">P2-6</td><td>抽屉计数 tabular-nums</td><td class="st open">开放</td></tr>
+  <tr><td class="id">P2-7</td><td>搜索命中词高亮</td><td class="st open">开放</td></tr>
+  <tr><td class="id">P2-8</td><td>弹窗长列表键盘可达验证</td><td class="st open">开放</td></tr>
 </table>
-<p style="font-size:13.5px;color:var(--soft)">「P1 全清 + P2 头四项」合计约 5h，即可把综合分推到 ~9.0。</p>
 
-<div class="foot">读经研读笔记 · UI 最佳实践评审 · 第二轮 · 2026-11-05 · 口径：UI-check 五维 + 交互启发式 + WCAG 2.2 AA · 上一轮（同日）与本页构成完整记录：第一轮发现 → 用户洞察处置 → 换口径再扫 → 新发现入账</div>
+<div class="foot">读经研读笔记 · UI 最佳实践评审 · 第二轮（含修复批次）· 2026-11-05 · 修复提交见 feat/ui-refactor 修复批次 commit · 第一轮记录已由本页替代（方法论与处置链完整保留）</div>
 
 </div>
 </body>

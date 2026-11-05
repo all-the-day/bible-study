@@ -220,6 +220,14 @@ function applyTheme(t) {
   if (!THEMES[t]) t = 'classic';
   document.documentElement.dataset.theme = t;
   save(LS_THEME, t);
+  // 评审 P2-9：浏览器框染色（iOS Safari/Android Chrome 顶栏）跟随主题，读各主题自己的 --topbar-solid
+  requestAnimationFrame(() => {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) {
+      const solid = getComputedStyle(document.documentElement).getPropertyValue('--topbar-solid').trim();
+      if (solid) meta.content = solid;
+    }
+  });
   // 图标双渲染（classic=emoji / 其余=线性）跟随主题，需重渲染所在屏幕的合集块
   if (state.screen === 'home') renderHome();
   else if (document.body.classList.contains('bookhub')) renderBookHub();
@@ -3984,8 +3992,19 @@ function renderNotesListBody(listWrap) {
   if (!anns.length && !bigNotes.length) {
     const empty = document.createElement('div');
     empty.className = 'notes-empty';
-    empty.textContent = state.annotations.length ? '当前筛选下没有笔记' : '还没有任何标注或笔记';
-    listWrap.appendChild(empty);
+    if (state.annotations.length) {
+      empty.textContent = '当前筛选下没有笔记';
+      listWrap.appendChild(empty);
+    } else {
+      empty.textContent = '还没有任何标注或笔记';
+      const cta = document.createElement('button');   // 评审 P2-4：空态是行动邀请
+      cta.type = 'button';
+      cta.className = 'empty-cta';
+      cta.textContent = '去读经 · 划第一处';
+      cta.addEventListener('click', () => enterModule('bible'));
+      empty.appendChild(cta);
+      listWrap.appendChild(empty);
+    }
     return;
   }
   if (state.notesSort === 'time') {
@@ -4489,7 +4508,7 @@ function matchedLrArticles() {
 }
 
 // 轻提示（底部弹出，自动消失；供同步状态、空状态等轻量提醒）
-function showToast(text, cls) {
+function showToast(text, cls, opts) {
   let t = $('toast');
   if (!t) {
     t = document.createElement('div');
@@ -4501,9 +4520,17 @@ function showToast(text, cls) {
     document.body.appendChild(t);
   }
   t.textContent = text;
+  if (opts && opts.label) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'toast-action';
+    btn.textContent = opts.label;
+    btn.addEventListener('click', () => { clearTimeout(t._timer); t.classList.remove('show'); if (opts.onAction) opts.onAction(); });
+    t.appendChild(btn);
+  }
   t.className = `toast show ${cls || ''}`;
   clearTimeout(t._timer);
-  t._timer = setTimeout(() => t.classList.remove('show'), 2600);
+  t._timer = setTimeout(() => t.classList.remove('show'), (opts && opts.seconds) || 2600);
 }
 
 // 移动端 crumb 点击 → 章节选择弹窗（章网格 + 顶部书卷横向切换）
@@ -7611,6 +7638,14 @@ function deleteAnn(annId) {
   saveDeleted(LS_ANNOTATIONS, state.annotations, [annId]);
   rerenderAnn(ann);
   hideMarkTool();
+  // 评审 P2-1：5s 撤销窗口。恢复走与新增同路径的 save()（outbox 删除在前、恢复在后，
+  // 云端并集合并最终态=已恢复）；墓碑桩随内存数组整体写回自动清除
+  showToast('已移除划线', '', { label: '撤销', seconds: 5000, onAction: () => {
+    if (state.annotations.some(a => a.id === ann.id)) return;
+    state.annotations.splice(Math.min(i, state.annotations.length), 0, ann);
+    save(LS_ANNOTATIONS, state.annotations);
+    rerenderAnn(ann);
+  } });
 }
 
 /* ============ 重读（批量移除当前阅读单元的无笔记划线，带笔记的标注原样保留） ============ */
