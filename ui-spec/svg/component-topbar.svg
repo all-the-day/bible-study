@@ -34,7 +34,7 @@
     <text class="t" x="392" y="122" font-size="15" fill="#fff" text-anchor="middle">⚙️</text>
     <g class="dim"><line x1="24" y1="156" x2="414" y2="156"/><line x1="24" y1="151" x2="24" y2="161"/><line x1="414" y1="151" x2="414" y2="161"/></g>
     <text class="m" x="219" y="152" text-anchor="middle">390</text>
-    <text class="nt" x="24" y="170">标题 .crumb 绝对定位左贴 ☰（left 88；☰ 字形止于 80，8px 贴合；justify-content:flex-start）· 听书同款左贴（right 56）· mode-pill 仅此口径显示</text>
+    <text class="nt" x="24" y="170">标题 .crumb 为文档流 flex 子项（flex:1 min-width:0，flex-start）左贴 ☰——零重叠，left/right 魔法数退役（2026-11-05 二轮补丁：绝对定位窗口在部分宽度被右簇压边，用户截图 第4章 被裁）· mode-pill 仅此口径显示</text>
   </g>
 
   <!-- ② 听书 · 移动端 -->
@@ -45,7 +45,7 @@
     <path d="M72 223h18M72 230h18M72 237h18" stroke="#fff" stroke-width="2" stroke-linecap="round" fill="none"/>
     <text class="t" x="92" y="236" font-size="17" font-weight="600" fill="#fff"><tspan font-weight="700">鸟瞰圣经</tspan> 第35讲 腓立比书</text>
     <text class="t" x="392" y="236" font-size="15" fill="#fff" text-anchor="middle">⚙️</text>
-    <text class="nt" x="24" y="270">标题=合集名(700)+讲次名(400) 两段同排 · crumb 窗口 right 56（⚙️ 让位）· 左贴 ☰ 与读经一致</text>
+    <text class="nt" x="24" y="270">标题=合集名(700)+讲次名(400) 两段同排 · 文档流 flex 子项左贴 ☰，长讲次名自然 ellipsis</text>
   </g>
 
   <!-- ③ 首页 · 移动端 -->

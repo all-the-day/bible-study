@@ -1765,19 +1765,19 @@ mark.sr-hit {
   .crumb {
     /* 右侧让位：pill（读经|研读） + Aa 排版 + ⚙️，共约 216px；原 174 只让了 pill+⚙️，
        加 Aa 后 crumb 会压进 pill 区域（标题被遮） */
-    position: absolute; left: 44px; right: 210px; top: 0; bottom: 0;
+    position: static; flex: 1 1 auto;   /* 2026-11-05 二轮补丁：标题左贴后无需绝对定位——flex 子项天然零重叠，left/right 魔法数退役（此前部分宽度右簇压边 1-2px，用户截图 第4章 被裁） */
     justify-content: flex-start; gap: 4px; font-size: var(--fs-16); white-space: nowrap;   /* 2026-11-05：标题左贴 ☰（点击同为开抽屉，视觉成组；原居中式与 ☰ 割裂） */
     overflow: hidden;   /* 超窄屏标题省略 */
     cursor: pointer;   /* 移动端点击弹章节选择 */
   }
   /* 听书没有 pill/Aa（下图已隐藏），把右侧让位收回给标题；否则长讲次名被无谓截断 */
-  /* 原 left 96 是居中时代防粘连注记，标题已改左贴 ☰，特例作废 */
-  body.body-mod-audio .crumb { right: 56px; }
+  /* 听书右让位随绝对定位一并退役：flex 布局下长讲次名自然 ellipsis */
+
   .crumb .crumb-nav { display: none; }   /* 翻页移至底部导航 */
   .topbar-actions { gap: 2px; margin-left: auto; position: relative; z-index: 2; }   /* crumb 绝对定位后：推到最右 + 盖在其上层避免拦截点击 */
   #menuBtn { width: 44px; height: 44px; margin-left: -6px; }
   #homeBtn { width: 44px; height: 44px; margin-left: -6px; margin-right: -8px; }   /* margin-right：house↔menu 视觉成组，免得两个 44 热区夹 12 gap 显空（2026-11-05） */
-  .crumb { left: 88px; }   /* 原 44px：让位给常驻 ⌂ 首页按钮；☰ 字形止于 80，88 起排 8px 贴合 */
+
 
   /* 首页移动端：合集块缩小（360px 约 3 列），底部留安全区 */
   #homeView { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
