@@ -1223,10 +1223,14 @@ def _strip_legacy_num(meta, volumes_content):
 # 首导（无旧文件）按源序。源库丢书时从旧导出原文 splice 回该条，绝不静默删除。
 
 
+def _norm_title(b):
+    return re.sub(r"[\s\u3000]+", "", b.get("title") or "")
+
+
 def _book_ident(b):
     """书的稳定身份：有书号用 (号, 归一化书名)——分「部」折叠的书同号不同名；
     无书号（灵粮 legacy 系列）用归一化书名。"""
-    t = re.sub(r"[\s\u3000]+", "", b.get("title") or "")
+    t = _norm_title(b)
     num = str(b.get("num") or "")
     return (num, t) if num else ("", t)
 
@@ -1262,10 +1266,21 @@ def merge_append_order(sid, meta, volumes_content=None):
 
     # 旧导出：identity -> [(卷序号, 卷内位置), ...]（同身份多本按出现次序）
     old_slot = {}
-    for vi, v in enumerate(old.get("volumes") or []):
+    old_vols = old.get("volumes") or []
+    for vi, v in enumerate(old_vols):
         for bi, b in enumerate(v.get("books") or []):
             old_slot.setdefault(_book_ident(b), []).append((vi, bi))
-    old_vols = old.get("volumes") or []
+
+    # 书名兜底索引：旧导出全部条目，按归一化书名分组。两个方向都会用到——
+    # ① 旧导出无号、源侧补号（gospel / periodicals 的 2026-10-14 冻结产物）：
+    #    ident 从 ("", 书名) 变 ("1001", 书名)，纯 ident 比对会判「全量丢失 + 全量新增」；
+    # ② 旧导出有号、源侧被摘号（LEGACY_ORDINAL_SERIES 的 sg/th/jd/xyzl 在
+    #    _strip_legacy_num 之后无号）：方向相反，同样对不上。
+    # 精确 ident 匹配优先，书名兜底次之（同书名多本按出现次序认领）。
+    old_by_title = defaultdict(list)
+    for vi, v in enumerate(old_vols):
+        for bi, b in enumerate(v.get("books") or []):
+            old_by_title[_norm_title(b)].append((vi, bi))
 
     # 旧内容文件（splice 用）
     old_content = {}
@@ -1286,7 +1301,8 @@ def merge_append_order(sid, meta, volumes_content=None):
 
     # 老书归位到旧 slot；新书留在源库卷
     per_vol = defaultdict(list)          # vi -> [(sort_key, meta_b, content_b)]
-    consumed = defaultdict(int)
+    consumed = defaultdict(int)          # ident -> 已认领的旧 slot 数
+    claimed = set()                      # 已被认领的旧 slot（含书名兜底认领）
     added = 0
     for ident, b, cb, svi in src:
         k = consumed[ident]
@@ -1295,36 +1311,47 @@ def merge_append_order(sid, meta, volumes_content=None):
             ovi, obi = slots[k]
             per_vol[ovi].append(((0, obi), b, cb))
             consumed[ident] = k + 1
-        else:
-            per_vol[svi].append(((1, added), b, cb))
-            added += 1
+            claimed.add((ovi, obi))
+            continue
+        # 书名兜底：源书带号、旧导出同名条目无号（冻结产物补号后身份对不上）
+        hit = next((s for s in old_by_title.get(_norm_title(b), []) if s not in claimed), None)
+        if hit is not None:
+            ovi, obi = hit
+            per_vol[ovi].append(((0, obi), b, cb))
+            claimed.add(hit)
+            continue
+        per_vol[svi].append(((1, added), b, cb))
+        added += 1
 
     # 源库没有的旧书：splice 回旧（卷, 位置）。按记录的下标直取，不按身份搜——
     # 同卷同身份（同 num+同书名）多本时，按身份搜会把每一本都拼成第一本的正文。
     lost = 0
     for ident, slots in old_slot.items():
         for k, (ovi, obi) in enumerate(slots):
-            if consumed.get(ident, 0) <= k:
-                lost += 1
-                ob = (old_vols[ovi].get("books") or [])[obi]
-                title = ob.get("title")
-                cb = None
-                ocl = old_content.get(ovi + 1) or []
-                if obi < len(ocl) and _book_ident(ocl[obi]) == ident:
-                    cb = ocl[obi]
-                else:      # 内容文件与元数据顺序不同构时的兜底（正常不该发生）
-                    cb = next((c for c in ocl if _book_ident(c) == ident), None)
-                notes.append(f"[WARN] {sid} 卷{ovi + 1} 源库丢失《{title}》，已从旧导出 splice 保留（索引不退）")
-                flags["err"] = True
-                if cb is not None:
-                    per_vol[ovi].append(((0, obi),
-                                         {"title": title, "num": cb.get("num"),
-                                          "chapters": [{"title": c.get("title")} for c in cb.get("chapters") or []]},
-                                         cb))
-                else:
-                    notes.append(f"[ERR] {sid} 《{title}》旧内容读不到，仅保留元数据条目（数据不完整，需人工处理）")
-                    per_vol[ovi].append(((0, obi), {"title": title, "chapters": []},
-                                         {"title": title, "chapters": []}))
+            if (ovi, obi) in claimed:
+                continue
+            if consumed.get(ident, 0) > k and ident[0]:
+                continue     # 带号身份已按序认领（老路径），不重复计入
+            lost += 1
+            ob = (old_vols[ovi].get("books") or [])[obi]
+            title = ob.get("title")
+            cb = None
+            ocl = old_content.get(ovi + 1) or []
+            if obi < len(ocl) and _book_ident(ocl[obi]) == ident:
+                cb = ocl[obi]
+            else:      # 内容文件与元数据顺序不同构时的兜底（正常不该发生）
+                cb = next((c for c in ocl if _book_ident(c) == ident), None)
+            notes.append(f"[WARN] {sid} 卷{ovi + 1} 源库丢失《{title}》，已从旧导出 splice 保留（索引不退）")
+            flags["err"] = True
+            if cb is not None:
+                per_vol[ovi].append(((0, obi),
+                                     {"title": title, "num": cb.get("num"),
+                                      "chapters": [{"title": c.get("title")} for c in cb.get("chapters") or []]},
+                                     cb))
+            else:
+                notes.append(f"[ERR] {sid} 《{title}》旧内容读不到，仅保留元数据条目（数据不完整，需人工处理）")
+                per_vol[ovi].append(((0, obi), {"title": title, "chapters": []},
+                                     {"title": title, "chapters": []}))
 
     # 写回：卷数只允许「源库 ≥ 旧导出」；源库卷数变少会让整卷书无处安放（标注成孤儿），
     # 故不是简单报警，而是记入 notes 让 export() 非零退出。

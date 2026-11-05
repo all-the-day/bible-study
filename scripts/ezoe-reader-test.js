@@ -91,7 +91,9 @@ async function main() {
       footEmpty: document.querySelector('#dwFoot').innerHTML.trim() === '',
     };
   });
-  console.log('4. 抽屉双栏:', r4.leftCount === 72 && r4.rightCount === 14 && r4.folded === 16
+  // 左栏 42 本 / 书·部折叠 12 个：2026-11-05 定稿清理删掉 gospel 30 本整本墓碑后
+  // （原 72 本 / 16 个折叠条目），正版统一在福音天地。
+  console.log('4. 抽屉双栏:', r4.leftCount === 42 && r4.rightCount === 1 && r4.folded === 12
     && !r4.hasNum && !r4.hasSub && r4.footEmpty ? '✓' : '✗',
     '| 左栏:', r4.leftCount, '本 | 首本:', r4.leftFirst, '| 书·部条目:', r4.folded,
     '| 右栏章数:', r4.rightCount, '| 无序号:', !r4.hasNum, '| 无副标:', !r4.hasSub,
@@ -204,33 +206,31 @@ async function main() {
   console.log('8. bio 合并传记文集:', ok8 ? '✓' : '✗',
     '|', r8.name, '|', r8.count, '本 | book 0:', r8.first, '| 含高峰文集:', r8.hasPeak, '| 先见书:', r8.dupXianjian, '份');
 
-  // 9. 重复篇墓碑化去重（用户 2026-10-14 定稿「整理整理」：同一篇在合集与拆出的
-  //    单篇独立书两处出现、出处混乱）：单篇独立书《上流人的需要》正文换成指引，
-  //    合集《福音讲台总集·变死亡为生命》该篇保留真内容；books/chapters 索引不动
+  // 9. 重复篇去重（2026-11-05 定稿清理后语义更新）：以前保留墓碑占位（正文换成指引），
+  //    现在重复书直接删除，正版只留一份。本项验证：
+  //      - gospel 里不再有整本墓碑书（《上流人的需要》等 30 本已删）
+  //      - 《生命的意义》书内重复篇已删，不再有墓碑
+  //      - 正版《福音讲台总集》仍在福音天地且正文完整
   const r9 = await page.evaluate(async () => {
     const d = await fetchJSONStall('data/books/gospel-1.json');
-    const solo = d.books.find(b => b.title === '上流人的需要');
-    const coll = d.books.find(b => b.title === '福音讲台总集·变死亡为生命');
-    const collCh = coll.chapters.find(c => c.title === '上流人的需要');
-    const lm = d.books.find(b => b.title === '生命的意义');
-    // 正版在 fuyintiandi（gospel-1.json 里没有这本书，必须单独拉）
     const fy = await fetchJSONStall('data/books/fuyintiandi-1.json');
+    const tombs = d.books.filter(b => b.chapters.every(c => (c.content || '').startsWith('（本文')));
+    const lm = d.books.find(b => b.title === '生命的意义');
     const fyb = (fy.books || []).find(b => b.title === '福音讲台总集');
     const fyCh = fyb && (fyb.chapters || []).find(c => c.title === '上流人的需要');
     return {
-      soloTomb: solo.chapters[0].content.startsWith('（本文与'),
-      soloGuide: solo.chapters[0].content.includes('福音天地 · 福音讲台总集'),
-      collTomb: collCh.content.startsWith('（本文已并入'),
+      gospelBooks: d.books.length,
+      tombBooks: tombs.map(b => b.title),
+      lmTomb: lm ? lm.chapters.filter(c => (c.content || '').startsWith('（本文')).length : -1,
+      soloGone: !d.books.some(b => b.title === '上流人的需要'),
       fyKept: !!(fyCh && fyCh.content.length > 5000 && !fyCh.content.startsWith('（本文')),
-      inBookTomb: lm.chapters.filter(c => c.content.startsWith('（本文')).length,
     };
   });
-  // 2026-11-03 重导后语义更新：福音讲台总集四部整体并入《福音天地》（合集篇亦墓碑），
-  // 吸收正版在 fuyintiandi；生命的意义 书内墓碑 5→53（源索引 57 saved + 53 duplicate）
-  console.log('9. 重复篇墓碑化:', r9.soloTomb && r9.soloGuide && r9.collTomb && r9.fyKept && r9.inBookTomb === 53 ? '✓' : '✗',
-    '| 单篇书墓碑:', r9.soloTomb, '| 指引指向福音天地·福音讲台总集:', r9.soloGuide, '| 合集篇亦墓碑:', r9.collTomb,
-    '| 正版在 fuyintiandi:', r9.fyKept,
-    '| 书内墓碑:', r9.inBookTomb, '篇');
+  console.log('9. 重复书去重（墓碑已清除）:',
+    (r9.tombBooks.length === 0 && r9.lmTomb === 0 && r9.soloGone && r9.fyKept) ? '✓' : '✗',
+    '| gospel 书数:', r9.gospelBooks, '| 整本墓碑:', r9.tombBooks.length,
+    '| 生命的意义书内墓碑:', r9.lmTomb, '| 单篇书已删:', r9.soloGone,
+    '| 正版在福音天地:', r9.fyKept);
 
   console.log('\nJS 错误:', errors.length ? errors : '无');
   await browser.close();

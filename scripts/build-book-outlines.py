@@ -30,14 +30,31 @@ SRC_DIR = os.path.join(ROOT, "scripts", "outline-src")
 OUT_DIR = os.path.join(ROOT, "data", "books", "outline")
 MAX_LEVEL = 4
 
+# 行尾「全名书卷 + 章:节[范围][上中下] + ×」——源侧链式读经块还原删掉的注入尾巴
+TAIL_REF_RE = re.compile(
+    r"[\u4e00-\u9fa5]{2,8}[一二三四五六七八九十百零〇\d]+[~～\-—]?[一二三四五六七八九十百零〇\d]*[上中下]?×$"
+)
+# 同类尾巴但不带 ×（`路九60路加福音九60` / `四 灵有污秽（林后七1哥林多后书七1`）：
+# 策展源存的是还原前文本，正文已删掉重复展开的全名引用。要求前面紧邻缩写引用
+# （书卷简称 + 章:节），确保只剥「引用 + 全名重复」，不碰正常标题里的书名。
+TAIL_REF_NOMARK_RE = re.compile(
+    r"(?<=[\u4e00-\u9fa5\d上中下~～\-—])"
+    r"[\u4e00-\u9fa5]{2,6}书?[一二三四五六七八九十百零〇\d]+"
+    r"(?:[~～\-—][一二三四五六七八九十百零〇\d]+)?[上中下]?$"
+)
+
 
 def fail(msg, errors):
     errors.append(msg)
 
 
 def build_series(series, src):
-    """校验并产出单系列。返回 (产物 dict per volume, 错误列表, 统计)。"""
+    """校验并产出单系列。返回 (产物 dict per volume, 错误列表, 统计)。
+
+    errors 按章分组在 errors_by_chapter 里；返回值里的 errors 是扁平列表（兼容旧调用）。
+    """
     errors = []
+    errors_by_chapter = {}
     meta_path = os.path.join(ROOT, "data", "books", f"{series}.json")
     if not os.path.isfile(meta_path):
         fail(f"[{series}] 元数据缺失：{meta_path}（先跑 export-spiritual.py）", errors)
@@ -58,14 +75,18 @@ def build_series(series, src):
 
     out = {}
     stats = collections.Counter()
+    dropped = []
     for key, entries in sorted((src.get("chapters") or {}).items()):
+        ch_errors = []
         parts = key.split(":")
         if len(parts) != 3 or not all(p.lstrip("-").isdigit() for p in parts):
             fail(f"[{series}] 键格式错误：{key!r}（应为 v:b:c）", errors)
+            errors_by_chapter[key] = 1
             continue
         v, b, c = (int(x) for x in parts)
         if v not in range(1, len(vol_titles) + 1):
             fail(f"[{series}] {key}: 辑越界（1..{len(vol_titles)}）", errors)
+            errors_by_chapter[key] = 1
             continue
         vol = vols_content.get(v)
         if vol is None:
@@ -73,10 +94,12 @@ def build_series(series, src):
         books = vol.get("books") or []
         if b not in range(0, len(books)):
             fail(f"[{series}] {key}: 书越界（0..{len(books)-1}）", errors)
+            errors_by_chapter[key] = 1
             continue
         chapters = books[b].get("chapters") or []
         if c not in range(0, len(chapters)):
             fail(f"[{series}] {key}: 章越界（0..{len(chapters)-1}）", errors)
+            errors_by_chapter[key] = 1
             continue
         content = chapters[c].get("content") or ""
         lines = [ln.strip() for ln in content.split("\n") if ln.strip()]
@@ -92,52 +115,98 @@ def build_series(series, src):
         ptr = 0
         for i, e in enumerate(entries):
             if not isinstance(e, dict) or "l" not in e:
-                fail(f"[{series}] {key} 第{i}条：缺字段 l", errors)
+                fail(f"[{series}] {key} 第{i}条：缺字段 l", ch_errors)
                 continue
             lv = e["l"]
             if isinstance(lv, bool) or not isinstance(lv, int) or lv not in range(1, MAX_LEVEL + 1):
-                fail(f"[{series}] {key} 第{i}条：层级须为 1..{MAX_LEVEL} 的整数，得 {lv!r}", errors)
+                fail(f"[{series}] {key} 第{i}条：层级须为 1..{MAX_LEVEL} 的整数，得 {lv!r}", ch_errors)
                 continue
             hit = -1
             if "t" in e:
                 if not isinstance(e["t"], str) or not e["t"]:
-                    fail(f"[{series}] {key} 第{i}条：t 不能为空", errors)
+                    fail(f"[{series}] {key} 第{i}条：t 不能为空", ch_errors)
                     continue
                 for j in range(ptr, len(lines)):
                     if lines[j] == e["t"]:
                         hit = j
                         break
+                item_t = e["t"]
+                if hit < 0:
+                    # 注入经文尾巴回退（2026-11-04）：源侧「链式读经块还原」删掉了
+                    # 正文里重复展开的全名书卷引用（`…─罗一1罗马书一1×` 只留 `…─罗一1`），
+                    # 策展源仍存还原前的完整行。剥掉行尾「全名书卷+章:节[上中下]×」
+                    # 后再按整行/行首匹配。产物必须写**当前真实行**，否则前端按整行
+                    # 精确匹配时仍匹配不到（前端 collectBookHeadings 用 e.t 严格相等）。
+                    for rx in (TAIL_REF_RE, TAIL_REF_NOMARK_RE):
+                        stripped = rx.sub("", e["t"]).rstrip("─—-（(：: ")
+                        if not stripped or stripped == e["t"]:
+                            continue
+                        for j in range(ptr, len(lines)):
+                            if lines[j] == stripped:
+                                hit, item_t = j, stripped
+                                break
+                        if hit >= 0:
+                            stats["tail_strip"] += 1
+                            break
+                if hit < 0:
+                    # 前缀兜底：策展行是还原前的长行（正文被截断/改写），
+                    # 取正文里以该行**开头**的那一行——显示名仍用策展文本的短标签。
+                    probe = e["t"][:24]
+                    if len(probe) >= 6:
+                        for j in range(ptr, len(lines)):
+                            if lines[j].startswith(probe):
+                                hit, item_t = j, lines[j]
+                                stats["prefix_fix"] += 1
+                                break
                 if hit < 0:
                     fail(f"[{series}] {key} 第{i}条：正文找不到整行 {e['t'][:40]!r}"
-                         f"（章：{(chapters[c].get('title') or '')[:20]}）", errors)
+                         f"（章：{(chapters[c].get('title') or '')[:20]}）", ch_errors)
                     continue
-                item = {"l": lv, "t": e["t"]}
+                item = {"l": lv, "t": item_t}
             elif "p" in e:
                 if not isinstance(e["p"], str) or not e["p"]:
-                    fail(f"[{series}] {key} 第{i}条：p 不能为空", errors)
+                    fail(f"[{series}] {key} 第{i}条：p 不能为空", ch_errors)
                     continue
                 for j in range(ptr, len(lines)):
                     if lines[j].startswith(e["p"]):
                         hit = j
                         break
                 if hit < 0:
-                    fail(f"[{series}] {key} 第{i}条：正文找不到行首 {e['p'][:40]!r}", errors)
+                    fail(f"[{series}] {key} 第{i}条：正文找不到行首 {e['p'][:40]!r}", ch_errors)
                     continue
                 item = {"l": lv, "p": e["p"]}
                 if e.get("label"):
                     item["label"] = e["label"]
             else:
-                fail(f"[{series}] {key} 第{i}条：须有 t 或 p", errors)
+                fail(f"[{series}] {key} 第{i}条：须有 t 或 p", ch_errors)
                 continue
             ptr = hit + 1
             result.append(item)
             stats["entries"] += 1
+        if ch_errors:
+            # 该章有失配条目：整章剔除（顺序游走已不可信），回退运行时识别
+            errors_by_chapter[key] = len(ch_errors)
+            dropped.append(key)
+            continue
         bucket[f"{b}:{c}"] = result
         stats["chapters"] += 1
 
     docs = {}
     for v, chapters in sorted(out.items()):
         docs[v] = {"volume": vol_titles[v - 1], "chapters": dict(sorted(chapters.items()))}
+    if dropped:
+        stats["dropped"] = dropped
+    return docs, errors, stats
+
+
+def build_series_tolerant(series, src):
+    """单次加载、逐章判定：失配的章整体剔除（键缺失 = 前端回退 detectLrHeading）。
+
+    为什么按章而不是按条剔除：顺序游走一旦某条失配，后续指针不前进会级联误报，
+    保留下来的条目可能已错位；按章丢弃可保证产物里每章纲目都是完整校验过的。
+    用于源侧大改正文（如 2026-11-04 链式读经块还原）后策展源无法一次性重对齐的过渡期。
+    """
+    docs, errors, stats = build_series(series, src)
     return docs, errors, stats
 
 
@@ -165,7 +234,7 @@ def main():
         docs, errors, stats = build_series(series, src)
         if errors:
             total_err += len(errors)
-            print(f"✗ {series}：{len(errors)} 处校验失败")
+            print(f"✗ {series}：{len(errors)} 处硬错误（键格式/元数据缺失）")
             for e in errors[:40]:
                 print("   ", e)
             if len(errors) > 40:
@@ -177,6 +246,11 @@ def main():
             if stale:
                 print(f"   已删除该系列旧的生成产物 {len(stale)} 个：{', '.join(stale)}")
             continue
+        if stats.get("dropped"):
+            # 失配章整体剔除（键缺失 → 前端回退 detectLrHeading），不阻断其余章
+            names = sorted(stats["dropped"])
+            print(f"[DROP] {series}：{len(names)} 章策展纲目与正文失配，已回退运行时识别："
+                  f"{', '.join(names[:8])}{' …' if len(names) > 8 else ''}")
         for v, doc in docs.items():
             dst = os.path.join(OUT_DIR, f"{series}-{v}.json")
             tmp = dst + ".tmp"
@@ -191,8 +265,9 @@ def main():
                 print(f"   ! 删除过期产物：{f}")
         n_ch = sum(len(d["chapters"]) for d in docs.values())
         n_empty = sum(1 for d in docs.values() for v in d["chapters"].values() if not v)
+        extra = f"，尾巴剥离 {stats['tail_strip']} 条" if stats.get("tail_strip") else ""
         print(f"[OK] {series}：{len(docs)} 个辑文件，{n_ch} 章入册"
-              f"（{n_ch - n_empty} 章有纲目 / {n_empty} 章显式空），{stats['entries']} 条")
+              f"（{n_ch - n_empty} 章有纲目 / {n_empty} 章显式空），{stats['entries']} 条{extra}")
     if total_err:
         print(f"\n共 {total_err} 处错误，未写出对应产物")
         sys.exit(1)

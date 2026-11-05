@@ -69,13 +69,14 @@ async function main() {
       fn: document.querySelector('.topic-week:first-of-type a.topic-row[href^="#/bible/"]:last-of-type')?.getAttribute('href'),
     }));
     ok(hrefs.bible === '#/bible/50/1' && hrefs.lr.join(',') === '#/lr/50/3,#/lr/50/4,#/lr/50/5' &&
-      hrefs.book === '#/book/sg/2/21/0' && hrefs.bookLabel === '传福音的秘诀' && hrefs.fn === '#/bible/50/1',
+      hrefs.book === '#/book/sg/2/20/0' && hrefs.bookLabel === '传福音的秘诀' && hrefs.fn === '#/bible/50/1',
       '3. 第 1 周链接（原文 + 三篇按顺序 + 书报）', JSON.stringify(hrefs));
 
     // 3b. 指定书报《福音的托付》7 章按顺序对应第 1–7 周，第 8 周仍待填
+    // 书坐标 2/20：2026-11-05 书报定稿清理后 sg 卷2 删掉一本重复书，《福音的托付》由 21 前移到 20
     const bookWeek = await page.evaluate(() => [...document.querySelectorAll('#topicMain .topic-week')].map((wk) => {
       const a = wk.querySelector('a.topic-row[href^="#/book/"]');
-      return a ? a.getAttribute('href').replace('#/book/sg/2/21/', '') : null;
+      return a ? a.getAttribute('href').replace('#/book/sg/2/20/', '') : null;
     }));
     ok(bookWeek.join(',') === '0,1,2,3,4,5,6,',
       '3b. 书报按周递增（1–7 周，第 8 周待填）', JSON.stringify(bookWeek));

@@ -99,14 +99,16 @@ for (const s of series) {
   if (extra.length) bad(`${s.id}: 存在越界卷文件 ${extra.join(",")}`);
 }
 
-/* ── 3. 关键系列的书数（去重结果回归） ───────────────────────── */
-// 2026-11-03 ezoe 补抓后按追加感知导出增长：zj +30（含真理课程 4 级/生命课程 4 卷等
-// 分「部」折叠条目）、jh +14、gospel +2、reading +16（新约总论 14 部）、periodicals +2、misc +5。
-// 基线只随补抓上调；若某天数变小，说明有书被误删，测试会报。
+/* ── 3. 关键系列的书数（定稿清理后基线，2026-11-04） ─────────────
+ * 清理内容见 scripts/cleanup-books.py：整本墓碑 49 + 整本重复 16 + 新约总论前 8 部重复
+ * + 占位条目 1 + reading 后 6 部并入 xyzl。
+ * 期望值变化：sg 224→217、jd 29→28、zj 262→241、jh 110→105、
+ * gospel 72→42、reading 44→29（14 部新约总论移走）、xyzl 8→14（吸收后 6 部）。
+ * 若某天数再变小，说明有书被误删，测试会报。 */
 const EXPECT = {
-  sg: 224, th: 37, jd: 29, zj: 262, jh: 110,
-  sjzl: 15, xyzl: 8, zlkc: 8, smkc: 4, zlyd: 6, kdyf: 6, hhls: 9,
-  gospel: 72, reading: 44, periodicals: 34, misc: 13,
+  sg: 217, th: 37, jd: 28, zj: 241, jh: 105,
+  sjzl: 15, xyzl: 14, zlkc: 8, smkc: 4, zlyd: 6, kdyf: 6, hhls: 9,
+  gospel: 42, reading: 29, periodicals: 34, misc: 13,
 };
 for (const [id, n] of Object.entries(EXPECT)) {
   if (!stats[id]) continue;
@@ -139,8 +141,10 @@ eq(stats.zj ? readJSON(path.join(DATA, "zj.json")).volumes.length : 0, 2, "zj �
       const hit = (nums[sid] || []).find(r => r[2] === want);
       return hit ? (readJSON(path.join(DATA, `${sid}.json`)).volumes[hit[0] - 1].books[hit[1]] || {}).title : null;
     };
-    eq(spot("gospel", 1001), "到底有没有神", "书号 1001 指向");
+    // 书号 1001 在定稿清理后只保留正版：gospel 侧的同名书是墓碑（已删），
+    // 正版在福音天地。这里断言正版仍在且可检索到。
     eq(spot("fuyintiandi", 1001), "到底有没有神", "福音天地 书号 1001 指向");
+    eq(spot("gospel", 1001), null, "gospel 1001 墓碑书已清理（正版在福音天地）");
     eq(spot("ni", 1), "灵修指微", "倪文集 第一辑 1 号指向");
     // 灵粮目录序号（sg/th/jd/xyzl 的 1-based 排列序）2026-11-03 起不再入表：
     // 外部对不上、四系列互相撞号。真正的书报号只有 ezoe 段与倪文集册内 book_number。
@@ -194,6 +198,8 @@ const NEW_IDS = ["sg", "th", "jd", "sjzl", "xyzl", "zlyd", "zlkc", "smkc", "sjyn
 const NEW_SET = new Set(NEW_IDS);
 // 纲目/结构行标记：壹贰叁…、一二三…、阿拉伯数字、带圈数字、括号中文数字、「第N课」
 const STRUCT_RE = /^([壹贰叁肆伍陆柒捌玖拾]+|[一二三四五六七八九十百]+|[0-9]{1,3}|[⑴-⑿]|[①-⑳]|（[一二三四五六七八九十]+）|第[一二三四五六七八九十百0-9]+[课篇章讲则条])([ 、.．:：]|$)/;
+// 章末诗歌块标记：「诗339」「（诗438）」「诗歌 第N首」——其后的歌词短行不计碎片
+const POEM_MARK_RE = /(?:^|[（(])\s*诗\s*\d+|\b诗歌\s*第?\s*\d+\s*首/;
 const HEAD_RE = /^\s*书\s*$|^\s*名\s*[:：]|^\s*书\s*名\s*[:：]/m;
 const TRAIN_RE = /^.{0,14}年.{0,14}(训练|特会)$/m;
 const FOOT_RE = /^\*\*(来源|URL|获取时间|书报号|说明)\*\*/m;
@@ -230,10 +236,16 @@ for (const s of series) {
         // 结构行（纲目层级「一 / 1 / ⑴ / （一） / 第N课」）本就短，不是硬折行碎片——
         // ezoe 的真理课程/生命课程等整章是纲目、诗章整段短行，都按结构行排除
         const structural = l => STRUCT_RE.test(l.trim());
-        const short = lines.filter(l => l.trim().length <= 10 && !structural(l)).length;
-        frag += short; total += lines.length;
-        if (lines.length >= 20 && short / lines.length > 0.6) {
-          fragSeries.push(`${loc} (${Math.round(short / lines.length * 100)}%)`);
+        // 章末诗歌块（「诗339」「（诗438）」标记之后到章末的歌词行）同为体裁性短行：
+        // 造就类/石榴放蕊等篇末常附整首 hymn，每行 5~9 字，与硬折行碎片无关
+        const poemFrom = lines.findIndex(l => POEM_MARK_RE.test(l.trim()));
+        const inPoem = i => poemFrom >= 0 && i >= poemFrom;
+        const short = lines.filter((l, i) =>
+          l.trim().length <= 10 && !structural(l) && !inPoem(i)).length;
+        const shortable = lines.filter((l, i) => !inPoem(i)).length;
+        frag += short; total += shortable;
+        if (shortable >= 20 && short / shortable > 0.6) {
+          fragSeries.push(`${loc} (${Math.round(short / shortable * 100)}%)`);
         }
       }
     }
@@ -276,11 +288,36 @@ const SRC_MAP = {
   hmgq: "荒漠甘泉", zjgs: "造就故事", sl: "拾零", zsxx: "职事信息", cqxl: "成全训练信息",
 };
 const SRC_ROOT = path.resolve(ROOT, "..", "bible", "data", "raw", "spiritual_food");
+// 定稿清理（2026-11-04）后，被删的重复书正文已并入主版本——源目录仍在，
+// 但产物里不再有这些书的独立条目。源对照必须跳过它们，否则必然报「整段缺失」。
+// 从 cleanup-map 派生：deletedBooks 里带书名 -> 该系列要跳过的源书目录名。
+// 只跳过「真重复」（有合并去向）；整本墓碑同理（正版在别处，也已核对存在）。
+const CLEANUP_MAP = path.join(DATA, "cleanup-map.json");
+const MERGED_BOOK_TITLES = {};
+if (fs.existsSync(CLEANUP_MAP)) {
+  const cm = readJSON(CLEANUP_MAP);
+  for (const [loc, info] of Object.entries(cm.deletedBooks || {})) {
+    const sid = loc.split(":")[0];
+    (MERGED_BOOK_TITLES[sid] = MERGED_BOOK_TITLES[sid] || new Set()).add(info.title || "");
+  }
+}
 // 源侧按导出规则宽归一：去空白 / `**` / `阅读更多` / 行尾 ×；`Back` 导航行整行跳过
 const norm = (s) => s.replace(/[\s\u3000]/g, "")
   .replace(/\*\*/g, "")
   .replace(/阅读更多[＞>]?/g, "")
   .replace(/×+$/g, "");
+// 源目录名有繁体（主今日恢復…），产物是简体。书名比对用最小繁简映射——
+// 只覆盖实际出现的字，不做完整转换（避免引入依赖）。
+const FANTI = { "復": "复", "興": "兴", "聖": "圣", "靈": "灵", "會": "会", "這": "这",
+  "們": "们", "個": "个", "為": "为", "與": "与", "從": "从", "來": "来", "時": "时",
+  "實": "实", "現": "现", "義": "义", "證": "证", "話": "话", "職": "职", "對": "对",
+  "將": "将", "應": "应", "當": "当", "經": "经", "歷": "历", "開": "开", "關": "关",
+  "進": "进", "過": "过", "還": "还", "種": "种", "樣": "样", "麼": "么", "體": "体",
+  "點": "点", "數": "数", "學": "学", "國": "国", "愛": "爱", "樂": "乐", "見": "见",
+  "認": "认", "識": "识", "傳": "传", "揚": "扬", "禱": "祷", "讀": "读", "書": "书",
+  "長": "长", "門": "门", "問": "问", "間": "间", "陳": "陈", "隊": "队", "無": "无",
+  "萬": "万", "豐": "丰", "滿": "满", "變": "变", "戰": "战", "勝": "胜", "敗": "败" };
+const simp = (s) => String(s || "").replace(/./g, (c) => FANTI[c] || c);
 if (!fs.existsSync(SRC_ROOT)) {
   console.log("— 源对照：找不到 bible 源目录，跳过");
 } else {
@@ -313,6 +350,8 @@ print(json.dumps(out, ensure_ascii=False))
         }
       });
       const corpus = norm(parts.join("\n"));
+      const mergedTitles = new Set([...(MERGED_BOOK_TITLES[id] || [])].map(simp));
+      let skippedMerged = 0;
       let checked = 0;
       const missing = [], longMissing = [];
       const walk = (p) => {
@@ -323,6 +362,9 @@ print(json.dumps(out, ensure_ascii=False))
           if (fs.statSync(fp).isDirectory()) {
             const n = parseInt((f.match(/^(\d+)/) || [])[1] || "", 10);
             if (skipDirs.has(f) || (Number.isInteger(n) && skipNums.has(n))) continue;
+            // 定稿清理：这本书的正文已并入主版本，产物里不再独立成书 → 源侧跳过
+            const bookName = simp(f.replace(/^\d+\s*/, "").trim());
+            if (mergedTitles.has(bookName)) { skippedMerged++; continue; }
             walk(fp); continue;
           }
           if (!f.toLowerCase().endsWith(".md")) continue;

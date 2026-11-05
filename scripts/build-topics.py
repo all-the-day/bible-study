@@ -39,9 +39,11 @@ ALLOWED_BOOKS = (50, 51)
 #
 # ⚠️ 下面的篇号是**默认值**（按「经文整段落在该章内、按篇号取前三篇」选出来的），
 #    活动作业单到手后逐周替换即可；西 4 章源数据只有 2 篇整段落在本章（31/65），故只挂 2 篇。
-# 指定书报《福音的托付》（属灵书报第二辑第 21 本）：7 章按顺序对应第 1–7 周。
+# 指定书报《福音的托付》（属灵书报第二辑第 20 本）：7 章按顺序对应第 1–7 周。
+# 2026-11-04 书报定稿清理：sg 卷2 删掉一本重复书（如何享受灵粮，已并入造就类），
+# 《福音的托付》由 book 21 前移到 book 20（章序与内容不变）。
 def _gospel_commit(chapter, label=None):
-    ref = {'series': 'sg', 'volume': 2, 'book': 21, 'chapter': chapter}
+    ref = {'series': 'sg', 'volume': 2, 'book': 20, 'chapter': chapter}
     if label:
         ref['label'] = label
     return ref
