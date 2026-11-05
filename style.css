@@ -193,9 +193,9 @@ body.home .reading-progress { display: none; }
    首字压到 ☰ 字形底下。放不下时书卷名整段让位（shrink 99，不做半字碎屑）——
    书卷/训练期名在抽屉与正文里都有，章/篇名才是「我在读哪一段」；
    放得下时（读经「创世记 1章」）与改前逐像素一致。 */
-.crumb #bookName { white-space: nowrap; flex: 0 99 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.crumb #bookName { white-space: nowrap; flex: 0 99 auto; min-width: 3em; overflow: hidden; text-overflow: ellipsis; }   /* 保底 3em=两汉字+省略号（ch 是数字 0 宽度，对汉字虚小）——消灭「提.」单字退化（评审二轮补丁） */
 .crumb #chapterLabel { font-weight: 400; opacity: .9; white-space: nowrap; flex: 0 0 auto; }   /* 评审 P1-2：章号永不截断，书名单一 ellipsis 点（消灭「提摩太… 5…」双截断） */
-.topbar-actions { display: flex; gap: 4px; align-items: center; }
+.topbar-actions { display: flex; gap: 4px; align-items: center; flex-shrink: 0; }   /* 2026-11-05 二轮补丁：crumb 文档流化后右簇禁止被挤（pill 曾被压成竖排换行）——空间不足由标题单方承担 */
 @media (max-width: 900px) {
   .crumb { flex: 1; }
 }
@@ -1757,6 +1757,7 @@ mark.sr-hit {
     font-size: var(--fs-13); padding: 4px 10px; border-radius: var(--radius-pill); cursor: pointer;   /* 10px（原 12）：给 Aa 挤出的右侧空间找回 8px 标题宽度 */
   }
   .mode-pill-btn.active { background: var(--pill-active-bg); color: var(--pill-active-fg); font-weight: 600; }
+  .mode-pill-btn, .top-btn { white-space: nowrap; }   /* 二轮补丁：控件文字永不内部换行 */
   #settingsBtn {
     display: flex; align-items: center; justify-content: center;
     width: 44px; height: 44px; margin-right: -4px;
@@ -1778,6 +1779,11 @@ mark.sr-hit {
   #menuBtn { width: 44px; height: 44px; margin-left: -6px; }
   #homeBtn { width: 44px; height: 44px; margin-left: -6px; margin-right: -8px; }   /* margin-right：house↔menu 视觉成组，免得两个 44 热区夹 12 gap 显空（2026-11-05） */
 
+
+  /* ≤400px 顶栏轻压缩：gap/padding 微收挤出 ~28px 还给标题（2026-11-05 评审二轮补丁） */
+  .topbar { gap: 8px; padding: 0 8px; }
+  .mode-pill-btn { padding: 4px 8px; }
+  #settingsBtn { margin-right: -8px; }
 
   /* 首页移动端：合集块缩小（360px 约 3 列），底部留安全区 */
   #homeView { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }

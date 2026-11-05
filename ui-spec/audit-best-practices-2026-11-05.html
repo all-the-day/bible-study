@@ -78,6 +78,7 @@
 <div class="card fixed"><span class="tag fixed">已修</span><b>P2-10 crumb 谎报可点</b> —— ≥1400 停靠展开态 cursor 归 default（实测 default ✓）。</div>
 <div class="card fixed"><span class="tag fixed">已修</span><b>P2-1 删除无撤销</b> —— showToast 升级支持动作按钮；deleteAnn 附 5s「撤销」：恢复走与新增同路径的 save()（outbox 删除在前恢复在后，并集合并终态正确），墓碑桩随内存数组写回自动清除。CDP 链路验证 restored=true。</div>
 <div class="card fixed"><span class="tag fixed">已修</span><b>P2-4 空态裸文案</b> —— 笔记真空态加 CTA「去读经 · 划第一处」（直跳读经模块）；筛选空态保持文案（有明确语义）。</div>
+<div class="card done"><span class="tag done">二轮补丁</span><b>crumb 文档流化后的压力转移</b> —— 右簇曾被挤成 pill 竖排换行（用户截图 马太…21章）；修法：右簇 flex-shrink:0 + 控件 nowrap 零形变，书名 min-width 3em 保底，≤400px 顶栏轻压缩；移动支持下限定为 360px。</div>
 <div class="card done"><span class="tag done">已撤回</span><b>crumb ▾ 尖角提案</b> —— 试用后不对，撤回（9b1ba7e）。备选留档：chip 容器 / 维持现状。</div>
 
 <h2>二、做得好的（防回退钉子，复核全部在位）</h2>
