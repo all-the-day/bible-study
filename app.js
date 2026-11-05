@@ -149,14 +149,14 @@ const state = {
 /* 合集注册表（数据驱动）：首页块列表，点击 = 直接进入对应阅读器模块。
    晨兴/书报数据导出后各加一行即可上块，UI 零改动 */
 const COLLECTIONS = [
-  { id: 'bible', title: '读经', sub: '旧约 + 新约 · 66 卷', icon: '📖', entry: () => enterModule('bible') },
-  { id: 'lifereading', title: '生命读经', sub: '66 卷 · 逐卷研读', icon: '📗', entry: () => enterModule('lifereading') },
-  { id: 'vitality8', title: '活力八', sub: '每周作业单', icon: '🔥', entry: () => openTopic('vitality8') },
-  { id: 'notes', title: '我的笔记', sub: '划线 · 领受 · 汇总', icon: '📝', entry: () => enterModule('notes') },
-  { id: 'morning', title: '听抄', sub: '特会逐篇文稿', icon: '🌅', entry: () => enterModule('morning') },
-  { id: 'audio', title: '听书', sub: '1 合集 · 41 讲', icon: '🎧', entry: () => enterModule('audio') },
-  { id: 'ni', title: '倪文集', sub: '3 辑 62 册', icon: '📚', entry: () => enterModule('books', { series: 'ni' }) },
-  { id: 'bookhub', title: '书报', sub: '31 个系列', icon: '🗂️', entry: () => openBookHub() },
+  { id: 'bible', title: '读经', icon: '📖', entry: () => enterModule('bible') },
+  { id: 'lifereading', title: '生命读经', icon: '📗', entry: () => enterModule('lifereading') },
+  { id: 'vitality8', title: '活力八', icon: '🔥', entry: () => openTopic('vitality8') },
+  { id: 'notes', title: '我的笔记', icon: '📝', entry: () => enterModule('notes') },
+  { id: 'morning', title: '听抄', icon: '🌅', entry: () => enterModule('morning') },
+  { id: 'audio', title: '听书', icon: '🎧', entry: () => enterModule('audio') },
+  { id: 'ni', title: '倪文集', icon: '📚', entry: () => enterModule('books', { series: 'ni' }) },
+  { id: 'bookhub', title: '书报', icon: '🗂️', entry: () => openBookHub() },
 ];
 
 /* 专题注册表（见 AGENTS.md「专题」节）：页面只是作业单的链接聚合，
@@ -1226,7 +1226,6 @@ function renderHome() {
     <div class="home-block" data-entry="${c.id}" role="button" tabindex="0">
       <div class="home-block-icon">${blockIconHtml(c.icon, c.id)}</div>
       <div class="home-block-title">${c.title}</div>
-      <div class="home-block-sub">${c.sub || ''}</div>
     </div>`).join('');
   renderHomeHistory();
 }

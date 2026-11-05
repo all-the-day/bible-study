@@ -71,7 +71,7 @@
 ### D1 HomeBlock 合集块
 
 - **用途**：首页与书报合集层的入口磁贴（数据驱动）。
-- **解剖**：卡片（radius-md+border+shadow）> 图标（全主题线性 SVG 34px，Lucide 官方路径，stroke currentColor 跟 `--brand`）+ 标题 15/600 + 副文案 12 muted（真实统计数据）。
+- **解剖**：卡片（radius-md+border+shadow）> 图标（全主题线性 SVG 34px，Lucide 官方路径，stroke currentColor 跟 `--brand`）+ 标题 15/600；无副文案（2026-11-05 评审 P1-1 处置：统计型对目标读者冗余、窄卡溢出且块高不齐——磁贴职责=识别+启动，与书报二级层两件套同构）。
 - **变体**：全主题统一线性渲染（Lucide，2026-11-04 评审 F5 落地，classic 不再用 emoji）；hover 上浮。
 - **状态**：default / hover（上浮+阴影加深）/ focus-visible。
 - **无障碍**：整块为单个 `<a href>`；图标装饰性 `alt=""`，标题承载语义；副文案数字真实（不发明指标）。

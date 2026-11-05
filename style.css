@@ -1261,7 +1261,6 @@ mark.sr-hit {
 .home-block:hover { border-color: var(--brand); transform: translateY(-2px); }
 .home-block-icon { font-size: var(--fs-40); line-height: 1; }
 .home-block-title { font-size: var(--fs-16); font-weight: 600; color: var(--heading); }
-.home-block-sub { font-size: var(--fs-12); color: var(--text-muted); margin-top: 2px; }   /* 评审 F5 */
 
 /* 首页「最近阅读」（反馈 #16）：合集块下方的极简行列表（无卡片底，仅细分隔线） */
 .home-hist { margin-top: 26px; }

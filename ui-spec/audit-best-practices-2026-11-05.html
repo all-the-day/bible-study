@@ -78,8 +78,8 @@
   <span class="tag p1">P1-1</span><b>首页副文案在窄卡溢出换行，块高不齐</b>
   <div class="evi">证据：.tmp-shots/audit-360-home.png（360 宽：读经块「旧约 + 新约 · 66 卷」两行、首行顶左缘，块比邻块高 20px）· .tmp-shots/m3-home.png（390 已贴左缘）</div>
   <img class="evi-img" src=".tmp-shots/audit-360-home.png" alt="360 窄屏首页副文案溢出" style="max-width:300px">
-  <p class="fix"><b>最佳实践</b>：卡片元信息文案应单行省略或随容器降级，不允许撑破卡片节奏（块高不齐破坏网格扫读）。<br>
-  <b>建议</b>：① .home-block-sub 加 <code>white-space:nowrap; overflow:hidden; text-overflow:ellipsis</code>（最小改动）；② 360 以下换短文案数据位（如「66 卷」）；③ 块高由 grid 行统一。<b>工作量：0.5h</b>。</p>
+  <p style="background:#dcfce7;border-radius:6px;padding:6px 10px;font-size:13px;color:#166534"><b>处置（2026-11-05 同日）</b>：用户洞察采纳——副文案整体移除而非打补丁。统计型（66 卷/41 讲等）对目标读者冗余，释义型下沉模块内；磁贴回归 icon+title 两件套，与书报二级层同构，块高天然对齐。</p>
+  <p class="fix"><s><b>原建议</b>：① .home-block-sub 加 nowrap+ellipsis；② 360 以下换短文案数据位；③ 块高由 grid 行统一。</s>（已被上述处置取代）</p>
 </div>
 
 <div class="card p1">

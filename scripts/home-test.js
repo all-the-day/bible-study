@@ -39,7 +39,7 @@ async function main() {
     splashHidden: document.querySelector('#splash')?.classList.contains('hidden'),
     verse: document.querySelector('#splashVerse')?.textContent.trim() || '',
   }));
-  console.log('1. 启动进首页:', homeOk.bodyHome ? '✓' : '✗', '| 块:', homeOk.blocks.join(','), '| 副标题数:', homeOk.subCount, homeOk.subCount === 8 ? '✓' : '✗',
+  console.log('1. 启动进首页:', homeOk.bodyHome ? '✓' : '✗', '| 块:', homeOk.blocks.join(','), '| 副标题数:', homeOk.subCount, homeOk.subCount === 0 ? '✓' : '✗',
     '| splash已隐藏:', homeOk.splashHidden ? '✓' : '✗', '| 经节:', homeOk.verse.slice(0, 12));
 
   // 2. 读经块 → 直接进上次章节(预置 创24)，无弹窗
