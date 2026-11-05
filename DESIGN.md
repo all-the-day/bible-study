@@ -21,7 +21,7 @@
 
 | 类别 | 值 |
 |---|---|
-| 品牌色 | `--brand` #667eea · `--brand-dark` #5B67D4（渐变 135° 顶栏） |
+| 品牌色 | `--brand` #667eea（填充）· `--brand-dark` #5B67D4（文字/链接）；顶栏渐变 `#5B67D4→#4651B8` |
 | 中性 | page `#f0f3f9` · surface `#fafbff` · surface-alt `#f3f6fc` · border `#e6e8f0` |
 | 文字 | text `#1f2937` · soft `#4b5563` · muted `#6b7280` · heading `#111827` |
 | 功能 | danger `#d9534f`/deep `#b91c1c` · success `#16a34a` · fn-ref `#c07818` · person `#0f7b6c` |
@@ -53,7 +53,7 @@ Topbar · IconBtn · TopBtn · Segment(on-brand/on-surface) · NavDrawer · Vers
 ## 7. 无障碍门槛（详见 ui-spec/docs/04）
 
 - WCAG 2.2 AA 为工作上限：正文 4.5:1、大字/组件 3:1、焦点 3:1、触摸目标 ≥24×24（AA）。
-- **已知欠账（classic 主题 5 处）**：顶栏白字 3.66 / brand 文字 3.54 / fn-ref 3.42 / danger 3.83 / success 3.19 —— 整改方案已列 04 §1.2，属 v1.1 候选。
+- **对比度**：classic 5 处欠账已于 2026-11-04 全部整改（顶栏 4.84/6.71、vnum/链接 4.84、fn-ref 4.76、popup-btn 6.47、sync 7.13），审计见 ui-spec/docs/04。
 - 焦点 `:focus-visible`；禁裸 `outline:none`；图标按钮必有 `aria-label`；原生元素优先，不发明 ARIA。
 - 优势项保持：阅读缩放 0.85–2.0（低视力）、重试保留位置、复制带出处。
 
