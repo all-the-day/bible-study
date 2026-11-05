@@ -186,6 +186,7 @@ body.home .reading-progress { display: none; }
 }
 .icon-btn:hover { background: rgba(255,255,255,.15); }
 .topbar .icon-btn:hover { background: var(--topbar-btn); }
+.icon-btn svg { width: 22px; height: 22px; display: block; }   /* Lucide 内联图标（2026-11-05） */
 .crumb { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; font-size: var(--fs-17); font-weight: 600; }
 /* 书名允许收缩（2026-10-30 S2）：原来 flex-shrink:0 让书卷名独占宽度，窄屏上
    #chapterLabel 被压成 0，flex 行还从中间溢出、被 overflow:hidden 裁掉左端，
