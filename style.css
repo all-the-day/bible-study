@@ -187,6 +187,7 @@ body.home .reading-progress { display: none; }
 .icon-btn:hover { background: rgba(255,255,255,.15); }
 .topbar .icon-btn:hover { background: var(--topbar-btn); }
 .icon-btn svg { width: 24px; height: 24px; display: block; }   /* Lucide 内联图标（2026-11-05；24=Lucide 标准格，22 偏空） */
+.crumb-caret { display: none; }   /* ▾ 仅移动端（桌面 crumb 旁有翻章钮+停靠列，不加噪音） */
 .crumb { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; font-size: var(--fs-17); font-weight: 600; }
 /* 书名允许收缩（2026-10-30 S2）：原来 flex-shrink:0 让书卷名独占宽度，窄屏上
    #chapterLabel 被压成 0，flex 行还从中间溢出、被 overflow:hidden 裁掉左端，
@@ -1766,7 +1767,7 @@ mark.sr-hit {
   .crumb {
     /* 右侧让位：pill（读经|研读） + Aa 排版 + ⚙️，共约 216px；原 174 只让了 pill+⚙️，
        加 Aa 后 crumb 会压进 pill 区域（标题被遮） */
-    position: absolute; left: 44px; right: 210px; top: 0; bottom: 0;
+    position: absolute; left: 44px; right: 202px; top: 0; bottom: 0;   /* right 202：右簇实测起点 178（pill+Aa+⚙ 24px 图标口径）再留 8px，旧 210 是 22px 图标时代的账 */
     justify-content: flex-start; gap: 4px; font-size: var(--fs-16); white-space: nowrap;   /* 2026-11-05：标题左贴 ☰（点击同为开抽屉，视觉成组；原居中式与 ☰ 割裂） */
     overflow: hidden;   /* 超窄屏标题省略 */
     cursor: pointer;   /* 移动端点击弹章节选择 */
@@ -1775,10 +1776,11 @@ mark.sr-hit {
   /* 原 left 96 是居中时代防粘连注记，标题已改左贴 ☰，特例作废 */
   body.body-mod-audio .crumb { right: 56px; }
   .crumb .crumb-nav { display: none; }   /* 翻页移至底部导航 */
+  .crumb-caret { display: block; flex: 0 0 auto; width: 12px; height: 12px; opacity: .75; }   /* 标题=选择器提示 */
   .topbar-actions { gap: 2px; margin-left: auto; position: relative; z-index: 2; }   /* crumb 绝对定位后：推到最右 + 盖在其上层避免拦截点击 */
   #menuBtn { width: 44px; height: 44px; margin-left: -6px; }
   #homeBtn { width: 44px; height: 44px; margin-left: -6px; margin-right: -8px; }   /* margin-right：house↔menu 视觉成组，免得两个 44 热区夹 12 gap 显空（2026-11-05） */
-  .crumb { left: 88px; }   /* 原 44px：让位给常驻 ⌂ 首页按钮；☰ 字形止于 80，88 起排 8px 贴合 */
+  .crumb { left: 84px; }   /* 原 44px：让位给常驻 ⌂ 首页按钮；☰ 字形止于 80，84 起排 4px 贴合（成组） */
 
   /* 首页移动端：合集块缩小（360px 约 3 列），底部留安全区 */
   #homeView { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }

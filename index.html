@@ -58,7 +58,7 @@
     <button id="menuBtn" class="icon-btn" aria-label="菜单"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" x2="20" y1="12" y2="12" /> <line x1="4" x2="20" y1="6" y2="6" /> <line x1="4" x2="20" y1="18" y2="18" /></svg></button>
     <div class="crumb">
       <span id="bookName">—</span>
-      <span id="chapterLabel">第 — 章</span>
+      <span id="chapterLabel">第 — 章</span><svg class="crumb-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
       <button id="prevChBtn" class="crumb-nav">上一章</button>
       <button id="nextChBtn" class="crumb-nav">下一章</button>
     </div>
@@ -74,7 +74,9 @@
     </div>
     <button id="typographyBtn" class="icon-btn aa-btn" aria-label="排版设置" title="排版">Aa</button>
     <button id="settingsBtn" class="icon-btn" aria-label="设置"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z" /> <path d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" /> <path d="M12 2v2" /> <path d="M12 22v-2" /> <path d="m17 20.66-1-1.73" /> <path d="M11 10.27 7 3.34" /> <path d="m20.66 17-1.73-1" /> <path d="m3.34 7 1.73 1" /> <path d="M14 12h8" /> <path d="M2 12h2" /> <path d="m20.66 7-1.73 1" /> <path d="m3.34 17 1.73-1" /> <path d="m17 3.34-1 1.73" /> <path d="m11 13.73-4 6.93" /></svg></button>
-    <!-- 顶栏图标钮 2026-11-05：⌂/☰/⚙️ unicode 字形换 Lucide v0.462 内联 SVG（house/menu/cog），
+    <!-- crumb-caret：标题后 ▾ 选择器提示（仅移动端）——标题点击与 ☰ 同为 openNavDrawer，
+     成组后用尖角保住「标题可点」的发现性（iOS Files/Drive 的 title+⌄ 位置选择器模式，2026-11-05）。 -->
+  <!-- 顶栏图标钮 2026-11-05：⌂/☰/⚙️ unicode 字形换 Lucide v0.462 内联 SVG（house/menu/cog），
      字重/对齐不再依赖系统字体（齿轮用 cog：settings 花瓣造型小尺寸像花朵，2026-11-05 评审后换）；仅 Aa 为文字钮。 -->
   <!-- 阅读进度条：顶栏内 2px 细线，随 #textCol 滚动指示当前阅读进度（纯 UI，不存储）。
          absolute 而非 fixed：iOS 26 Safari 顶部取色只采样贴视口边缘的 fixed/sticky 元素，
