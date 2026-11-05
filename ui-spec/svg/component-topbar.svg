@@ -21,11 +21,11 @@
 
   <!-- ① 读经 · 移动端 390 -->
   <g id="v1-reading-mobile">
-    <text class="cap" x="24" y="82">① 读经 · 移动端 &lt;900px（⌂ 常驻 · 标题绝对居中 · pill+Aa+⚙️）</text>
+    <text class="cap" x="24" y="82">① 读经 · 移动端 &lt;900px（⌂ 常驻 · 标题左贴 ☰ 同为开抽屉成组 · pill+Aa+⚙️）</text>
     <rect class="tb" x="24" y="90" width="390" height="52"/>
     <text class="t" x="34" y="123" font-size="17" fill="#fff">⌂</text>
     <path d="M72 109h18M72 116h18M72 123h18" stroke="#fff" stroke-width="2" stroke-linecap="round" fill="none"/>
-    <text class="t" x="155" y="122" font-size="17" font-weight="600" fill="#fff" text-anchor="middle">创世记 1章</text>
+    <text class="t" x="92" y="122" font-size="17" font-weight="600" fill="#fff">创世记 1章</text>
     <rect x="216" y="103" width="46" height="26" rx="13" fill="#fff"/>
     <text class="t" x="239" y="120" font-size="13" font-weight="700" fill="#5B67D4" text-anchor="middle">读经</text>
     <rect x="264" y="103" width="46" height="26" rx="13" fill="rgba(255,255,255,.16)"/>
@@ -34,18 +34,18 @@
     <text class="t" x="392" y="122" font-size="15" fill="#fff" text-anchor="middle">⚙️</text>
     <g class="dim"><line x1="24" y1="156" x2="414" y2="156"/><line x1="24" y1="151" x2="24" y2="161"/><line x1="414" y1="151" x2="414" y2="161"/></g>
     <text class="m" x="219" y="152" text-anchor="middle">390</text>
-    <text class="nt" x="24" y="170">标题 .crumb 绝对定位居中（left 88 / right 216；听书 left 96 / right 56）· mode-pill 仅此口径显示 · 双页/隐藏注号/研读全屏/反馈均隐藏</text>
+    <text class="nt" x="24" y="170">标题 .crumb 绝对定位左贴 ☰（left 88；☰ 字形止于 80，8px 贴合；justify-content:flex-start）· 听书同款左贴（right 56）· mode-pill 仅此口径显示</text>
   </g>
 
   <!-- ② 听书 · 移动端 -->
   <g id="v2-audio-mobile">
-    <text class="cap" x="24" y="196">② 听书 · 移动端（Aa 全局隐藏、反馈隐藏 → 右簇仅 ⚙️；无返回键）</text>
+    <text class="cap" x="24" y="196">② 听书 · 移动端（Aa 全局隐藏、反馈隐藏 → 右簇仅 ⚙️；无返回键；标题左贴 ☰）</text>
     <rect class="tb" x="24" y="204" width="390" height="52"/>
     <text class="t" x="34" y="237" font-size="17" fill="#fff">⌂</text>
     <path d="M72 223h18M72 230h18M72 237h18" stroke="#fff" stroke-width="2" stroke-linecap="round" fill="none"/>
-    <text class="t" x="251" y="236" font-size="17" font-weight="600" fill="#fff" text-anchor="middle"><tspan font-weight="700">鸟瞰圣经</tspan> 第35讲 腓立比书</text>
+    <text class="t" x="92" y="236" font-size="17" font-weight="600" fill="#fff"><tspan font-weight="700">鸟瞰圣经</tspan> 第35讲 腓立比书</text>
     <text class="t" x="392" y="236" font-size="15" fill="#fff" text-anchor="middle">⚙️</text>
-    <text class="nt" x="24" y="270">标题=合集名(700)+讲次名(400) 两段同排 · crumb 窗口 left 96/right 56（给 ☰ 与 ⚙️ 让位）</text>
+    <text class="nt" x="24" y="270">标题=合集名(700)+讲次名(400) 两段同排 · crumb 窗口 right 56（⚙️ 让位）· 左贴 ☰ 与读经一致</text>
   </g>
 
   <!-- ③ 首页 · 移动端 -->
