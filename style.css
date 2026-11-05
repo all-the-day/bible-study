@@ -186,7 +186,7 @@ body.home .reading-progress { display: none; }
 }
 .icon-btn:hover { background: rgba(255,255,255,.15); }
 .topbar .icon-btn:hover { background: var(--topbar-btn); }
-.icon-btn svg { width: 22px; height: 22px; display: block; }   /* Lucide 内联图标（2026-11-05） */
+.icon-btn svg { width: 24px; height: 24px; display: block; }   /* Lucide 内联图标（2026-11-05；24=Lucide 标准格，22 偏空） */
 .crumb { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; font-size: var(--fs-17); font-weight: 600; }
 /* 书名允许收缩（2026-10-30 S2）：原来 flex-shrink:0 让书卷名独占宽度，窄屏上
    #chapterLabel 被压成 0，flex 行还从中间溢出、被 overflow:hidden 裁掉左端，
@@ -1777,7 +1777,7 @@ mark.sr-hit {
   .crumb .crumb-nav { display: none; }   /* 翻页移至底部导航 */
   .topbar-actions { gap: 2px; margin-left: auto; position: relative; z-index: 2; }   /* crumb 绝对定位后：推到最右 + 盖在其上层避免拦截点击 */
   #menuBtn { width: 44px; height: 44px; margin-left: -6px; }
-  #homeBtn { width: 44px; height: 44px; margin-left: -6px; }
+  #homeBtn { width: 44px; height: 44px; margin-left: -6px; margin-right: -8px; }   /* margin-right：house↔menu 视觉成组，免得两个 44 热区夹 12 gap 显空（2026-11-05） */
   .crumb { left: 88px; }   /* 原 44px：让位给常驻 ⌂ 首页按钮 */
 
   /* 首页移动端：合集块缩小（360px 约 3 列），底部留安全区 */

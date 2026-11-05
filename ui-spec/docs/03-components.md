@@ -10,7 +10,7 @@
 ### A1 Topbar 顶栏
 
 - **用途**：全模块常驻导航壳；承载位置感（crumb）、模块切换（Segment）、全局动作（Aa/⚙/反馈）。
-- **解剖**（见 `svg/component-topbar.svg`，2026-11-05 按 8779 实测重绘，桌面+移动双口径）：DOM 序 `homeBtn(house) → menuBtn(menu) → .crumb(flex:1：bookName+chapterLabel+上一章/下一章) → .topbar-actions(双页/隐藏注号/研读全屏/反馈) → Aa(文字钮) → settingsBtn(settings)`，高 52，sticky，z-30，padding 0 12 · gap 12；图标钮为 Lucide v0.462 内联 SVG 22px（house/menu/cog——settings 花瓣造型小尺寸像花朵故弃，2026-11-05 起，unicode 字形弃用），`.reading-progress` 2px 白条覆盖顶部（body.home 隐藏）。
+- **解剖**（见 `svg/component-topbar.svg`，2026-11-05 按 8779 实测重绘，桌面+移动双口径）：DOM 序 `homeBtn(house) → menuBtn(menu) → .crumb(flex:1：bookName+chapterLabel+上一章/下一章) → .topbar-actions(双页/隐藏注号/研读全屏/反馈) → Aa(文字钮) → settingsBtn(settings)`，高 52，sticky，z-30，padding 0 12 · gap 12；图标钮为 Lucide v0.462 内联 SVG 24px（house/menu/cog——settings 花瓣造型小尺寸像花朵故弃，2026-11-05 起，unicode 字形弃用；移动端 #homeBtn margin-right -8 使 house↔menu 成组，免两个 44 热区夹 12 gap 显空），`.reading-progress` 2px 白条覆盖顶部（body.home 隐藏）。
 - **变体（实测矩阵）**：读经桌面=⌂ ☰+crumb+上一章/下一章+双页/隐藏注号/研读全屏/反馈+Aa+⚙️；读经移动(<900)=⌂ ☰+标题绝对居中+读经|研读 pill+Aa+⚙️（双页/隐藏注号/研读全屏/反馈隐藏）；听书=反馈+⚙️（Aa 全局隐藏；移动端反馈也隐藏→仅 ⚙️）；首页/书报合集层=crumb/☰/⌂ 隐藏，桌面右簇 反馈+Aa+⚙️（移动 Aa+⚙️），无品牌标题字；笔记管理=移动端 ☰ 常驻（分类树进统一抽屉，左对齐标题）、桌面 ☰ 隐藏（≥901px），右簇 Aa+⚙️+反馈（桌面）；paper·minimal 主题=融合底+墨字+1px 下边线。反馈按钮全模块常显（桌面）。
 - **属性**：`showMenu` `showTypo` `showSettings`；`crumb`（书名 shrink:99 收缩不出半字）；主题继承。
 - **状态矩阵**：默认 / hover（icon-btn→`--topbar-btn`）/ active（top-btn→`--topbar-btn-on`）/ 主题变体 ×4。
