@@ -59,3 +59,4 @@ ui-spec/
 | 2026-11-05 | v1.1.5 | 评审修复批次：P1-2 章号不截断（flex 0 0 auto）/P1-3 reduced-motion/P1-4 输入框 16px 双断点/P2-1 删除撤销（toast 动作按钮）/P2-4 空态 CTA/P2-9 theme-color 随主题/P2-10 停靠态 cursor——全部 CDP 实测，评分 8.2→8.6 |
 | 2026-11-05 | v1.1.6 | 二轮补丁：移动 crumb 由绝对定位改回文档流 flex 子项（flex:1 min-width:0）——用户实测 第一辑·第4章 尾字被右簇压裁，flex 布局天然零重叠，left/right 魔法数全部退役；360-659 四档验证 |
 | 2026-11-05 | v1.1.7 | 二轮补丁追记：右簇 flex-shrink:0 + 控件 nowrap（crumb 文档流化后压力转移，pill 曾竖排换行）；书名 min-width 3em 保底两字（ch 单位对汉字虚小）；≤400px 顶栏轻压缩；移动支持下限 360px |
+| 2026-11-09 | v1.2.0 | 磁贴图标回归彩色 emoji（用户品味决策 A，对比页 icon-style-ab.html 留档）：THEME_ICONS/_thSvg/别名表死代码移除，blockIconHtml 直出 emoji；03/首页稿同步 |

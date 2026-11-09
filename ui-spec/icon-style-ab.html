@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>首页磁贴图标风格 A/B/C 对比</title>
+<style>
+  body { margin:0; background:#f0f3f9; color:#1f2937;
+         font:15px/1.7 -apple-system,'PingFang SC','Microsoft YaHei',sans-serif; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 28px 20px 60px; }
+  h1 { font-size: 22px; }
+  .verdict { background:#fff; border:1px solid #e6e8f0; border-radius:10px; padding:12px 16px; font-size:14px; color:#4b5563; }
+  .band { margin: 26px 0 8px; }
+  .band h2 { font-size: 16px; margin: 0 0 4px; }
+  .band p { margin: 0 0 10px; font-size: 13px; color: #6b7280; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .tile { background: #fafbff; border: 1px solid #e6e8f0; border-radius: 10px;
+          padding: 18px 8px 12px; text-align: center; cursor: pointer; transition: transform .15s; }
+  .tile:hover { transform: translateY(-2px); }
+  .tile .ic { font-size: 34px; line-height: 1; height: 40px; }
+  .tile .nm { margin-top: 8px; font-size: 14px; font-weight: 600; }
+  .dark { background: #111318; border-color: #2a2d3a; }
+  .dark .tile { background: #1a1d27; border-color: #2a2d3a; }
+  .dark .tile .nm { color: #e5e7eb; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>首页磁贴图标风格对比</h1>
+<div class="verdict">看完全部三组再定。A=原来（彩色 emoji）、B=多彩 Lucide（每块独立色，统一笔触）、C=现状（全靛蓝线性）。每组上面亮色、下面暗夜模拟——<b>重点看暗夜行：emoji 在暗底更跳，多彩 Lucide 更沉</b>。选中风格告诉我字母即可。</div>
+
+<div class="band">
+  <h2>A · 原版：彩色 emoji（你怀念的）</h2>
+  <p>色彩身份最强、最暖；代价是跨平台字形不一致（安卓/iOS emoji 长相不同）、无法跟随主题微调。</p>
+  <div class="grid" id="gA"></div>
+  <div class="grid dark" id="gAd"></div>
+</div>
+
+<div class="band">
+  <h2>B · 推荐：多彩 Lucide（统一笔触 + 独立色彩）</h2>
+  <p>每块一枚专属色（靛/绿/橙/紫/天蓝/青/藏蓝/黄褐），几何与笔触全站统一，暗夜下降饱和自动和谐。</p>
+  <div class="grid" id="gB"></div>
+  <div class="grid dark" id="gBd"></div>
+</div>
+
+<div class="band">
+  <h2>C · 现状：全靛蓝线性</h2>
+  <p>最克制统一，但八块同色，识别靠文字不靠色。</p>
+  <div class="grid" id="gC"></div>
+  <div class="grid dark" id="gCd"></div>
+</div>
+</div>
+<script>
+const LUC = {
+  bible:'<path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/>',
+  lifereading:'<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M10 2v8l3-3 3 3V2"/>',
+  vitality8:'<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>',
+  notes:'<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/><path d="M15 5l3 3"/>',
+  morning:'<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/>',
+  audio:'<path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7Z"/><path d="M21 14h-3a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-7Z"/><path d="M6 10V8a6 6 0 0 1 12 0v2"/>',
+  ni:'<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>',
+  bookhub:'<path d="M6 14c-1.5.5-2 1-2 2.5V20a1 1 0 0 0 1 1h3"/><path d="M9 5h4a2 2 0 0 1 2 2v13H11a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/><path d="M17 7h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/>',
+};
+const BLOCKS = [
+  ['bible','读经','📖','#5B67D4'],
+  ['lifereading','生命读经','📗','#16a34a'],
+  ['vitality8','活力八','🔥','#ea580c'],
+  ['notes','我的笔记','📝','#7c3aed'],
+  ['morning','听抄','🌅','#0284c7'],
+  ['audio','听书','🎧','#0f766e'],
+  ['ni','倪文集','📚','#4338ca'],
+  ['bookhub','书报','🗂️','#b45309'],
+];
+function tile(iconHtml, name) {
+  return '<div class="tile"><div class="ic">' + iconHtml + '</div><div class="nm">' + name + '</div></div>';
+}
+function svgIcon(inner, color) {
+  return '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="' + color + '" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle">' + inner + '</svg>';
+}
+BLOCKS.forEach(([id, name, emoji, color]) => {
+  const inDark = 'rgba(255,255,255,.85)';
+  document.getElementById('gA').insertAdjacentHTML('beforeend', tile('<span style="font-size:34px">' + emoji + '</span>', name));
+  document.getElementById('gAd').insertAdjacentHTML('beforeend', tile('<span style="font-size:34px">' + emoji + '</span>', name));
+  document.getElementById('gB').insertAdjacentHTML('beforeend', tile(svgIcon(LUC[id], color), name));
+  document.getElementById('gBd').insertAdjacentHTML('beforeend', tile(svgIcon(LUC[id], color), name));
+  document.getElementById('gC').insertAdjacentHTML('beforeend', tile(svgIcon(LUC[id], '#667eea'), name));
+  document.getElementById('gCd').insertAdjacentHTML('beforeend', tile(svgIcon(LUC[id], 'rgba(129,140,248,.9)'), name));
+});
+</script>
+</body>
+</html>

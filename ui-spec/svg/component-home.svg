@@ -21,41 +21,49 @@
   <g>
     <rect x="24" y="112" width="122" height="84" rx="8" fill="#fafbff" stroke="#e6e8f0"/>
     <g transform="translate(73,126)" stroke="#667eea" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14" /> <path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z" /></g>
+    <text class="t" x="85" y="166" font-size="34" text-anchor="middle">📖</text>
     <text class="t" x="24" y="180" font-size="14" font-weight="600" fill="#1f2937" text-anchor="middle" width="122">读经</text>
   </g>
   <g>
     <rect x="154" y="112" width="122" height="84" rx="8" fill="#fafbff" stroke="#e6e8f0"/>
     <g transform="translate(203,126)" stroke="#667eea" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v8l3-3 3 3V2" /> <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20" /></g>
+    <text class="t" x="215" y="166" font-size="34" text-anchor="middle">📗</text>
     <text class="t" x="154" y="180" font-size="14" font-weight="600" fill="#1f2937" text-anchor="middle" width="122">生命读经</text>
   </g>
   <g>
     <rect x="284" y="112" width="122" height="84" rx="8" fill="#fafbff" stroke="#e6e8f0"/>
     <g transform="translate(333,126)" stroke="#667eea" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" /></g>
+    <text class="t" x="345" y="166" font-size="34" text-anchor="middle">🔥</text>
     <text class="t" x="284" y="180" font-size="14" font-weight="600" fill="#1f2937" text-anchor="middle" width="122">活力八</text>
   </g>
   <g>
     <rect x="414" y="112" width="122" height="84" rx="8" fill="#fafbff" stroke="#e6e8f0"/>
     <g transform="translate(463,126)" stroke="#667eea" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4" /> <path d="M2 6h4" /> <path d="M2 10h4" /> <path d="M2 14h4" /> <path d="M2 18h4" /> <path d="M21.378 5.626a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z" /></g>
+    <text class="t" x="475" y="166" font-size="34" text-anchor="middle">📝</text>
     <text class="t" x="414" y="180" font-size="14" font-weight="600" fill="#1f2937" text-anchor="middle" width="122">我的笔记</text>
   </g>
   <g>
     <rect x="24" y="210" width="122" height="84" rx="8" fill="#fafbff" stroke="#e6e8f0"/>
     <g transform="translate(73,224)" stroke="#667eea" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" /> <path d="M19 10v2a7 7 0 0 1-14 0v-2" /> <line x1="12" x2="12" y1="19" y2="22" /></g>
+    <text class="t" x="85" y="264" font-size="34" text-anchor="middle">🌅</text>
     <text class="t" x="24" y="278" font-size="14" font-weight="600" fill="#1f2937" text-anchor="middle" width="122">听抄</text>
   </g>
   <g>
     <rect x="154" y="210" width="122" height="84" rx="8" fill="#fafbff" stroke="#e6e8f0"/>
     <g transform="translate(203,224)" stroke="#667eea" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3" /></g>
+    <text class="t" x="215" y="264" font-size="34" text-anchor="middle">🎧</text>
     <text class="t" x="154" y="278" font-size="14" font-weight="600" fill="#1f2937" text-anchor="middle" width="122">听书</text>
   </g>
   <g>
     <rect x="284" y="210" width="122" height="84" rx="8" fill="#fafbff" stroke="#e6e8f0"/>
     <g transform="translate(333,224)" stroke="#667eea" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m16 6 4 14" /> <path d="M12 6v14" /> <path d="M8 8v12" /> <path d="M4 4v16" /></g>
+    <text class="t" x="345" y="264" font-size="34" text-anchor="middle">📚</text>
     <text class="t" x="284" y="278" font-size="14" font-weight="600" fill="#1f2937" text-anchor="middle" width="122">倪文集</text>
   </g>
   <g>
     <rect x="414" y="210" width="122" height="84" rx="8" fill="#fafbff" stroke="#e6e8f0"/>
     <g transform="translate(463,224)" stroke="#667eea" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="18" x="3" y="3" rx="1" /> <path d="M7 3v18" /> <path d="M20.4 18.9c.2.5-.1 1.1-.6 1.3l-1.9.7c-.5.2-1.1-.1-1.3-.6L11.1 5.1c-.2-.5.1-1.1.6-1.3l1.9-.7c.5-.2 1.1.1 1.3.6Z" /></g>
+    <text class="t" x="475" y="264" font-size="34" text-anchor="middle">🗂️</text>
     <text class="t" x="414" y="278" font-size="14" font-weight="600" fill="#1f2937" text-anchor="middle" width="122">书报</text>
   </g>
   <g class="dim"><line x1="24" y1="318" x2="146" y2="318"/><line x1="24" y1="314" x2="24" y2="322"/><line x1="146" y1="314" x2="146" y2="322"/></g>
@@ -72,6 +80,6 @@
   <text class="t" x="168" y="427" font-size="12" fill="#6b7280">听书 · 3 天前</text>
 
   <text class="t" x="24" y="396" font-size="11" fill="#b91c1c">红线：书报二级合集层与首页同构复用 home-grid（均 icon+title 两件套）；新顶层入口必须尾部 syncRoute()</text>
-  <text class="nt" x="24" y="416">块图标：全主题线性 SVG 34px（Lucide 路径，stroke 跟 --brand，minimal 用 --text-soft）；活力八=flame</text>
+  <text class="nt" x="24" y="416">块图标：彩色 emoji 直出 40px（2026-11-09 用户品味决策 A——色彩身份/暖感优先；Lucide 保留在顶栏/控件位）</text>
   <text class="nt" x="24" y="434">无副文案：2026-11-05 评审后移除——磁贴职责=识别+启动，统计型对目标读者冗余、窄卡溢出且块高不齐（P1-1）；释义下沉至模块内</text>
 </svg>

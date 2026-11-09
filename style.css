@@ -1922,10 +1922,7 @@ mark.sr-hit {
 .theme-check { color: var(--brand); font-weight: 700; min-width: 16px; }
 
 /* ── 合集块图标：全主题线性 SVG（2026-11-04 评审 F5；emoji 仍在 DOM 但不再作界面图标；stroke=currentColor 跟随主题）── */
-.home-block-icon .hb-ic-em { display: none; }
-.hb-ic-line svg { width: 34px; height: 34px; display: block; }
-.home-block-icon .hb-ic-line { display: block; color: var(--brand); }
-:root[data-theme="minimal"] .home-block-icon .hb-ic-line { color: var(--text-soft); }
+.home-block-icon .hb-ic-em { display: block; }   /* 2026-11-09：磁贴 emoji 直出（用户品味决策 A） */
 
 /* ── 使用帮助（设置 → 使用帮助）：正文 + 最近更新；「最近更新」与更新弹窗「本次更新」
    共用 app.js CHANGELOG（用户语言单一来源，2026-10-16）── */

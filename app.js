@@ -179,38 +179,9 @@ const THEME_SWATCH = {   // 选择器里的三圆点预览：[主色, 页面底,
   minimal: ['#5662CE', '#f6f6f8', '#1c1c1e'],
   dark: ['#8b96ff', '#111318', '#e7e9f0'],
 };
-// 非经典主题的合集块线性图标（classic 用 emoji；SVG stroke=currentColor，颜色由 CSS 按 theme 给）
-function _thSvg(paths) {
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
-}
-const THEME_ICONS = {
-  bible: _thSvg('<path d="M12 7v14" /> <path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z" />'),
-  lifereading: _thSvg('<path d="M10 2v8l3-3 3 3V2" /> <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20" />'),
-  notes: _thSvg('<path d="M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4" /> <path d="M2 6h4" /> <path d="M2 10h4" /> <path d="M2 14h4" /> <path d="M2 18h4" /> <path d="M21.378 5.626a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z" />'),
-  morning: _thSvg('<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" /> <path d="M19 10v2a7 7 0 0 1-14 0v-2" /> <line x1="12" x2="12" y1="19" y2="22" />'),
-  audio: _thSvg('<path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3" />'),
-  ni: _thSvg('<path d="m16 6 4 14" /> <path d="M12 6v14" /> <path d="M8 8v12" /> <path d="M4 4v16" />'),
-  bookhub: _thSvg('<rect width="8" height="18" x="3" y="3" rx="1" /> <path d="M7 3v18" /> <path d="M20.4 18.9c.2.5-.1 1.1-.6 1.3l-1.9.7c-.5.2-1.1-.1-1.3-.6L11.1 5.1c-.2-.5.1-1.1.6-1.3l1.9-.7c.5-.2 1.1.1 1.3.6Z" />'),
-  vitality8: _thSvg('<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />'),
-  slat: _thSvg('<path d="M4.5 9.5h15l-1.6 8.2a2 2 0 0 1-2 1.8H8.1a2 2 0 0 1-2-1.8z"/><path d="M8.5 9.5 10.5 5M15.5 9.5 13.5 5M9 13h6"/>'),
-  bio: _thSvg('<path d="M15 13a3 3 0 1 0-6 0" /> <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20" /> <circle cx="12" cy="8" r="2" />'),
-  fuyintiandi: _thSvg('<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c-5 5.5-5 11.5 0 17 5-5.5 5-11.5 0-17"/>'),
-  gospel: _thSvg('<path d="M12 20s-7-4.6-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.4-7 10-7 10z"/>'),
-  reading: _thSvg('<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20" />'),
-  periodicals: _thSvg('<path d="M4 5h13v14H6a2 2 0 0 1-2-2z"/><path d="M17 8h3v9a2 2 0 0 1-2 2"/><path d="M7.5 9h6M7.5 12.5h6M7.5 16h4"/>'),
-  misc: _thSvg('<path d="M4 8l8-4.5L20 8v8l-8 4.5L4 16z"/><path d="M4 8l8 4.5L20 8M12 12.5v8"/>'),
-  _default: _thSvg('<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20" />'),
-};
-// 新系列在非经典主题下复用相近的线性图标（否则 24 个块全回落同一个文件图标）
-const SERIES_ICON_ALIAS = {
-  sg: 'reading', th: 'morning', jd: 'lifereading', sjzl: 'bible', xyzl: 'reading',
-  zlyd: 'reading', zlkc: 'lifereading', smkc: 'lifereading', sjyn: 'notes',
-  jkhy: 'reading', zlzt: 'reading', zlpz: 'reading', kdyf: 'reading', jpl: 'reading',
-  hhls: 'bio', tllc: 'reading', xblm: 'reading', hmgq: 'morning', zjgs: 'reading',
-  sl: 'reading', zsxx: 'reading', cqxl: 'reading', zj: 'reading', jh: 'reading',
-};
-function blockIconHtml(emoji, iconKey) {
-  return `<span class="hb-ic-em">${emoji}</span><span class="hb-ic-line">${THEME_ICONS[iconKey] || THEME_ICONS[SERIES_ICON_ALIAS[iconKey]] || THEME_ICONS._default}</span>`;
+function blockIconHtml(emoji) {
+  // 磁贴图标=彩色 emoji 直出（2026-11-09 用户品味决策 A：色彩身份/暖感优先；Lucide 保留在顶栏与控件位）
+  return `<span class="hb-ic-em">${emoji}</span>`;
 }
 function currentTheme() {
   const t = document.documentElement.dataset.theme;
@@ -228,9 +199,6 @@ function applyTheme(t) {
       if (solid) meta.content = solid;
     }
   });
-  // 图标双渲染（classic=emoji / 其余=线性）跟随主题，需重渲染所在屏幕的合集块
-  if (state.screen === 'home') renderHome();
-  else if (document.body.classList.contains('bookhub')) renderBookHub();
 }
 function openThemePicker() {
   const cur = currentTheme();
@@ -1232,7 +1200,7 @@ function renderHome() {
   if (!grid) return;
   grid.innerHTML = COLLECTIONS.map(c => `
     <div class="home-block" data-entry="${c.id}" role="button" tabindex="0">
-      <div class="home-block-icon">${blockIconHtml(c.icon, c.id)}</div>
+      <div class="home-block-icon">${blockIconHtml(c.icon)}</div>
       <div class="home-block-title">${c.title}</div>
     </div>`).join('');
   renderHomeHistory();
@@ -1434,7 +1402,7 @@ function renderBookHub() {
   const render = (list) => {
     grid.innerHTML = list.map(s => `
       <div class="home-block" data-series="${s.id}" role="button" tabindex="0">
-        <div class="home-block-icon">${blockIconHtml(s.icon || '📄', s.id)}</div>
+        <div class="home-block-icon">${blockIconHtml(s.icon || '📄')}</div>
         <div class="home-block-title">${escapeHtml(s.name)}</div>
       </div>`).join('');
   };
@@ -1470,7 +1438,7 @@ function renderBookHub() {
 const BOOK_HUB_ICONS = {
   slat: '🧺', bio: '👤', fuyintiandi: '🌏', gospel: '💗', reading: '📕',
   periodicals: '🗞️', misc: '🧩',
-  // 灵粮全量导入（2026-10-19）：按来源给块图标，线性图标走 THEME_ICONS，缺省回落 📄
+  // 灵粮全量导入（2026-10-19）：按来源给块图标，缺省回落 📄
   sg: '📚', th: '🎤', jd: '💎', sjzl: '📔', xyzl: '📘', zlyd: '📗',
   zlkc: '🎓', smkc: '🌱', sjyn: '❓', jkhy: '🗣️', zlzt: '📄', zlpz: '⚖️',
   kdyf: '✅', jpl: '🔍', hhls: '🏛️', tllc: '🛤️', xblm: '🕍', hmgq: '🌅',
