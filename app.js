@@ -588,7 +588,8 @@ function syncTypoUI() {
   if (fsSans && fsSerif) {
     fsSans.classList.toggle('on', !serif);
     fsSerif.classList.toggle('on', serif);
-    $('fontVal').textContent = serif ? '宋体' : '黑体';
+    fsSans.setAttribute('aria-pressed', String(!serif));
+    fsSerif.setAttribute('aria-pressed', String(serif));
   }
 }
 
@@ -1245,6 +1246,7 @@ function showHome() {
   closePopupAll();
   closeNavDrawer();
   applyDrawerDock();   // 首页隐藏停靠列（isDocked 含 screen==='work' 条件）
+  audioSyncMini();     // 首页不显示迷你播放条（评审 S5：门控含 screen==='work'）
   const hb = $('homeBtn');
   if (hb) hb.classList.add('active');
   renderHome();
@@ -1273,6 +1275,7 @@ function openTopic(id, opts) {
   closePopupAll();
   closeNavDrawer();
   applyDrawerDock();
+  audioSyncMini();   // 专题页不显示迷你播放条（评审 S5；不经首页的路径：抽屉历史 → 专题）
   $('bookName').textContent = topic.title;
   $('chapterLabel').textContent = '作业单';
   // 同专题再进入（从条目跳走再返回）保留滚动位置——八周清单逐周点开是典型用法；
@@ -1386,6 +1389,7 @@ function openBookHub() {
   closePopupAll();
   closeNavDrawer();
   applyDrawerDock();
+  audioSyncMini();   // 合集层不显示迷你播放条（评审 S5）
   const grid = $('bookHubGrid');
   if (grid) grid.dataset.epoch = String(Number(grid.dataset.epoch || '0') + 1);   // 使旧补渲染失效
   renderBookHub();
@@ -2031,8 +2035,8 @@ async function enterModule(id, opts) {
   }
   state.activeModule = id;
   applyModuleBodyClass(id);
-  audioSyncMini();
   enterWork();
+  audioSyncMini();   // 必须在 enterWork() 之后：门控要求 screen==='work'，之前调会让「从首页进阅读器」这条路条子不出现（CR 2026-11-09）
   // 面板开着时切模块：px 标签按新模块基准刷新（各模块基准字号不同）
   const typoPanel = $('typoModal');
   if (typoPanel && !typoPanel.hidden) syncTypoUI();
@@ -2076,6 +2080,18 @@ function updateReadingProgress(bar, scroller) {
 }
 
 // 首页合集块点击委托 + 顶部搜索
+// 磁贴是 role="button" tabindex="0"：键盘必须能激活（2026-11-09 评审 S3——只有 click 委托，
+// Enter/Space 全无反应，键盘用户能 Tab 到入口却打不开）。统一走一次 click，行为与鼠标一致。
+function bindTileKeys(el) {
+  if (!el) return;
+  el.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+    const tile = e.target.closest('.home-block, .home-hist-item');
+    if (!tile || e.target !== tile) return;
+    e.preventDefault();   // Space 不滚动页面
+    tile.click();
+  });
+}
 function bindHomeEvents() {
   $('homeGrid').addEventListener('click', (e) => {
     const tile = e.target.closest('.home-block');
@@ -2083,6 +2099,7 @@ function bindHomeEvents() {
     const c = COLLECTIONS.find(x => x.id === tile.dataset.entry);
     if (c && c.entry) c.entry();
   });
+  bindTileKeys($('homeGrid'));
   // 专题（topics，作业单）：条目是普通 hash 链接，由 popstate/hashchange → applyRoute 就位
   // 书报合集层：块点击 → series 直进阅读器；搜索 → 跨合集检索（篇目标题，数据来自各系列元数据缓存）
   $('bookHubGrid').addEventListener('click', (e) => {
@@ -2092,6 +2109,7 @@ function bindHomeEvents() {
     // 必须走 openBookChapter 显式切系列/辑/章（内部处理 selectBookSeries）
     openBookChapter(1, 0, 0, tile.dataset.series);
   });
+  bindTileKeys($('bookHubGrid'));
   const hubInput = $('bookHubSearch');
   const hubResults = $('bookHubSearchResults');
   if (hubInput) {
@@ -2139,6 +2157,7 @@ function bindHomeEvents() {
     const item = e.target.closest('.home-hist-item');
     if (item) jumpHistory(load(LS_HISTORY, [])[+item.dataset.hist]);
   });
+  bindTileKeys($('homeHist'));   // 历史条目同为 role=button tabindex=0（评审 S3）
   $('homeBtn').addEventListener('click', showHome);
   const input = $('homeSearch');
   const results = $('homeSearchResults');
@@ -5691,7 +5710,10 @@ function audioSyncControls() {
 
 /* 全局迷你播放条（评审 F7）：已加载音频且不在听书模块时常驻显示。
    更新时机：audio 元素事件（play/pause/timeupdate/metadata/error）+ enterModule 切换。
-   不挂 audioSyncControls/Progress——它们在模块外因控件不存在而早退。 */
+   不挂 audioSyncControls/Progress——它们在模块外因控件不存在而早退。
+   2026-11-09 评审 S5：只在阅读器工作区（screen==='work'）显示。原来只排除听书模块，
+   于是「听书 → 点 ⌂ 回首页」条子还在（activeModule 仍是 audio 的判断反了：那一次反而消失），
+   「听书 → 读经 → 回首页」条子留着——同一界面两种结果。首页/合集层/专题/笔记管理一律不显示。 */
 let _miniBound = false;
 function audioSyncMini() {
   const bar = $('miniPlayer');
@@ -5704,7 +5726,8 @@ function audioSyncMini() {
     $('mpTitle').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
   }
   const a = state.audioEl;
-  const on = !!(a && a.dataset.auUrl && state.audioData) && state.activeModule !== 'audio';
+  const on = !!(a && a.dataset.auUrl && state.audioData) &&
+    state.activeModule !== 'audio' && state.activeModule !== 'notes' && state.screen === 'work';
   bar.hidden = !on;
   document.body.classList.toggle('mini-audio', on);
   if (!on) return;
@@ -6108,6 +6131,7 @@ function applyDrawerDock() {
     lockScroll(false);
     dw.hidden = false;
     renderDrawer();
+    setTimeout(enhanceDrawerA11y, 0);   // 停靠常驻也要键盘可达（评审 S4）
   } else if (!isMobile()) {
     // 桌面收起（或 notes/首页）：彻底隐藏，唤出走 setDocked(true)
     dw.hidden = true; dw.classList.remove('open');
@@ -6145,6 +6169,7 @@ function openNavDrawer() {
   requestAnimationFrame(() => { ov.classList.add('on'); dw.classList.add('open'); });
   lockScroll(true);
   renderDrawer();
+  setTimeout(enhanceDrawerA11y, 0);   // 浮层打开即补键盘可达（评审 S4）
 }
 
 function closeNavDrawer() {
@@ -6586,8 +6611,93 @@ async function jumpDrawerBrowse(mod, r) {
   }
 }
 
+/* ── 抽屉键盘可达（2026-11-09 评审 S4）──
+   原实现只有 click 委托：书卷/章、篇目、书/章、期/篇共 89 个条目 tabIndex 全为 -1，
+   抽屉里唯一能 Tab 到的是搜索框；而 1200–1399 与移动端这一整段只能靠抽屉导航（停靠列已退回浮层）。
+   做法 = roving tabindex：每列只留一个可 Tab 项（当前项，无当前项则首项），列内 ↑↓ 移动、
+   ←→ 跨栏、Home/End 到首尾，Enter/Space 激活（走一次 click，与鼠标同一路径）。
+   条目由 renderDrawerBrowse / renderDrawerHistory / renderDrawerSearch 三处模板拼出、
+   且 await 后还会重渲染，故用 MutationObserver 统一补属性，避免每个 return 前各加一次调用。 */
+const DW_ITEM_SEL = '.dw-item, .dw-hist-item';
+const DW_NAV_SEL = '.dw-item, .dw-hist-item, [data-seg], [data-t], [data-vol]';
+function dwNavItems(list) {
+  return [...list.children].filter(el => el.matches(DW_NAV_SEL));
+}
+function enhanceDrawerA11y() {
+  const dw = $('navDrawer');
+  if (!dw || dw.hidden) return;
+  // 双栏列表：每列一个 Tab 站（.cur 优先）
+  dw.querySelectorAll('#dwBody .dw-col, #dwBody .dw-hist-list, #dwSearchResults').forEach((list) => {
+    const items = dwNavItems(list);
+    if (!items.length) return;
+    const ci = items.findIndex(el => el.classList.contains('cur'));
+    items.forEach((el, i) => {
+      el.setAttribute('role', 'button');
+      el.setAttribute('tabindex', i === (ci >= 0 ? ci : 0) ? '0' : '-1');
+    });
+  });
+  // 分段、底部切换、历史段「清空」：项数少，全部进 Tab 序列
+  dw.querySelectorAll('#dwSeg > div, #dwFoot .dw-foot-seg > div, #dwBody .dw-clear-btn').forEach((el) => {
+    el.setAttribute('role', 'button');
+    el.setAttribute('tabindex', '0');
+  });
+}
+function dwRoveTo(el) {
+  const list = el.parentElement;
+  if (!list) return;
+  dwNavItems(list).forEach((c) => c.setAttribute('tabindex', c === el ? '0' : '-1'));
+}
+function drawerNavKeydown(e) {
+  const el = e.target.closest && e.target.closest(DW_NAV_SEL);
+  if (!el || !$('navDrawer').contains(el)) return;
+  if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+    e.preventDefault();
+    el.click();
+    return;
+  }
+  const vertical = e.key === 'ArrowDown' || e.key === 'ArrowUp';
+  const horizontal = e.key === 'ArrowLeft' || e.key === 'ArrowRight';
+  const jump = e.key === 'Home' || e.key === 'End';
+  if (!vertical && !horizontal && !jump) return;
+  e.preventDefault();
+  let next = null;
+  if (vertical || jump) {
+    const items = dwNavItems(el.parentElement);
+    if (!items.length) return;
+    if (jump) next = e.key === 'Home' ? items[0] : items[items.length - 1];
+    else {
+      const i = items.indexOf(el);
+      next = items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length];
+    }
+  } else {
+    // ←→ 跨栏：只对双栏主从有意义（单列列表 / 分段条忽略）
+    const col = el.closest('.dw-col');
+    if (!col) return;
+    const sib = e.key === 'ArrowRight' ? col.nextElementSibling : col.previousElementSibling;
+    if (!sib || !sib.classList.contains('dw-col')) return;
+    next = dwNavItems(sib)[0] || null;
+  }
+  if (!next) return;
+  dwRoveTo(next);
+  next.focus();
+  if (next.scrollIntoView) next.scrollIntoView({ block: 'nearest' });
+}
+
 function bindDrawerEvents() {
   $('drawerOverlay').addEventListener('click', closeNavDrawer);
+  // 键盘：↑↓/Home/End 在列内移动，←→ 跨栏，Enter/Space 激活（评审 S4）
+  const dwRoot = $('navDrawer');
+  dwRoot.addEventListener('keydown', drawerNavKeydown);
+  dwRoot.addEventListener('focusin', (e) => {
+    const t = e.target.closest && e.target.closest(DW_ITEM_SEL);
+    if (t) dwRoveTo(t);
+  });
+  // 三处模板渲染 + await 后重渲染统一补 role/tabindex（属性写入不触发 childList，不会自激）
+  const mo = new MutationObserver(() => enhanceDrawerA11y());
+  ['dwBody', 'dwSeg', 'dwFoot', 'dwSearchResults'].forEach((id) => {
+    const el = $(id);
+    if (el) mo.observe(el, { childList: true, subtree: true });
+  });
   // 视口跨界停靠阈值（<1400 ↔ ≥1400）时重估停靠态：跨 900 不再需要重估，
   // 901–1199 与移动端同为浮层（抽屉常显与否只由 DRAWER_DOCK_MIN 决定）
   let lastWide = drawerWide();
@@ -7171,24 +7281,29 @@ function showFloatTool(rect) {
     bindPress(sw, () => applyColor(c.id));
     tool.appendChild(sw);
   });
+  // 动作区（2026-11-09 评审 S7）：下划线/加笔记/引用到笔记/复制 收进 .ft-actions。
+  // 原来它们与色点平级，390 上 flex 折行时「复制」被挤到第三行孤悬、与两个分隔线分开，
+  // 看着像第四类操作。分组后移动端稳定成「预览 / 颜色 / 动作」三行，桌面仍是一行。
+  const acts = document.createElement('div');
+  acts.className = 'ft-actions';
   const sep = document.createElement('div');
   sep.className = 'tool-sep';
-  tool.appendChild(sep);
+  acts.appendChild(sep);
   // 下划线
   const ul = document.createElement('button');
   ul.className = 'tool-btn';
   ul.textContent = '下划线';
   bindPress(ul, applyUnderline);
-  tool.appendChild(ul);
+  acts.appendChild(ul);
   // 笔记
   const nb = document.createElement('button');
   nb.className = 'tool-btn';
   nb.textContent = '加笔记';
   bindPress(nb, addNote);
-  tool.appendChild(nb);
+  acts.appendChild(nb);
   const sep2 = document.createElement('div');
   sep2.className = 'tool-sep';
-  tool.appendChild(sep2);
+  acts.appendChild(sep2);
   // 引用到笔记（仅读经模块：写入当前经文章笔记；生命读经/书报/听抄模块没有对应「本章」概念）
   if (state.activeModule === 'bible') {
     const qt = document.createElement('button');
@@ -7196,7 +7311,7 @@ function showFloatTool(rect) {
     qt.textContent = '引用到笔记';
     qt.title = '把选中文字（带出处）追加到本章笔记';
     bindPress(qt, quoteToNotes);
-    tool.appendChild(qt);
+    acts.appendChild(qt);
   }
   // 复制纯文本（自动过滤注号）
   const cp = document.createElement('button');
@@ -7204,7 +7319,8 @@ function showFloatTool(rect) {
   cp.textContent = '复制';
   cp.title = '复制正文（含出处，不含注号）';
   bindPress(cp, copyPlainText);
-  tool.appendChild(cp);
+  acts.appendChild(cp);
+  tool.appendChild(acts);
   positionMenuByRect(tool, rect);
 }
 

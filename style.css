@@ -726,6 +726,9 @@ sup.xref-ref:hover { color: var(--brand-dark); }
   flex-basis: 100%; font-size: var(--fs-12); color: var(--text-muted);
   padding: 2px 4px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* 动作区（2026-11-09 评审 S7）：下划线/加笔记/引用到笔记/复制 成组；整块可换行，
+   但组内不再被色点挤散。桌面平排一行的视觉与改动前一致。 */
+.floattool .ft-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .floattool .sw.c1 { background: var(--c1); }
 .floattool .sw.c2 { background: var(--c2); }
 .floattool .sw.c3 { background: var(--c3); }
@@ -827,7 +830,10 @@ sup.xref-ref:hover { color: var(--brand-dark); }
   display: flex; align-items: center; gap: 10px;
   padding: 14px 18px; border-top: 1px solid var(--border);
 }
-.typo-font-btn { flex: 1; text-align: center; }
+/* 字体选择钮（2026-11-09 评审 S1）：.typo-step 的 flex:none/width:34px 在源序与特异性上都压过裸
+   .typo-font-btn，导致「黑体」被挤成竖排两个 13px 字、字块 34px 高而按钮只有 30px（描边切过字身）。
+   用 .typo-row 前缀提高特异性，并给 min-width 保证单行放得下。 */
+.typo-row .typo-font-btn { flex: 1 1 auto; width: auto; min-width: 52px; text-align: center; white-space: nowrap; }
 .typo-font-btn.on { background: var(--surface-alt); color: var(--brand-dark); border-color: var(--brand); font-weight: 600; }   /* 评审 F9 */
 .typo-label { flex: 0 0 34px; font-size: var(--fs-13); color: var(--text-soft); }
 .typo-val { flex: 0 0 86px; text-align: right; font-size: var(--fs-12); color: var(--text-muted); font-variant-numeric: tabular-nums; }
@@ -1599,7 +1605,9 @@ mark.sr-hit {
 .notes-item-check { flex: none; align-self: center; }
 .notes-item-time { flex: none; font-size: var(--fs-11); color: var(--text-muted); align-self: center; }
 .notes-item-kind { flex: none; font-size: var(--fs-12); align-self: center; }
-.notes-empty { color: var(--text-muted); font-size: var(--fs-14); padding: 24px 6px; }
+/* 空态（2026-11-09 评审 S2）：说明文字与行动按钮上下成组。原来是 block + inline-block
+   按钮，margin-top 在行内盒上不生效，按钮贴住句子最后一个字（实测间距 0px）。 */
+.notes-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; color: var(--text-muted); font-size: var(--fs-14); padding: 24px 6px; }
 .notes-batch-bar {
   position: sticky; top: 0; z-index: 5;
   display: flex; gap: 8px; align-items: center; padding: 8px 10px; margin-bottom: 10px;
@@ -1805,8 +1813,10 @@ mark.sr-hit {
     max-width: calc(100vw - 16px);
   }
   .floattool .sw, .floattool .tool-btn, .floattool .tool-sep { flex-shrink: 0; }
-  .floattool .sw { width: 24px; height: 24px; }
-  .floattool .tool-btn { padding: 3px 7px; font-size: var(--fs-13); }
+  /* 2026-11-09 评审 S6/S7：色点 24→30、动作钮 ≥36 高（24/25 在手指上误触率高）；
+     动作统一进 .ft-actions 一行，不再被挤到第三行只剩「复制」 */
+  .floattool .sw { width: 30px; height: 30px; }
+  .floattool .tool-btn { padding: 6px 10px; font-size: var(--fs-13); min-height: 36px; }
 }
 
 /* ── 移动端滑动翻页反馈（2026-10-16）：新内容轻淡入，方向感（下一篇从右进、上一篇从左进）── */
@@ -1872,7 +1882,7 @@ mark.sr-hit {
 }
 
 /* ── 暗夜（2026-11-04 评审 F1）：暗底亮字，避开纯黑纯白；标注透明度 50%→25-35%
-   （暗底上 50% 会让正文对比度跌到 3.2:1，降档后 6.9–10.9 全部 ≥4.5）。 ── */
+   （暗底上 50% 会让正文对比度跌到 3.2:1，降档到 25-35% 后正文类目 6.5–14.2 全部 ≥4.5）。 ── */
 :root[data-theme="dark"] {
   --brand: #8b96ff; --brand-dark: #a3adff; --brand-rgb: 139, 150, 255;
   --page-bg: #111318; --surface: #191b22; --surface-alt: #20232c; --border: rgba(255,255,255,.09);
@@ -1905,6 +1915,17 @@ mark.sr-hit {
 :root[data-theme="dark"] mark.c3 { background: rgba(156,39,176,.35); }
 :root[data-theme="dark"] mark.c4 { background: rgba(33,150,243,.3); }
 :root[data-theme="dark"] mark.c5 { background: rgba(244,67,54,.3); }
+/* 暗夜标注文字色（2026-11-09 评审 B1）：上面只换了底色，c2 的深绿 #1b5e20 会一路继承下来——
+   深绿字压在深绿块上只有 1.07:1，紫/红/蓝也都在 2:1 上下，等于划了线反而看不见字。
+   五色各给一个亮文字色，保住「五色语义」不变（色相仍可辨），探针在真实渲染上实测
+   （文字色 vs 色块叠在卡片底上的合成色）：c1 4.87 / c2 7.18 / c3 9.35 / c4 7.32 / c5 7.94，均 ≥4.5。
+   c1 必须是暖白而不是 --text：#FFEB3B 半透明压在暗底上是一块橄榄色（亮度 0.156），
+   正文色 --text 只有 4.19，够不到 4.5。 */
+:root[data-theme="dark"] mark.c1 { color: #fff8d6; }
+:root[data-theme="dark"] mark.c2 { color: #d7f5d9; }
+:root[data-theme="dark"] mark.c3 { color: #f0d6f6; }
+:root[data-theme="dark"] mark.c4 { color: #d6ebff; }
+:root[data-theme="dark"] mark.c5 { color: #ffdcd8; }
 
 /* ── 阅读主题选择器（设置 → 阅读主题；popup replace 原位渲染）── */
 .theme-list { display: flex; flex-direction: column; margin: 4px 0 10px; }
@@ -1995,7 +2016,40 @@ body.mini-audio #homeView { padding-bottom: calc(96px + env(safe-area-inset-bott
 @media (min-width: 1400px) {
   body.drawer-docked .crumb { cursor: default; }   /* P2-10：停靠展开态点击 no-op，不谎报可点 */
 }
-.toast-action { border: 1px solid rgba(255,255,255,.55); background: transparent; color: #fff; border-radius: 6px; padding: 2px 10px; margin-left: 10px; font-size: var(--fs-13); cursor: pointer; }
+.toast-action { border: 1px solid rgba(255,255,255,.55); background: transparent; color: #fff; border-radius: 6px; padding: 4px 12px; margin-left: 10px; font-size: var(--fs-13); cursor: pointer; min-height: 36px; }
 .toast-action:hover { background: rgba(255,255,255,.15); }
-.empty-cta { margin-top: 12px; padding: 6px 16px; border-radius: 8px; border: 1px solid var(--brand); color: var(--brand-dark); background: transparent; cursor: pointer; font-size: var(--fs-13); }
+.empty-cta { padding: 7px 16px; border-radius: 8px; border: 1px solid var(--brand); color: var(--brand-dark); background: transparent; cursor: pointer; font-size: var(--fs-13); }
 .empty-cta:hover { background: rgba(102,126,234,.1); }
+
+/* 键盘焦点环（2026-11-09 评审 S3/S4 配套）：磁贴、最近阅读、抽屉条目/分段/清空
+   原本只有浏览器默认 outline，实测首页磁贴算出 `3px none`（等于看不见）——
+   刚把它们接进 Tab 序列，就必须看得见焦点在哪。沿用听书控件的品牌色环口径。 */
+.home-block:focus-visible, .home-hist-item:focus-visible,
+.dw-item:focus-visible, .dw-hist-item:focus-visible, .dw-clear-btn:focus-visible,
+#dwSeg > div:focus-visible, #dwFoot .dw-foot-seg > div:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
+}
+.home-block:focus-visible { outline-offset: 3px; border-radius: var(--radius-lg); }
+
+/* ── 触控命中区（2026-11-09 评审 S6）──
+   实测 390 触屏下 Aa 34×25、读经|研读 pill 42×27、撤销 48×25、划词色点 24×24、划词按钮高 25，
+   均低于项目自有的 44px 约定（#settingsBtn 就是 44×44）。顶栏与划词条再排布会挤压 crumb，
+   故用「扩热区不占版」：::before 只纵向 +10px（顶栏上下都是空白），横向不扩——读经|研读两颗
+   紧邻，横向扩会互相抢点击。
+   只挑真正偏小的三颗（Aa / pill / top-btn），不写成 .icon-btn 通配：⌂☰⚙️ 本身已是 44×44，
+   且 ⚙️ 的 `.update-dot::after` 是版本红点——通配 ::after 会把红点覆盖成透明热区（CR 2026-11-09）。
+   ::before 在这些按钮上原本无人使用。 */
+@media (pointer: coarse) {
+  .topbar .aa-btn, .topbar .mode-pill-btn, .topbar .top-btn { position: relative; }
+  .topbar .aa-btn::before, .topbar .mode-pill-btn::before, .topbar .top-btn::before {
+    content: ''; position: absolute; left: 0; right: 0; top: -10px; bottom: -10px;
+  }
+}
+@media (max-width: 900px) {
+  .topbar .aa-btn, .topbar .mode-pill-btn, .topbar .top-btn { position: relative; }
+  .topbar .aa-btn::before, .topbar .mode-pill-btn::before, .topbar .top-btn::before {
+    content: ''; position: absolute; left: 0; right: 0; top: -10px; bottom: -10px;
+  }
+}
