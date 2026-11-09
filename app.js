@@ -31,6 +31,7 @@ const LS_TYPO = 'bible-study.typography';            // {scale, lh} 阅读排版
 const LS_THEME = 'bible-study.theme';                // 阅读主题：classic|indigo|paper|minimal，纯本地不入云同步（index.html 头部 early script 同步读）
 const LS_TOPIC_NOTES = 'bible-study.topicNotes';     // 旧版（1.0.59）专题屏级笔记：作业单页已无正文，只保留旧数据与云同步通道
 const LS_LAST_MARK = 'bible-study.lastMark';         // 最近使用的标注色（评审 F8，纯本地）
+const LS_READ_POS = 'bible-study.readPos';           // 各模块最后读到的位置 {module:{u,k,d,t}}（纯本地，不入云同步）
 const LS_AUDIO_LAST = 'bible-study.audioLast';       // {collection, lecture, track, time} 听书断点（纯本地，不进云同步）
 // 阅读排版取值约束（必须在 state 初始化前声明：state.typography 依赖 normalizeTypo 读取这两个常量）
 const TYPO_DEFAULTS = { scale: 1, lh: 2, font: 'sans' };
@@ -1236,6 +1237,7 @@ function pauseAudioForScreen() {
 }
 
 function showHome() {
+  saveReadingScroll();   // 离开工作区前先落一次位置（screen 一变就不再记录）
   state.screen = 'home';
   pauseAudioForScreen();
   document.body.classList.add('home');
@@ -1266,6 +1268,7 @@ function openTopic(id, opts) {
   const topic = TOPICS[id];
   if (!topic) return;
   const prevTopic = state.topicId;
+  saveReadingScroll();   // 离开工作区前先落一次位置
   state.screen = 'topic';
   pauseAudioForScreen();
   state.topicId = id;
@@ -1381,6 +1384,7 @@ function ensureTopicData(id) {
 // 书报首页块进入：展示小书报合集块网格（数据驱动自 books 系列清单，排除倪文集）。
 // 点合集块 enterModule('books', {series}) 直进该系列阅读器；⌂/搜索跳转照常。
 function openBookHub() {
+  saveReadingScroll();   // 离开工作区前先落一次位置
   state.screen = 'bookhub';
   pauseAudioForScreen();
   document.body.classList.add('bookhub');
@@ -2049,6 +2053,17 @@ async function enterModule(id, opts) {
     // 必须无条件刷一次 crumb——「读原文」跳回本模块当前章时标题残留专题标签的根因
     await mod.renderCrumb();
   }
+  // 冷启动 / 从首页进入 / 换模块时的位置恢复：
+  // - 换模块：必须落到「该模块记录的位置」或顶部，不能留着上个模块的滚动偏移（那是别的单元的坐标）
+  // - 同模块重入：只在仍停在顶部时补一次（init 后台预渲染那一次正文藏在 body.home 下，
+  //   clientHeight=0 会早退），避免覆盖用户刚滚到的位置
+  if (READ_POS_MODULES.includes(id) && state.screen === 'work') {
+    const col = $('textCol');
+    if (col && col.clientHeight) {
+      if (firstEnter) resetReadingScroll(id);
+      else if (col.scrollTop === 0) restoreReadingScroll(id);
+    }
+  }
   syncRoute();   // 模块进入/切换落定后同步 URL（首页块/搜索/全局笔记跳转共用此入口）
 }
 
@@ -2078,6 +2093,112 @@ function updateReadingProgress(bar, scroller) {
   const max = scroller.scrollHeight - scroller.clientHeight;
   bar.style.width = (max > 0 ? Math.min(100, (scroller.scrollTop / max) * 100) : 0) + '%';
 }
+
+/* ============ 阅读位置记忆（2026-11-09） ============
+   重开 App / 刷新后回到上次读到的那一行。语义边界（用户定稿）：
+   - 只记「最后读的那一个单元」，翻章仍然滚顶——翻到别的章时单元键不匹配，恢复自然落空；
+   - 纯本地偏好，不入云同步（与 `LS_LAST`/`viewMode` 同类）；
+   - 只覆盖四个有正文的模块（读经/生命读经/书报/听抄），听书是播放器没有可读正文。
+   锚点不用绝对像素、也不用百分比：记「首个还没离开视口的块 + 相对它的滚动偏移」。
+   换字号/行距/窗口宽度时锚点会移位，但这个偏移仍表示「从这个块又往下滚了多少」，
+   比百分比稳（百分比在行高变化后会整段漂）。块身份复用渲染层已有的锚点：
+   读经 `.vtext[data-verse]`，其余模块行 div 的 `data-base`（该行在源 content 的偏移）。 */
+const READ_POS_MODULES = ['bible', 'lifereading', 'books', 'morning'];
+const READ_MAIN = { bible: 'verseContainer', lifereading: 'lrMain', books: 'bookMain', morning: 'morningMain' };
+
+// 单元键：模块 + 当前定位（与各模块的 LS_*_LAST 同基数，改一处要一起改）
+function readingUnitKey(mod) {
+  if (mod === 'bible') return state.currentBook ? `${state.currentBook.index}:${state.currentChapter}` : '';
+  if (mod === 'lifereading') return (state.lrBookIndex != null && state.lrArticleId != null) ? `${state.lrBookIndex}:${state.lrArticleId}` : '';
+  if (mod === 'books') return state.bookSeries ? `${state.bookSeries}:${state.bookVolume}:${state.bookBook}:${state.bookChapter}` : '';
+  if (mod === 'morning') return state.morningPeriod ? `${state.morningPeriod}:${state.morningChapterId}` : '';
+  return '';
+}
+
+// 可作锚点的块：读经用每节的 .vtext，其余用带 data-base 的行；都限定在「当前模块的主区」内
+// （#textCol 里同时存在四套主区 DOM，按可见性取会拿到隐藏那套的 0 尺寸矩形）
+function readingAnchorNodes(mod) {
+  const box = $(READ_MAIN[mod] || '');
+  if (!box) return [];
+  return mod === 'bible' ? box.querySelectorAll('.vtext[data-verse]') : box.querySelectorAll('[data-base]');
+}
+function anchorKeyOf(mod, el) {
+  return String(mod === 'bible' ? el.dataset.verse : el.dataset.base);
+}
+
+// 当前滚动位置对应的锚点：首个「底边还没离开容器顶」的块，加上它顶端在滚动内容里的位置
+function readingAnchor(mod, col) {
+  const nodes = readingAnchorNodes(mod);
+  if (!nodes.length || !col.clientHeight) return null;
+  const top = col.getBoundingClientRect().top;
+  let node = nodes[0];
+  for (const n of nodes) {
+    if (n.getBoundingClientRect().bottom > top + 4) { node = n; break; }
+  }
+  return { key: anchorKeyOf(mod, node), offset: col.scrollTop + (node.getBoundingClientRect().top - top) };
+}
+
+// 存一次（force 保留给 pagehide / 离开工作区这类必须落盘的时机）
+function saveReadingScroll() {
+  if (state.screen !== 'work') return;
+  const mod = state.activeModule;
+  if (!READ_POS_MODULES.includes(mod)) return;
+  const col = $('textCol');
+  if (!col) return;
+  const unit = readingUnitKey(mod);
+  if (!unit) return;
+  const a = readingAnchor(mod, col);
+  if (!a) return;
+  const all = load(LS_READ_POS, {}) || {};
+  all[mod] = { u: unit, k: a.key, d: Math.round(col.scrollTop - a.offset), t: Date.now() };
+  save(LS_READ_POS, all);
+}
+
+// 恢复到该模块记录的单元；单元不符 / 锚点已不存在 / 正文还不可见 → 返回 false，由调用方滚顶
+function restoreReadingScroll(mod) {
+  const col = $('textCol');
+  if (!col || !col.clientHeight) return false;
+  const unit = readingUnitKey(mod);
+  if (!unit) return false;
+  const rec = (load(LS_READ_POS, {}) || {})[mod];
+  if (!rec || rec.u !== unit) return false;
+  const nodes = readingAnchorNodes(mod);
+  let node = null;
+  for (const n of nodes) { if (anchorKeyOf(mod, n) === String(rec.k)) { node = n; break; } }
+  // 记录指向的块已不存在（数据重导 / 章节内容变了）：按「回到该单元就滚顶」处理，
+  // 不能停在上一屏残留的滚动位置（那是别的单元的偏移，读起来会莫名从中间开始）
+  if (!node) { col.scrollTop = 0; return true; }
+  const top = col.getBoundingClientRect().top;
+  const target = Math.max(0, col.scrollTop + (node.getBoundingClientRect().top - top) + (rec.d || 0));
+  col.scrollTop = target;
+  // 布局尚未定型（字体/宽度未应用，内容高度还是 0）时这次会落空：下一帧按同一目标再对一次。
+  // 只在「目标 > 0 但实际仍是 0」时补，避免与紧随其后的 scrollToVerse 平滑滚动打架。
+  if (target > 0 && col.scrollTop === 0) {
+    requestAnimationFrame(() => { if (col.clientHeight) col.scrollTop = target; });
+  }
+  return true;
+}
+
+// 换单元时的统一动作：能恢复到该单元上次的位置就恢复，否则滚顶（翻章滚顶即由此保证）
+function resetReadingScroll(mod) {
+  const col = $('textCol');
+  if (!col) return;
+  if (!restoreReadingScroll(mod)) col.scrollTop = 0;
+}
+
+function bindScrollRemember() {
+  const col = $('textCol');
+  if (!col) return;
+  let t = 0;
+  col.addEventListener('scroll', () => {
+    clearTimeout(t);
+    t = setTimeout(() => saveReadingScroll(), 350);   // 滚动停 350ms 落盘，不每帧写 localStorage
+  }, { passive: true });
+  const flush = () => { clearTimeout(t); saveReadingScroll(); };
+  window.addEventListener('pagehide', flush);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) flush(); });
+}
+
 
 // 首页合集块点击委托 + 顶部搜索
 // 磁贴是 role="button" tabindex="0"：键盘必须能激活（2026-11-09 评审 S3——只有 click 委托，
@@ -2728,7 +2849,7 @@ async function selectChapter(chapter) {
   renderChapterNav();
   renderStudy();
   renderDrawer();   // 停靠抽屉同步 cur 高亮与旧约/新约 tab（jumpDrawerBrowse 先经 enterWork 用旧书卷渲染过一次，此处以新位置纠正；与书报/听抄/生命读经跳转一致，反馈 #23/#25）
-  $('textCol').scrollTop = 0;   // 翻章滚顶；jumpToVerse 等跳转路径随后自行 scrollIntoView 覆盖
+  resetReadingScroll('bible');   // 回到该章上次读到的位置；换章则滚顶（jumpToVerse 随后自行 scrollIntoView 覆盖）
   save(LS_LAST, { book: state.currentBook.index, chapter });
   pushHistory('bible', { book: state.currentBook.index, chapter }, `${state.currentBook.name} ${chapter}章`);
   syncRoute();
@@ -4786,7 +4907,7 @@ async function selectLrArticle(articleId) {
   await mod.renderMain();
   mod.renderSide();
   mod.renderCrumb();
-  $('textCol').scrollTop = 0;
+  resetReadingScroll('lifereading');   // 回到该篇上次读到的位置；换篇则滚顶
   syncRoute();
 }
 
@@ -4804,7 +4925,7 @@ async function selectLrVolume(bookIndex) {
   await mod.renderMain();
   mod.renderSide();
   mod.renderCrumb();
-  $('textCol').scrollTop = 0;
+  resetReadingScroll('lifereading');   // 回到该篇上次读到的位置；换卷则滚顶
   syncRoute();
 }
 
@@ -5208,7 +5329,7 @@ async function selectBookSeries(series) {
   await mod.renderMain();
   mod.renderSide();
   mod.renderCrumb();
-  $('textCol').scrollTop = 0;
+  resetReadingScroll('books');   // 回到该章上次读到的位置；换系列则滚顶
   syncRoute();
 }
 
@@ -5230,7 +5351,7 @@ async function selectBookVolume(volume) {
   await mod.renderMain();
   mod.renderSide();
   mod.renderCrumb();
-  $('textCol').scrollTop = 0;
+  resetReadingScroll('books');   // 回到该章上次读到的位置；换辑则滚顶
   syncRoute();
 }
 
@@ -5248,7 +5369,7 @@ async function selectBookItem(book) {
   await mod.renderMain();
   mod.renderSide();
   mod.renderCrumb();
-  $('textCol').scrollTop = 0;
+  resetReadingScroll('books');   // 回到该章上次读到的位置；换书则滚顶
   syncRoute();
 }
 
@@ -5265,7 +5386,7 @@ async function selectBookChapter(volume, book, chapter) {
   await mod.renderMain();
   mod.renderSide();
   mod.renderCrumb();
-  $('textCol').scrollTop = 0;
+  resetReadingScroll('books');   // 回到该章上次读到的位置；换章则滚顶
   syncRoute();
 }
 
@@ -5405,7 +5526,7 @@ async function selectMorningChapter(chapterId) {
   READER_MODULES.morning.renderMain();
   renderMorningSide();
   READER_MODULES.morning.renderCrumb();
-  $('textCol').scrollTop = 0;
+  resetReadingScroll('morning');   // 回到该篇上次读到的位置；换篇则滚顶
   syncRoute();
 }
 
@@ -5425,7 +5546,7 @@ async function selectMorningPeriod(periodId) {
   mod.renderMain();
   renderMorningSide();
   mod.renderCrumb();
-  $('textCol').scrollTop = 0;
+  resetReadingScroll('morning');   // 回到该篇上次读到的位置；换期则滚顶
   syncRoute();
 }
 
@@ -6802,6 +6923,7 @@ let editingAnnId = null;
 function bindEvents() {  // 首页：合集块点击 + 顶部搜索 + ⌂ 回首页
   bindHomeEvents();
   bindReadingProgress();
+  bindScrollRemember();
   bindDrawerEvents();
   bindAudioEvents();
   // 隐藏/显示注号

@@ -30,7 +30,7 @@ cd scripts || exit 1
 
 LANE_DATA="books-data-test"
 LANE_B="drawer-test ref-link-test update-logic-test morning-reader-test reread-test typography-test bookhub-test home-test-mobile sync2-test lr-heading-test annotation-test"
-LANE_C="search-test topic-test ezoe-reader-test person-link-test copy-citation-test lr-module-annotation-test slat-reader-test e2e-test lr-annotation-test help-test"
+LANE_C="scroll-restore-test search-test topic-test ezoe-reader-test person-link-test copy-citation-test lr-module-annotation-test slat-reader-test e2e-test lr-annotation-test help-test"
 LANE_D="audio-test home-test book-reader-test notes-module-test lr-reader-test router-test swipe-test theme-test"
 
 FASTFAIL="${FASTFAIL:-1}"
