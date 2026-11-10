@@ -23,10 +23,6 @@ data/books/
 .env
 .env.local
 
-# Vercel
-.vercel/
-.vercel
-
 # Capacitor / Node（CI 生成，不入库）
 node_modules/
 www/

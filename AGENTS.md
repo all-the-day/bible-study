@@ -417,10 +417,10 @@ cd scripts && python build-topics.py     # 专题（活力八）数据：读已�
 - 导出到 `data/`，改动数据源后需重跑导出
 - 生命读经 `verses` 来自 `../bible` 的 `生命读经章节映射.json`（ezoe.work 目录页精确标注）；合并卷按「读经：」行拆分到子卷，verses 优先用精确标注，为空或章节号与主书卷不对应时用读经行补齐
 
-## 部署（Vercel——2026-10-08 起停用，保留项目冷备）
+## 发版必经：版本同步与资产校验
 
-- **不再部署、不再作为任何数据源**：web 入口与 APK 构建数据均已切 CF Pages（见下节）。项目 https://bible-study-teal-seven.vercel.app（账号 all-the-day）保留不删作冷备；`vercel --prod --yes --archive=tgz`、`.vercelignore`（只排除 `.vercel/` `.git/` `scripts/`，保证 gitignore 的 `data/` 能上传）仅作历史记录
-- 退役原因：`*.vercel.app` 大陆域名级阻断（TLS RST），对国内用户无回滚价值；CF Pages 实测 25/25 全通，且唯一硬依赖（APK 构建数据下载）已切走
+> Vercel 已于 2026-10-08 退役（`*.vercel.app` 大陆域名级 TLS RST），唯一生产入口是 Cloudflare Pages；`.vercelignore` 与 `.gitignore` 的 Vercel 段已随 2026-11-10 清理移除。
+
 - **版本同步流程（发版必经，两步缺一不可）**：① push 触发 APK 构建 → 构建自动 patch+1 并把 `[skip ci]` 升版提交写回 main（同时改 package.json + manifest.json）；② 本地 `git pull --rebase origin main` 拉取升版提交 → `node scripts/deploy.mjs` 重新部署，让网页版 manifest.json 与 GitHub Release 对齐。否则网页版本号落后、设置弹窗「检查更新」一直提示新版本。**注意**：push 前若本地落后（有远端升版/其他提交），需先 rebase 再 push，且**部署要在 rebase 之后的干净工作区执行**，避免把旧 manifest.json 部署上去。
 - **发版后验证 Release 资产：别只信 `gh api` 的 `assets` 字段**（此条与平台无关，Vercel 停用后仍适用）。2026-09-23 实测资产已正常上传且完整可下载，但 `gh release view --json assets` 与 `gh api .../releases/tags/bible-study-main` 仍返回 `assets: []`（误报为空），`gh release view` 文本态也不列资产——据此判断会误以为发版失败。也**不要**只看 `releases/download/<tag>/<file>` 的 302：其 `filename=` 是从请求路径推断的，资产不存在同样 302。可靠做法是**实际跟随重定向取内容**校验 `Content-Length`（应与 workflow artifact `bible-study-debug-apk` 一致）与 ZIP 魔数 `504b0304`；本机直连 `release-assets.githubusercontent.com` 会 TLS 失败（exit 35，H3C 拦截），须走代理 `-x http://127.0.0.1:7897`。
 
