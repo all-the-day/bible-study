@@ -84,16 +84,20 @@ async function main() {
   const r5 = await page.$eval('#floatTool', el => !el.hidden);
   console.log('5. 模块主区划线工具条:', r5 ? '✓' : '✗');
 
-  // 6. ☰ 收起停靠列 / 再点展开
+  // 6. ☰ 开/关导航抽屉
+  // 2026-11-04 评审 F4 起停靠阈值是 1400：本测试视口 1280 属于「浮层」档，
+  // 抽屉默认收起，点 ☰ 是「打开浮层」而不是「收起停靠列」（原断言按 1200 阈值写的，已过期）
   await page.click('#menuBtn');
-  await new Promise((r) => setTimeout(r, 400));
+  await new Promise((r) => setTimeout(r, 500));
   const r6 = await page.evaluate(() => ({
     dockedOff: !document.body.classList.contains('drawer-docked'),
-    drawerGone: document.querySelector('#navDrawer').getBoundingClientRect().width === 0,
+    drawerOpen: document.querySelector('#navDrawer').classList.contains('open')
+      && document.querySelector('#navDrawer').getBoundingClientRect().width > 0,
   }));
-  console.log('6. ☰ 收起停靠列:', r6.dockedOff && r6.drawerGone ? '✓' : '✗');
-  await page.click('#menuBtn');   // 展开还原
-  await new Promise((r) => setTimeout(r, 400));
+  console.log('6. ☰ 打开浮层抽屉(1280 不停靠):', r6.dockedOff && r6.drawerOpen ? '✓' : '✗',
+    '| 停靠:', !r6.dockedOff, '| 抽屉开:', r6.drawerOpen);
+  await page.keyboard.press('Escape');   // 关浮层还原
+  await new Promise((r) => setTimeout(r, 500));
 
   // 7. ⌂ 回首页 → 再进生命读经 → 恢复上次位置（罗马书第1篇）
   await page.click('#homeBtn');

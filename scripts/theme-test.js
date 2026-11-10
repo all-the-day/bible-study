@@ -45,7 +45,7 @@ async function main() {
     cardShadow: getComputedStyle(document.querySelector('.scripture-card')).boxShadow,
     vtext: getComputedStyle(document.querySelector('.vtext')).fontSize,
     em: getComputedStyle(document.querySelector('.hb-ic-em')).display,
-    line: getComputedStyle(document.querySelector('.hb-ic-line')).display,
+    lineCount: document.querySelectorAll('.hb-ic-line').length,   // 2026-11-09 定稿：磁贴只用 emoji
   }));
   if (c.attr !== 'classic') fail(`1. data-theme 应为 classic，实际 ${c.attr}`);
   else ok('1a. data-theme=classic（early script 显式落值）');
@@ -61,13 +61,13 @@ async function main() {
   const popupBg = await bg('#popup', 'backgroundColor');
   if (popupBg !== 'rgb(255, 255, 255)') fail(`1g. classic 弹窗面板底应纯白，实际 ${popupBg}`);
   else ok('1g. classic 弹窗面板底纯白（--panel）');
-  if (c.em !== 'inline' || c.line !== 'none') fail(`1f. classic 应显 emoji 隐线性图标（em=${c.em}, line=${c.line}）`);
-  else ok('1f. classic 图标=emoji');
+  if (c.em !== 'block' || c.lineCount !== 0) fail(`1f. classic 磁贴应显 emoji 且无线性残留（em=${c.em}, line=${c.lineCount}）`);
+  else ok('1f. classic 磁贴 emoji 直出');
   // iOS 26 Safari 顶部取色只采样贴视口边缘的 fixed/sticky 元素：
   // 进度条必须在顶栏内且为 absolute，顶栏自身须有可被采样的纯色底
   if (!c.barInTopbar || c.barPos !== 'absolute') fail(`1h. 进度条应在顶栏内且 absolute，实际 in=${c.barInTopbar} pos=${c.barPos}`);
   else ok('1h. 进度条在顶栏内 absolute（不参与 iOS 顶部取色）');
-  if (c.topbarSolid !== 'rgb(102, 126, 234)') fail(`1i. classic 顶栏显式底色应 #667EEA，实际 ${c.topbarSolid}`);
+  if (c.topbarSolid !== 'rgb(91, 103, 212)') fail(`1i. classic 顶栏显式底色应 #5B67D4（2026-11-04 加深至白字 4.84:1），实际 ${c.topbarSolid}`);
   else ok('1i. classic 顶栏显式底色 #667EEA（iOS 取色源）');
 
   // 2. 进工作区有经文卡片可断言（首页没有 .scripture-card）
@@ -78,7 +78,7 @@ async function main() {
   await page.click('#setTheme');
   await page.waitForSelector('.theme-item', { timeout: 5000 });
   const ids = await page.evaluate(() => [...document.querySelectorAll('.theme-item')].map((x) => x.dataset.themeId));
-  if (ids.join(',') !== 'classic,indigo,paper,minimal') fail(`3a. 选择器应含 4 主题，实际 ${ids.join(',')}`);
+  if (ids.join(',') !== 'classic,indigo,paper,minimal,dark') fail(`3a. 选择器应含 5 主题（暗夜 2026-11-04 加入），实际 ${ids.join(',')}`);
   else ok('3a. 主题选择器 4 项（经典/靛蓝/暖纸/素灰）');
   // 三主题的顶栏采样色都要等于各自 --topbar-solid（iOS 26 顶部取色源）
   await page.click('.theme-item[data-theme-id="indigo"]');
@@ -95,7 +95,7 @@ async function main() {
     cardBg: getComputedStyle(document.querySelector('.scripture-card')).backgroundColor,
     sep: getComputedStyle(document.querySelector('.scripture-card .verse + .verse')).borderTopWidth,
     em: getComputedStyle(document.querySelector('.hb-ic-em')).display,
-    line: getComputedStyle(document.querySelector('.hb-ic-line')).display,
+    lineCount: document.querySelectorAll('.hb-ic-line').length,
     cur: document.querySelector('.theme-item.cur')?.dataset.themeId,
   }));
   if (p1.bodyBg !== 'rgb(250, 247, 241)') fail(`3b. paper 页面底应 #faf7f1，实际 ${p1.bodyBg}`);
@@ -106,8 +106,9 @@ async function main() {
   else ok('3d. paper 经文去卡片化');
   if (p1.sep !== '1px') fail(`3e. paper 节间应有 1px 分隔，实际 ${p1.sep}`);
   else ok('3e. paper 节间 hairline 分隔');
-  if (p1.em !== 'none' || p1.line !== 'block') fail(`3f. paper 应显线性图标隐 emoji（em=${p1.em}, line=${p1.line}）`);
-  else ok('3f. paper 图标=线性');
+  // 2026-11-09 用户定稿（品味决策 A）：磁贴统一彩色 emoji，不再随主题切线性图标
+  if (p1.em === 'none' || p1.lineCount !== 0) fail(`3f. paper 磁贴应显 emoji 且无线性图标残留（em=${p1.em}, line=${p1.lineCount}）`);
+  else ok('3f. paper 磁贴 emoji 直出（无线残留）');
   if (p1.cur !== 'paper') fail(`3g. 选择器选中态应为 paper，实际 ${p1.cur}`);
   else ok('3g. 选择器 ✓ 停在暖纸');
 

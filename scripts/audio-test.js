@@ -249,6 +249,10 @@ async function main() {
     '12b. 搜索结果跳转', r12c.hash);
 
   // 13. 抽屉模块级搜索
+  // 12b 是从首页搜索结果直接进模块的，此时抽屉还没打开（1280 属浮层档）；
+  // focus() 对隐藏抽屉里的输入框不生效，必须先点 ☰ 打开
+  await page.click('#menuBtn');
+  await sleep(600);
   await page.evaluate(() => document.querySelector('#dwSearchInput').focus());
   await page.type('#dwSearchInput', '使徒');
   await sleep(1500);
