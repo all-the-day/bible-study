@@ -226,6 +226,9 @@ function openThemePicker() {
 /* ── 用户语言版本记录（单一来源）：① 使用帮助弹窗「最近更新」；② 更新弹窗「本次更新」。
    纪律：只记用户可见变化、不记 chore/内部改动；用户可见功能发布时在顶部补一行（AGENTS.md 发版流程）。 ── */
 const CHANGELOG = [
+  { v: '1.0.73', date: '2026-11-11', items: [
+    '手机阅读时顶栏只留「回首页 / 目录 / 标题 / 读经|研读」，排版（Aa）与设置（⚙️）收进首页——标题因此能多显示一倍多的字数',
+  ] },
   { v: '1.0.72', date: '2026-11-10', items: [
     '重开 App 或刷新页面后，回到上次读到的那一行（读经 / 生命读经 / 书报 / 听抄各记各的）；翻到别的章仍从章首开始',
     '暗夜主题下划线看得清了：五种颜色各自配了亮色文字，之前绿色标注的字几乎看不见',
@@ -306,7 +309,7 @@ function openHelpPopup() {
     <div class="help-li">所有划线笔记在首页「我的笔记」块里统一管理</div>
     <div class="help-h"><span class="n">4</span>实用技巧</div>
     <div class="help-li">手机：正文左右横向一划 = 翻下一章/篇</div>
-    <div class="help-li">字号行距：顶栏 <span class="help-k">Aa</span> 随时调</div>
+    <div class="help-li">字号行距：桌面在阅读时点顶栏 <span class="help-k">Aa</span>，手机回首页点 <span class="help-k">Aa</span></div>
     <div class="help-li">观感主题：设置 → 阅读主题（经典 / 靛蓝 / 暖纸 / 素灰）</div>
     <div class="help-li">多设备同步：设置 → 云同步</div>
     <div class="help-li">分享：每个位置都有网址，复制给别人打开就是这里</div>

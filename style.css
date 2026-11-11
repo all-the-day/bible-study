@@ -199,13 +199,15 @@ body.home .reading-progress { display: none; }
    窄屏（390px 实测 crumb 只剩 118px）放不下时是**硬裁半截**、连省略号都没有——
    实测露出「创世记 第1篇 00」「倪柝… 灵修指微」（章号整段消失），比改前更糟。
    现在：书卷名先让位（shrink 99，保底 3em）→ 章号固定不缩 → 标题尾部省略。
-   flex 容器下 text-overflow 只作用在 .cl-main 上，故必须拆段，纯文本做不到。 */
+   flex 容器下 text-overflow 只作用在 .cl-main 上，故必须拆段，纯文本做不到。
+   （2026-11-11 基线更新：Aa/⚙️ 移出手机阅读顶栏后 crumb 已是 198px，118px 属旧基线） */
 .crumb #chapterLabel { font-weight: 400; opacity: .9; flex: 0 1 auto; min-width: 0; display: flex; align-items: baseline; gap: .35em; white-space: nowrap; }
 .crumb #chapterLabel .cl-num { flex: none; white-space: nowrap; }
 .crumb #chapterLabel .cl-main { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 超窄屏（≤430px）顶栏只剩 ~118px：篇名/书名才是「我在读哪一段」，书卷名、训练期名、
-   系列名在抽屉与正文里都有——让它们整段让位，把宽度给标题（390px 实测：书卷名占 48px 时
-   篇名只剩 19px，只能显示「创.」；让位后篇名有 ~60px 能显示「创世记－总…」）。
+/* 超窄屏（≤430px）把书卷名/训练期名/系列名的宽度让给标题：篇名/书名才是「我在读哪一段」，
+   前者在抽屉与正文里都有。**该规则 2026-11-11 复测依然必要**（Aa/⚙️ 移出阅读顶栏后空间变宽，
+   但收益反而更明确）：390px 实测标题可见宽度 隐藏 151px vs 显示 101px（都截断），
+   360px 123 vs 71；430px 隐藏时 176px 刚好完整、显示则被裁到 140px。
    读经模块不在列：「创世记 25章」本来就放得下，去掉书卷反而不知道是哪一卷。 */
 @media (max-width: 430px) {
   body.body-mod-lifereading .crumb #bookName,
@@ -1165,8 +1167,11 @@ body.home #modePill { display: none; }                 /* 首页是第三种态�
 body.home #viewModeBtn, body.home #hideMarksBtn,
 body.home #studyFullBtn { display: none !important; }
 /* 排版（Aa）只在有正文的屏幕出现：首页/合集层/专题都没有正文，点开调字号当前页毫无变化。
-   AGENTS 约定「首页顶栏只留 反馈+⚙️」。听书已在 .body-mod-audio 单独隐藏。 */
-body.home #typographyBtn, body.bookhub #typographyBtn, body.topic #typographyBtn { display: none !important; }
+   AGENTS 约定「首页顶栏只留 反馈+⚙️」。听书已在 .body-mod-audio 单独隐藏。
+   仅限桌面（2026-11-11）：移动端反过来——Aa/⚙️ 只在首页出现、阅读时藏起（见 ≤900px 块）。 */
+@media (min-width: 901px) {
+  body.home #typographyBtn, body.bookhub #typographyBtn, body.topic #typographyBtn { display: none !important; }
+}
 #homeView {
   position: fixed; inset: 52px 0 0; z-index: 20;       /* 顶栏 z30 之上、popup z60 之下 */
   background: var(--page-bg); overflow-y: auto; padding: 24px 16px 40px;
@@ -1791,10 +1796,18 @@ mark.sr-hit {
     display: flex; align-items: center; justify-content: center;
     width: 44px; height: 44px; margin-right: -4px;
   }
+  /* 移动端（2026-11-11 用户定稿）：Aa 排版与 ⚙️ 设置**只在首页出现**，阅读时顶栏只留
+     ⌂（回首页）+ ☰ + 标题 + 读经|研读 pill。手机屏幕窄、任务单一——设字号/主题/同步/
+     查更新都是「回首页再办」的事，不该常驻阅读顶栏。
+     390px 实测：两颗占 78px，藏掉后 crumb 106 → 192px，生命读经篇名可见宽度 71 → 151px
+     （改前只露得出「创世记－总纲与中心思想」的前 5 字）。样式反序：桌面侧规则在
+     「@media (min-width: 901px)」里，故这里必须 !important + 更晚出现。 */
+  body:not(.home) #typographyBtn,
+  body:not(.home) #settingsBtn { display: none !important; }
   #setViewMode { display: none; }   /* 移动端无视图模式 */
   .crumb {
-    /* 右侧让位：pill（读经|研读） + Aa 排版 + ⚙️，共约 216px；原 174 只让了 pill+⚙️，
-       加 Aa 后 crumb 会压进 pill 区域（标题被遮） */
+    /* 阅读时右侧只有 pill（读经|研读）——Aa/⚙️ 已移出移动端阅读顶栏（只在首页），
+       标题不再被两颗 78px 的按钮挤压；flex 布局下天然不重叠 */
     position: static; flex: 1 1 auto;   /* 2026-11-05 二轮补丁：标题左贴后无需绝对定位——flex 子项天然零重叠，left/right 魔法数退役（此前部分宽度右簇压边 1-2px，用户截图 第4章 被裁） */
     justify-content: flex-start; gap: 4px; font-size: var(--fs-16); white-space: nowrap;   /* 2026-11-05：标题左贴 ☰（点击同为开抽屉，视觉成组；原居中式与 ☰ 割裂） */
     overflow: hidden;   /* 超窄屏标题省略 */

@@ -264,10 +264,16 @@ async function main() {
   }));
   console.log('13. 遮罩/Esc 关闭 + 解锁滚动:', !r13a && !r13.open && !r13.locked && !r13.active ? '✓' : '✗', JSON.stringify(r13));
 
-  // 14. 移动端：底部 sheet + 把手显示 + 滑杆可用
+  // 14. 移动端：阅读时顶栏无 Aa/⚙️（2026-11-11 定稿：两者只在首页出现），sheet 仍可用；
+  //     标题不吃按钮宽度（藏掉两颗后 crumb 106 → 192px）
   await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
   await new Promise((r) => setTimeout(r, 400));
-  await page.click('#typographyBtn');
+  const r14a = await page.evaluate(() => ({
+    aa: document.getElementById('typographyBtn').getBoundingClientRect().width,
+    gear: document.getElementById('settingsBtn').getBoundingClientRect().width,
+    home: document.getElementById('homeBtn').getBoundingClientRect().width,
+  }));
+  await page.evaluate(() => openTypoModal());   // 按钮已不在阅读顶栏，测试直接调入口
   await new Promise((r) => setTimeout(r, 400));
   const r14 = await page.evaluate(() => {
     const card = document.querySelector('.typo-card').getBoundingClientRect();
@@ -277,19 +283,18 @@ async function main() {
       bottomFlush: Math.abs(card.bottom - window.innerHeight) < 2,
       fullWidth: Math.abs(card.width - window.innerWidth) < 2,
       grab: getComputedStyle(document.querySelector('.typo-grab')).display,
-      btnVisible: document.getElementById('typographyBtn').getBoundingClientRect().width > 0,
       barWrapped: document.querySelector('.topbar').getBoundingClientRect().height > 60,
-      // 加了 Aa 后右侧更挤：crumb 不得压进 pill 区域（标题被遮）
       overlapPill: crumb.right > pill.left,
       crumbW: Math.round(crumb.width),
     };
   });
-  console.log('14. 移动端底部 sheet:',
-    r14.bottomFlush && r14.fullWidth && r14.grab !== 'none' && r14.btnVisible && !r14.barWrapped
-      && !r14.overlapPill && r14.crumbW > 80 ? '✓' : '✗',
-    JSON.stringify(r14));
+  const ok14a = r14a.aa === 0 && r14a.gear === 0 && r14a.home > 0;
+  console.log('14. 移动端底部 sheet + 顶栏收敛:',
+    ok14a && r14.bottomFlush && r14.fullWidth && r14.grab !== 'none' && !r14.barWrapped
+      && !r14.overlapPill && r14.crumbW > 120 ? '✓' : '✗',
+    JSON.stringify({ ...r14, ...r14a }));
 
-  // 15. 移动端滑杆生效 + 顶栏 Aa 不挤压（顶栏单行）
+  // 15. 移动端滑杆生效 + 顶栏单行（藏掉 Aa/⚙️ 后仍须无挤压）
   await setRange('fsRange', 130);
   await setRange('lhRange', 160);
   await new Promise((r) => setTimeout(r, 250));
@@ -301,6 +306,57 @@ async function main() {
   }));
   console.log('15. 移动端滑杆生效:',
     r15.fs === '23.4px' && Math.abs(parseFloat(r15.lh) - 37.44) < 0.5 && r15.barH < 60 ? '✓' : '✗', JSON.stringify(r15));
+
+  // 16. 移动端首页：Aa/⚙️ 回到顶栏，且**真能点开**（本次需求唯一新增的用户路径）
+  await page.evaluate(() => closeTypoModal());
+  await page.evaluate(() => showHome());
+  await new Promise((r) => setTimeout(r, 400));
+  const r16a = await page.evaluate(() => ({
+    aa: document.getElementById('typographyBtn').getBoundingClientRect().width,
+    gear: document.getElementById('settingsBtn').getBoundingClientRect().width,
+    barH: Math.round(document.querySelector('.topbar').getBoundingClientRect().height),
+  }));
+  await page.click('#typographyBtn');   // 真实点击，不再 evaluate 直调
+  await new Promise((r) => setTimeout(r, 400));
+  const r16b = await page.evaluate(() => {
+    const card = document.querySelector('.typo-card').getBoundingClientRect();
+    return {
+      sheetOpen: !document.getElementById('typoModal').hidden,
+      bottomFlush: Math.abs(card.bottom - window.innerHeight) < 2,
+      fullWidth: Math.abs(card.width - window.innerWidth) < 2,
+    };
+  });
+  await page.click('#typoClose');
+  await new Promise((r) => setTimeout(r, 300));
+  await page.click('#settingsBtn');   // ⚙️ 在首页可点开设置
+  await new Promise((r) => setTimeout(r, 400));
+  const r16c = await page.evaluate(() => {
+    const p = document.getElementById('popup');
+    return { settingsOpen: !p.hidden && document.getElementById('popupTitle').textContent.trim() === '设置' };
+  });
+  await page.keyboard.press('Escape');
+  await new Promise((r) => setTimeout(r, 300));
+  console.log('16. 移动端首页保留 Aa/⚙️:',
+    r16a.aa > 0 && r16a.gear > 0 && r16a.barH < 60 && r16b.sheetOpen && r16b.bottomFlush
+      && r16b.fullWidth && r16c.settingsOpen ? '✓' : '✗',
+    JSON.stringify({ ...r16a, ...r16b, ...r16c }));
+
+  // 17. 901px 断点：桌面规则接管（阅读器 Aa/⚙️ 回来、首页 Aa 消失）——防两边写反
+  await page.setViewport({ width: 901, height: 800, deviceScaleFactor: 1 });
+  await new Promise((r) => setTimeout(r, 400));
+  const r17a = await page.evaluate(() => ({
+    aa: document.getElementById('typographyBtn').getBoundingClientRect().width,
+    gear: document.getElementById('settingsBtn').getBoundingClientRect().width,
+  }));
+  await page.evaluate(() => enterWork());
+  await new Promise((r) => setTimeout(r, 600));
+  const r17b = await page.evaluate(() => ({
+    aa: document.getElementById('typographyBtn').getBoundingClientRect().width,
+    gear: document.getElementById('settingsBtn').getBoundingClientRect().width,
+  }));
+  console.log('17. 901px 桌面规则接管:',
+    r17a.aa === 0 && r17a.gear > 0 && r17b.aa > 0 && r17b.gear > 0 ? '✓' : '✗',
+    JSON.stringify({ home: r17a, work: r17b }));
 
   console.log('\nJS 错误:', errors.length ? errors : '无');
   await browser.close();
