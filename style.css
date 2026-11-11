@@ -608,6 +608,12 @@ sup.xref-ref:hover { color: var(--brand-dark); }
   text-indent: 2em;
   font-size: calc(15px * var(--reading-scale)); line-height: var(--reading-lh); color: var(--text);
 }
+/* 书报正文里的注号（源文本的裸数字「一本书3」）：小一号、抬半格、次要色，
+   与可点的 ref-link（主色虚线）区分——它是锚点不是链接 */
+.bk-fn {
+  font-size: calc(10px * var(--reading-scale)); color: var(--text-muted);
+  vertical-align: super; line-height: 0; padding-left: 1px;
+}
 /* 书报标题：与正文区分（左对齐 + 加粗 + 字号递进 + 间距），不做逐级缩进 */
 .book-content { text-align: justify; }
 .bk-head {

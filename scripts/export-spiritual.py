@@ -868,6 +868,50 @@ def _reflow(lines):
     return out
 
 
+# ── 段落合并（join_paras） ───────────────────────────────────────────────
+# _reflow 认得的是「≤10 字的短碎片」，认不出「窄栏宽硬折行」：天路历程整章都是
+# 25–55 字处断句（碎片率只有 6%，够不上 25% 阈值），结果每句话被切成两三段，
+# 段首常是「，」「？」，读起来全是断句残片。这里换判据——上一段没有句末标点就
+# 接回，段首本身是标点也接回；结构行/列表项/脚注条目保持独立。
+_PARA_END = "。！？；：…"
+_PARA_CLOSE = "”’」』）】》\"'"
+_JOIN_BLOCK_RE = re.compile(
+    r"^(注[:：]|#|\*\*"
+    r"|[（(]?[0-9]{1,3}[)）.．、]\s*"                       # 1. / 1．/ （1）
+    r"|[一二三四五六七八九十]{1,3}[\u3000 ]"                # 「一 神的意义」式纲目行
+    r"|[壹贰叁肆伍陆柒捌玖拾]{1,2}[\u3000 ])")
+
+
+def _para_ended(s):
+    """该行是否已收句（句末标点收尾，忽略尾部引号/括号）"""
+    t = s.rstrip(_PARA_CLOSE).rstrip()
+    if not t:
+        return True
+    if re.search(r"[0-9０-９]$", t):
+        return False        # 行尾是脚注序号/页码 → 句子还在往下走
+    return t[-1] in _PARA_END
+
+
+def _join_paras(lines):
+    """按「上个自然段有没有收句」合并硬折行（与 _reflow 的碎片判据互补）"""
+    out = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        if not out:
+            out.append(line)
+            continue
+        if _JOIN_BLOCK_RE.match(line) or _is_struct(line) or _marker_only(line):
+            out.append(line)
+            continue
+        if not _para_ended(out[-1]) or line[0] in _CONT_START:
+            out[-1] += line
+            continue
+        out.append(line)
+    return out
+
+
 def _strip_footer(lines):
     """剥尾部爬取元数据：`---` 分隔线 + `**来源/URL/获取时间/书报号/说明**` 行"""
     while lines and (lines[-1] == "---"
@@ -890,6 +934,8 @@ def _clean_lines(lines, title, book_title, opts):
     frag = sum(1 for l in lines if len(l) <= 10 and not _is_struct(l))
     if lines and frag / len(lines) > 0.25:
         lines = _reflow(lines)
+    if opts.get("join_paras"):
+        lines = _join_paras(lines)
     return [l for l in lines if l.strip()]
 
 
@@ -1141,7 +1187,7 @@ LEGACY_SERIES = {
                  root_book_title="卷首与纲目",
                  root_order=["编者的话", "作者", "纲目"],
                  skip_dirs=["两千年教会历史"]),   # 与根级《教会历史纲目》重复
-    "tllc": dict(src="天路历程", name="天路历程", dir_title="book"),
+    "tllc": dict(src="天路历程", name="天路历程", dir_title="book", join_paras=True),
     "xblm": dict(src="希伯来民族简史", name="希伯来民族简史", dir_title="book"),
     "hmgq": dict(src="荒漠甘泉", name="荒漠甘泉", mode="devotional"),
     "zjgs": dict(src="造就故事", name="造就故事", dir_title="book"),

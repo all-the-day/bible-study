@@ -5209,6 +5209,8 @@ function renderBookContent(parent, content, annotations, chapterTitle, bookTitle
   const headings = collectBookHeadings(content, chapterTitle, bookTitle, outline);
   const byLine = new Map(headings.map((h, idx) => [h.line, { level: h.level, id: `${idPrefix}-${idx}` }]));
   const lines = (content || '').split('\n');
+  const fnNums = bookNoteNumbers(content);
+  const noteLine = lines.findIndex(l => /^注[:：]?\s*$/.test(l.trim()));   // 「注：」块起点（块内不再包注号）
   const norm = (s) => (s || '').replace(/[\s\u3000]/g, '');
   const skipTitles = new Set([norm(chapterTitle), norm(bookTitle)]);
   let leading = true;
@@ -5225,10 +5227,29 @@ function renderBookContent(parent, content, annotations, chapterTitle, bookTitle
     if (h && idPrefix) div.id = h.id;
     // 人物链接（原型：仅 scope 内系列，目前=十二篮）——与经文引用同一渲染通道，重叠时经文引用优先
     const persons = personScopeOn(state.bookSeries) ? detectPersons(line) : null;
-    renderLrLine(div, line, offset, annotations, null, null, persons);
+    renderLrLine(div, line, offset, annotations, null, null, persons,
+                 (noteLine < 0 || i < noteLine) ? fnNums : null);
     parent.appendChild(div);
     offset += line.length + 1;
   }
+}
+
+// 章末「注：」块的编号集合：书报源把注号当裸数字内嵌正文（「他手里拿着一本书3」），
+// 渲染时降级为小号上标。只认块内按 1..N 连续出现的条目号（续行无号，跳过）——
+// 编号不连续说明这一块不是注（如引用列表），宁可不包
+function bookNoteNumbers(content) {
+  const lines = (content || '').split('\n');
+  const idx = lines.findIndex(l => /^注[:：]?\s*$/.test(l.trim()));
+  if (idx < 0) return null;
+  const nums = new Set();
+  let prev = 0;
+  for (const raw of lines.slice(idx + 1)) {
+    const m = raw.trim().match(/^(\d{1,2})(?:[.．、]|(?=[^\d]))/);
+    if (!m) continue;
+    const n = +m[1];
+    if (n === prev + 1) { nums.add(n); prev = n; }
+  }
+  return nums.size ? nums : null;
 }
 
 async function renderBookMain() {
@@ -8204,6 +8225,7 @@ function resolveRefString(raw) {
 
 // 节序列解析（「章」之后的部分）：一至三节 / 一、二节 / 三十七和三十八节 / 一至三节、五至七节。
 // 返回展开后的节号数组（如 [1,2,3,5,6,7]），非法返回 null
+const PSALM_ACRONYM = '诗';   // 诗篇：章称「篇」（「诗篇第38篇第4节」），全库唯一的篇→章映射
 function parseVerseSeq(seq) {
   const cn = '一二三四五六七八九十百零〇○';
   const raw = (seq || '').replace(/节/g, '');
@@ -8218,7 +8240,9 @@ function parseVerseSeq(seq) {
       continue;
     }
     if (!expectValue) return null;    // 缺连接符
-    const m = p.match(new RegExp('^([' + cn + '\\d]+)(?:[-~～至到]([' + cn + '\\d]+))?$'));
+    // 节号可带「第」（注脚出处写法：第64章第6节 / 第29、30节）
+    const pv = p.replace(/^第/, '');
+    const m = pv.match(new RegExp('^([' + cn + '\\d]+)(?:[-~～至到]([' + cn + '\\d]+))?$'));
     if (!m) return null;
     const v1 = cnToInt(m[1]);
     if (!v1) return null;
@@ -8262,6 +8286,10 @@ function parseRefTail(acronym, rest, defChapter) {
   }
   // 中文章节式（三章十九节 / 二章六至九节 / 三章一、二节 / 七章三十七和三十八节）
   // 跨章范围（十章二十八节至十二章二十四节）→ chunks（首章起节、末章止节，中间整章）
+  // 「篇」只对诗篇成立（诗篇的章称篇）：其他书卷出现「第N篇」多半是篇目编号而非章引用
+  const isPian = rest.includes('篇');
+  if (isPian && acronym !== PSALM_ACRONYM) return null;
+  if (isPian) rest = rest.replace(/篇/g, '章');
   if (/^第?[一二三四五六七八九十百零〇○\d]+章/.test(rest)) {
     const chunks = [];
     let ok = true;
@@ -8317,13 +8345,23 @@ function buildRefRegex() {
   // 节内范围的右值前加 (?!cn+章)：防把跨章范围「十章二十八节至十二章二十四节」的
   // 「至十二」当成节内范围吃掉，导致匹配截断
   const item = cnDigits + '节?(?:[-~～至到](?!' + cnDigits + '章)' + cnDigits + '节?)?';
+  // 「第N节」形式（注脚出处写法：《以赛亚书》第64章第6节、第16章第29、30节、第9章第17至21节）：
+  // 节号带「第」时**必须**跟「节」——否则「第三章第二段」的「第二」会被当成节号
+  // （既有 item 允许省「节」，那是为「创世记三章一」这类写法留的，不能松到 第+数字）
+  const sepCn = '(?:[、和与]|[-~～至到](?!' + cnDigits + '章))';
+  const itemDi = '第' + cnDigits + '(?:' + sepCn + '第?' + cnDigits + ')*节';
+  const vseq = '(?:' + item + '(?:[、和与](?!' + cnDigits + '章)' + item + ')*|' + itemDi + ')';
   // 裸节形式：上下半节可出现在范围的任一端（启一4下～5上 / 一4～5上 / 一4下～5，反馈 #22）
+  // 「第N篇第M节」只对诗篇成立（注脚出处写法），且必须两段都带「第」——
+  // 只收这一种严格形态，是为了不抢「诗篇一百零七篇二至六节」那条既有链路
+  // （它靠「裸章提及 + 相对引用」合成 诗107:2～6，全书式抢先会退化成原文串）
   const tail = '(?:\\d+:\\d+(?:[-~～]\\d+)?|[' + cn + ']+\\d+[上下]?(?:[-~～]\\d+[上下]?)?'
-    + '|第?' + cnDigits + '章' + item
-    + '(?:[、和与](?!' + cnDigits + '章)' + item + ')*'
-    + '(?:[-~～至到]第?' + cnDigits + '章' + item + ')?)';
-  // 引导词（参/见/参看…）可选前缀，不参与捕获（组 1=书卷别名，组 2=章節尾）
-  return new RegExp('(?:参看|参阅|参见|参考|[参见])?(' + aliasAlt + ')(' + tail + ')', 'g');
+    + '|第?' + cnDigits + '章' + vseq
+    + '(?:[-~～至到]第?' + cnDigits + '章' + item + ')?'
+    + '|第' + cnDigits + '篇' + itemDi + ')';
+  // 引导词（参/见/参看…）可选前缀，不参与捕获（组 1=书卷别名，组 2=章節尾）。
+  // 别名后允许一个「》」：《旧约全书·以赛亚书》第64章第6节——书名号包裹的出处写法
+  return new RegExp('(?:参看|参阅|参见|参考|[参见])?(' + aliasAlt + ')(?:》)?(' + tail + ')', 'g');
 }
 
 // 相对引用（无书卷前缀，靠前文全书引用或 defaultAcronym 提供上下文）：
@@ -8703,6 +8741,12 @@ function detectRefs(text, defaultAcronym, carry) {
       if (fr && fr.span) fullSpan = fr.span;
     }
     const aliasMaxCh = aliasBook ? bookChapterCount(aliasBook) : 0;
+    // 「篇」只在诗篇成立（诗篇的章称篇）；其他书卷的「第N篇」是篇目编号，不是章引用——
+    // parseRefTail 会拒绝，但不能让它落到下面的 push 变成死链，故在此跳过（同别名越界处理）
+    if (aliasBook && aliasBook !== PSALM_ACRONYM && /篇/.test(nextFull[2] || '')) {
+      segStart = start + (alias ? alias.length : nextFull[0].length);
+      continue;
+    }
     if (fullChapter && aliasMaxCh && fullChapter > aliasMaxCh) {
       // 章数越界 → 别名多半是词的一部分（「但二十三章…」的「但=but」）或后缀误匹配：
       // 不按该卷包裹、也不据此建立上下文；只跳过别名本身，让「X章Y节」走相对引用
@@ -8710,7 +8754,8 @@ function detectRefs(text, defaultAcronym, carry) {
       segStart = start + (alias ? alias.length : nextFull[0].length);
       continue;
     }
-    refs.push({ start, end, refText: nextFull[0] });
+    // refText = 匹配到的原文；书名号「》」只是书名包裹符，不进弹窗标题/出处文案
+    refs.push({ start, end, refText: nextFull[0].replace('》', '') });
     // 全书引用建立上下文，供后续相对引用使用
     // 必须用正则实际匹配到的别名（捕获组 1）：正则可能回溯到较短别名
     // （如「约一14」实际是 约 + 一14），用 startsWith 反查会取到最长别名而错判书卷
@@ -8775,7 +8820,7 @@ function detectLrHeading(line) {
 
 // 渲染单行：经文引用包 ref-link，叠加标注 mark（baseOffset 为该行在全文中的偏移）
 // persons 可选：人物链接片段 [{start,end,pid}]，与经文引用重叠时以经文引用为准（不套两层链接）
-function renderLrLine(parent, text, baseOffset, annotations, defaultAcronym, carry, persons) {
+function renderLrLine(parent, text, baseOffset, annotations, defaultAcronym, carry, persons, fnNums) {
   const refs = detectRefs(text || '', defaultAcronym, carry);
   let segs = refs;
   if (persons && persons.length) {
@@ -8786,6 +8831,21 @@ function renderLrLine(parent, text, baseOffset, annotations, defaultAcronym, car
     }
     segs.sort((a, b) => a.start - b.start);
   }
+  // 书报的裸注号（「一本书3」的 3）：小号上标降级，不可点。用 span 不用 <sup>——
+  // plainOffset 统计行内偏移时会跳过 SUP（那是给经文 {N} 标记用的，标记不占源文本），
+  // 而书报的注号本身就是源文本字符，跳过就会让标注坐标整体错位
+  if (fnNums && fnNums.size) {
+    const adds = [];
+    const re = /[\u4e00-\u9fff]([0-9]{1,2})(?![0-9年月日章節节篇％%])/g;
+    let fm;
+    while ((fm = re.exec(text)) !== null) {
+      if (!fnNums.has(+fm[1])) continue;
+      const start = fm.index + 1, end = start + fm[1].length;
+      if (segs.some(s => start < s.end && s.start < end)) continue;
+      adds.push({ start, end, fn: +fm[1] });
+    }
+    if (adds.length) segs = segs.concat(adds).sort((a, b) => a.start - b.start);
+  }
   let cursor = 0;
   const appendText = (t, base) => {
     if (!annotations.length) parent.appendChild(document.createTextNode(t));
@@ -8794,7 +8854,8 @@ function renderLrLine(parent, text, baseOffset, annotations, defaultAcronym, car
   for (const s of segs) {
     if (s.start > cursor) appendText(text.slice(cursor, s.start), baseOffset + cursor);
     const span = document.createElement('span');
-    if (s.refText !== undefined) { span.className = 'ref-link'; span.dataset.refs = s.refText; }
+    if (s.fn !== undefined) span.className = 'bk-fn';
+    else if (s.refText !== undefined) { span.className = 'ref-link'; span.dataset.refs = s.refText; }
     else { span.className = 'person-link'; span.dataset.person = s.pid; }
     span.textContent = text.slice(s.start, s.end);
     parent.appendChild(span);

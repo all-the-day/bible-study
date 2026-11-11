@@ -36,6 +36,9 @@ async function main() {
   // detectRefs 返回 {start,end,refText}，refText 为 data-refs（相对引用是规范键如 创25:11）
   const refsOf = (text, defaultAcr) => page.evaluate(([t, a]) =>
     detectRefs(t, a).map(r => r.refText), [text, defaultAcr || null]);
+  // 逐行取引用（书报注脚块：每行一条出处，不跨行累积上下文）
+  const refsOfBook = (lines) => page.evaluate(
+    ls => ls.map(t => detectRefs(t, null).map(r => r.refText)), lines);
 
   // 1. 用户报告：生命读经正文「创二四62，二五11」→ 二五11 识别为 创25:11
   let r = await refsOf('（创二四62，二五11。）', '创');
@@ -419,6 +422,41 @@ async function main() {
   });
   check('19j. 引文后另起论述仍判跨句（马太十章旁及 → 归太十六，不沿用十章）',
     JSON.stringify(r) === JSON.stringify(['马太十六章二十四到二十六节', '太16:22']), JSON.stringify(r));
+  // 20. 书报注脚出处写法（2026-11-11 天路历程接入）：书名号包裹 + 第N章第M节 / 第N篇第M节
+  //     注文里 97% 是「《旧约全书·以赛亚书》第64章第6节：经文原文」，此前一条都认不出
+  r = await refsOfBook([
+    '1.《旧约全书·以赛亚书》第64章第6节：我们都像不洁净的人。',
+    '2.《新约全书·诗篇》第38篇第4节：我的罪孽高过我的头。',
+    '3.《新约全书·使徒行传》第16章第29、30节：禁卒叫人拿灯来。',
+    '4.《新约全书·希伯来书》第9章第17至21节：因为人死了。'
+  ]);
+  check('20a. 书名号+第N章第M节 出处可识别（含列举与范围）',
+    JSON.stringify(r) === JSON.stringify([
+      ['以赛亚书第64章第6节'], ['诗篇第38篇第4节'],
+      ['使徒行传第16章第29、30节'], ['希伯来书第9章第17至21节']
+    ]), JSON.stringify(r));
+  // refText 去掉书名号「》」（弹窗标题不出现「以赛亚书》第64章第6节」）
+  r = await page.evaluate(() => {
+    const t = '《旧约全书·以赛亚书》第64章第6节';
+    const x = detectRefs(t, null)[0];
+    return [x.refText, t.slice(x.start, x.end)];
+  });
+  check('20b. refText 剥离书名号，包裹文本保持原样',
+    r[0] === '以赛亚书第64章第6节' && r[1] === '以赛亚书》第64章第6节', JSON.stringify(r));
+  // 第N章第M节只在「第M节」带节时成立：「第三章第二段」的「第二」不能被当节号
+  r = await page.evaluate(() => [
+    detectRefs('创世记第三章第二段', null).length,
+    detectRefs('创世记第3章第2节', null).map(x => x.refText)
+  ]);
+  check('20c. 第N章第M节 不放宽到无节号的「第二段」',
+    r[0] === 0 && JSON.stringify(r[1]) === JSON.stringify(['创世记第3章第2节']), JSON.stringify(r));
+  // 「篇」只在「第N篇第M节」严格形态认（poem/目录式「一百零七篇二至六节」仍走裸章提及链路，见 19e）
+  r = await page.evaluate(() => [
+    detectRefs('诗篇第38篇第4节', null).map(x => x.refText),
+    detectRefs('创世记第3篇第2节', null).length
+  ]);
+  check('20d. 篇→章 仅诗篇成立（其他书卷第N篇第M节 不包裹）',
+    JSON.stringify(r[0]) === JSON.stringify(['诗篇第38篇第4节']) && r[1] === 0, JSON.stringify(r));
 
   console.log(`\n${pass} passed, ${fail} failed`);
   console.log('JS 错误:', errors.length ? errors : '无');
