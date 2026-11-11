@@ -231,9 +231,12 @@ const CHANGELOG = [
     '暗夜主题下划线看得清了：五种颜色各自配了亮色文字，之前绿色标注的字几乎看不见',
     '键盘能用了：首页合集块、最近阅读和目录抽屉都能用 Tab 选中、回车打开，抽屉里还能用上下键翻书卷与章',
     '手指更容易点中：顶栏的 Aa、读经|研读切换、划线的色点和「撤销」按钮都加大了点击范围',
-    '听书的迷你播放条只在读经时出现，回首页或进听书就不再挡着正文',
+    '手机顶栏的章节名不再被切掉半截：生命读经、听抄、书报都能看到完整的「第几篇」或带省略号；生命读经标题里重复的「001第一篇」已去掉',
+    '听书的迷你播放条在阅读时显示（含「我的笔记」），回首页或进听书本身就不再挡着正文',
+    '首页、书报合集层与作业单页不再显示排版按钮（那里没有正文，点了没反应）',
+    '开启系统「减弱动态」时，加载与缓冲的转圈仍在转，只是更慢',
     '排版面板新增字体选择（黑体 / 宋体）',
-    '删错划线可以撤销：删除后 5 秒内点「撤销」即恢复',
+    '删错划线可以撤销：删除后 5 秒内点「撤销」即恢复，鼠标划过不会让提示提前消失，期间的其他提示也不会顶掉它',
     '一条笔记都没有时，「我的笔记」给出「去读经 · 划第一处」的入口',
   ] },
   { v: '1.0.70', date: '2026-11-05', items: [
@@ -1290,7 +1293,7 @@ function openTopic(id, opts) {
   applyDrawerDock();
   audioSyncMini();   // 专题页不显示迷你播放条（评审 S5；不经首页的路径：抽屉历史 → 专题）
   $('bookName').textContent = topic.title;
-  $('chapterLabel').textContent = '作业单';
+  setChapterLabel([{ text: '作业单' }]);
   // 同专题再进入（从条目跳走再返回）保留滚动位置——八周清单逐周点开是典型用法；
   // 换专题/首次进入回到顶部。必须在 renderTopicPage 重写 innerHTML 前取旧位置。
   const col = $('topicTextCol');
@@ -1830,7 +1833,7 @@ const READER_MODULES = {
       // 模块切换后显式写回读经位置（selectBook/selectChapter 也写，幂等）
       if (!state.currentBook) return;
       $('bookName').textContent = state.currentBook.name;
-      $('chapterLabel').textContent = `${state.currentChapter}章`;
+      setChapterLabel([{ text: `${state.currentChapter}章`, fixed: true }]);   // 章号是全部内容且必须完整（320–360px 放不下时由书卷名让位）
       renderChapterNav();
     },
     onMenu() { toggleDrawerDock(); },   // ☰：桌面=停靠列收起/展开，移动端=浮层抽屉
@@ -1868,7 +1871,10 @@ const READER_MODULES = {
       const vol = state.lrVolumes[state.lrBookIndex];
       const art = vol && vol.articles.find(a => a.id === state.lrArticleId);
       $('bookName').textContent = (vol && vol.name) || '';
-      $('chapterLabel').textContent = art ? `第${art.id}篇 ${art.title}` : '';
+      // 2026-11-10：源标题带「001第一篇 」双编号（创世记 120/120 篇都如此），crumb 又自己加
+      // 「第N篇」，实测窄屏直接把篇名挤没（390px 只剩「第1篇 00」）。先剥数字化前缀（dwArtLabel）
+      // 再剥中文序号（dwChapterLabel），与抽屉右栏同一套口径，消掉重复编号占宽。
+      setChapterLabel(art ? [{ text: `第${art.id}篇`, fixed: true }, { text: dwChapterLabel(dwArtLabel(art.title)) }] : []);
     },
     onMenu() { toggleDrawerDock(); },
     onCrumbClick() { openNavDrawer(); },
@@ -1910,7 +1916,8 @@ const READER_MODULES = {
       const metaVol = state.bookMeta && state.bookMeta.volumes[state.bookVolume - 1];
       const book = metaVol && metaVol.books[state.bookBook];
       $('bookName').textContent = (state.bookMeta && state.bookMeta.name) || '书报';
-      $('chapterLabel').textContent = book ? `${book.title} · 第${state.bookChapter + 1}章` : '';
+      // 分隔符「·」留在可省略段里：窄屏标题收缩成「灵修… 第1章」而不是「灵· 第1章」
+      setChapterLabel(book ? [{ text: `${book.title} ·` }, { text: `第${state.bookChapter + 1}章`, fixed: true }] : []);
     },
     onMenu() { toggleDrawerDock(); },
     onCrumbClick() { openNavDrawer(); },
@@ -1942,7 +1949,7 @@ const READER_MODULES = {
       const data = state.morningData[state.morningPeriod];
       const ch = data && data.chapters.find(c => c.number === state.morningChapterId);
       $('bookName').textContent = (t && (t.title || t.season)) || '听抄';
-      $('chapterLabel').textContent = ch ? `第${ch.number}篇 ${ch.title}` : '';
+      setChapterLabel(ch ? [{ text: `第${ch.number}篇`, fixed: true }, { text: ch.title }] : []);
     },
     onMenu() { toggleDrawerDock(); },
     onCrumbClick() { openNavDrawer(); },
@@ -1986,7 +1993,7 @@ const READER_MODULES = {
     renderCrumb() {
       const d = audioCollection(), lec = audioLectureData();
       $('bookName').textContent = (d && d.name) || '听书';
-      $('chapterLabel').textContent = lec ? `第${lec.n}讲 ${lec.title}` : '';
+      setChapterLabel(lec ? [{ text: `第${lec.n}讲`, fixed: true }, { text: lec.title }] : []);
     },
     onMenu() { toggleDrawerDock(); },
     onCrumbClick() { openNavDrawer(); },
@@ -2846,7 +2853,7 @@ async function selectBook(index, chapter) {
   state.currentChapter = chapter;
   state.lifereading = null; // 重新加载新书卷生命读经
   $('bookName').textContent = state.currentBook.name;
-  $('chapterLabel').textContent = `${chapter}章`;
+  setChapterLabel([{ text: `${chapter}章`, fixed: true }]);
   save(LS_LAST, { book: index, chapter });
   await ensureBibleData();
   await selectChapter(chapter);
@@ -2854,7 +2861,7 @@ async function selectBook(index, chapter) {
 
 async function selectChapter(chapter) {
   state.currentChapter = chapter;
-  $('chapterLabel').textContent = `${chapter}章`;
+  setChapterLabel([{ text: `${chapter}章`, fixed: true }]);
   renderChapter();
   renderChapterNav();
   renderStudy();
@@ -4634,9 +4641,22 @@ function showToast(text, cls, opts) {
     t.className = 'toast';
     t.setAttribute('role', 'status');
     t.addEventListener('mouseenter', () => clearTimeout(t._timer));
-    t.addEventListener('mouseleave', () => { clearTimeout(t._timer); t._timer = setTimeout(() => t.classList.remove('show'), 1200); });   /* 悬停暂停（评审 F10） */
+    // 悬停暂停（评审 F10）。移开后的续走时长必须沿用本次 toast 的秒数——
+    // 原实现硬编码 1200ms，把删除标注的 5s 撤销窗口在指针划过之后腰斩成 1.2s
+    // （2026-11-10 实测：配置 5000ms，mouseleave 后 1202ms 就消失）。
+    t.addEventListener('mouseleave', () => {
+      clearTimeout(t._timer);
+      t._timer = setTimeout(() => t.classList.remove('show'), t._resumeMs || 1200);
+    });
     document.body.appendChild(t);
   }
+  const ms = (opts && opts.seconds) || 2600;
+  const incomingAction = !!(opts && opts.label);
+  // 撤销窗保护（2026-11-10）：toast 是单例，后到的一条会 textContent= 把撤销按钮整体抹掉
+  // （实测删除标注后 5s 内来一条同步状态提示，撤销入口就没了）。带动作的 toast 仍在展示时，
+  // 让无动作的普通提示让位——丢掉一条轻提示，好过丢掉一次可撤销的删除。
+  if (!incomingAction && t.classList.contains('show') && t.querySelector('.toast-action')) return;
+  t._resumeMs = ms;   // 悬停恢复时按这一档续走
   t.textContent = text;
   if (opts && opts.label) {
     const btn = document.createElement('button');
@@ -4648,7 +4668,7 @@ function showToast(text, cls, opts) {
   }
   t.className = `toast show ${cls || ''}`;
   clearTimeout(t._timer);
-  t._timer = setTimeout(() => t.classList.remove('show'), (opts && opts.seconds) || 2600);
+  t._timer = setTimeout(() => t.classList.remove('show'), ms);
 }
 
 // 移动端 crumb 点击 → 章节选择弹窗（章网格 + 顶部书卷横向切换）
@@ -4911,7 +4931,7 @@ async function selectLrArticle(articleId) {
   save(LS_LR_LAST, { book: state.lrBookIndex, articleId });
   const vol = state.lrVolumes[state.lrBookIndex];
   const art = vol && (vol.articles || []).find(a => a.id === articleId);
-  if (art) pushHistory('lifereading', { book: state.lrBookIndex, articleId }, `第${articleId}篇 ${art.title}`);
+  if (art) pushHistory('lifereading', { book: state.lrBookIndex, articleId }, `第${articleId}篇 ${dwChapterLabel(dwArtLabel(art.title))}`);
   renderDrawer();   // 停靠抽屉同步 cur 高亮（左栏已删）
   const mod = READER_MODULES.lifereading;
   await mod.renderMain();
@@ -4929,7 +4949,7 @@ async function selectLrVolume(bookIndex) {
   state.lrArticleId = (vol.articles[0] || {}).id;
   save(LS_LR_LAST, { book: bookIndex, articleId: state.lrArticleId });
   const firstArt = (vol.articles || []).find(a => a.id === state.lrArticleId);
-  if (firstArt) pushHistory('lifereading', { book: bookIndex, articleId: state.lrArticleId }, `第${state.lrArticleId}篇 ${firstArt.title}`);
+  if (firstArt) pushHistory('lifereading', { book: bookIndex, articleId: state.lrArticleId }, `第${state.lrArticleId}篇 ${dwChapterLabel(dwArtLabel(firstArt.title))}`);
   const mod = READER_MODULES.lifereading;
   await mod.renderNav();
   await mod.renderMain();
@@ -5857,8 +5877,11 @@ function audioSyncMini() {
     $('mpTitle').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
   }
   const a = state.audioEl;
+  // 2026-11-10：去掉 activeModule !== 'notes' 的排除。笔记管理是工作区模块（与读经/书报同级），
+  // 而 pauseAudioForScreen() 只覆盖首页/合集层/专题——把它排除掉会变成「音频在播但页面上
+  // 没有任何控件能暂停」（只剩锁屏卡片），比首页那种「直接暂停」更难用。
   const on = !!(a && a.dataset.auUrl && state.audioData) &&
-    state.activeModule !== 'audio' && state.activeModule !== 'notes' && state.screen === 'work';
+    state.activeModule !== 'audio' && state.screen === 'work';
   bar.hidden = !on;
   document.body.classList.toggle('mini-audio', on);
   if (!on) return;
@@ -6547,6 +6570,23 @@ function dwChapterLabel(title) {
     || t.match(/^[〇零一二三四五六七八九十百千壹贰叁肆伍陆柒捌玖拾两]+[、,，.．:：\s]+(\S[\s\S]*)$/)
     || t.match(/^[（(][0-9〇零一二三四五六七八九十百千壹贰叁肆伍陆柒捌玖拾两]+[)）]\s*(\S[\s\S]*)$/);
   return m ? m[1] : t;
+}
+
+/* 顶栏章/篇名（#chapterLabel）写成「固定段 + 可省略段」两个 span。
+   纯文本在窄屏会被整体裁掉：390px 实测书报「灵修指微 · 第1章」被省略成「灵修指…」，
+   章号（排在末尾）跟着一起丢——而用户瞄顶栏就是为了知道第几章。
+   固定段（`fixed: true`）不收缩，可省略段吃剩余宽度；parts 按显示顺序给。 */
+function setChapterLabel(parts) {
+  const el = $('chapterLabel');
+  if (!el) return;
+  el.innerHTML = '';
+  (parts || []).forEach((p) => {
+    if (!p || !p.text) return;
+    const s = document.createElement('span');
+    s.className = p.fixed ? 'cl-num' : 'cl-main';
+    s.textContent = p.text;
+    el.appendChild(s);
+  });
 }
 
 // 当前项滚入可视区居中（左栏+右栏各自就近滚动容器）

@@ -194,7 +194,25 @@ body.home .reading-progress { display: none; }
    书卷/训练期名在抽屉与正文里都有，章/篇名才是「我在读哪一段」；
    放得下时（读经「创世记 1章」）与改前逐像素一致。 */
 .crumb #bookName { white-space: nowrap; flex: 0 99 auto; min-width: 3em; overflow: hidden; text-overflow: ellipsis; }   /* 保底 3em=两汉字+省略号（ch 是数字 0 宽度，对汉字虚小）——消灭「提.」单字退化（评审二轮补丁） */
-.crumb #chapterLabel { font-weight: 400; opacity: .9; white-space: nowrap; flex: 0 0 auto; }   /* 评审 P1-2：章号永不截断，书名单一 ellipsis 点（消灭「提摩太… 5…」双截断） */
+/* 章/篇名 = 「固定段（章号）+ 可省略段（标题）」两个 span（app.js setChapterLabel）。
+   原来纯文本 + flex:0 0 auto 想「章号永不截断」，但 .crumb 自己 overflow:hidden，
+   窄屏（390px 实测 crumb 只剩 118px）放不下时是**硬裁半截**、连省略号都没有——
+   实测露出「创世记 第1篇 00」「倪柝… 灵修指微」（章号整段消失），比改前更糟。
+   现在：书卷名先让位（shrink 99，保底 3em）→ 章号固定不缩 → 标题尾部省略。
+   flex 容器下 text-overflow 只作用在 .cl-main 上，故必须拆段，纯文本做不到。 */
+.crumb #chapterLabel { font-weight: 400; opacity: .9; flex: 0 1 auto; min-width: 0; display: flex; align-items: baseline; gap: .35em; white-space: nowrap; }
+.crumb #chapterLabel .cl-num { flex: none; white-space: nowrap; }
+.crumb #chapterLabel .cl-main { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 超窄屏（≤430px）顶栏只剩 ~118px：篇名/书名才是「我在读哪一段」，书卷名、训练期名、
+   系列名在抽屉与正文里都有——让它们整段让位，把宽度给标题（390px 实测：书卷名占 48px 时
+   篇名只剩 19px，只能显示「创.」；让位后篇名有 ~60px 能显示「创世记－总…」）。
+   读经模块不在列：「创世记 25章」本来就放得下，去掉书卷反而不知道是哪一卷。 */
+@media (max-width: 430px) {
+  body.body-mod-lifereading .crumb #bookName,
+  body.body-mod-books .crumb #bookName,
+  body.body-mod-morning .crumb #bookName,
+  body.body-mod-audio .crumb #bookName { display: none; }
+}
 .topbar-actions { display: flex; gap: 4px; align-items: center; flex-shrink: 0; }   /* 2026-11-05 二轮补丁：crumb 文档流化后右簇禁止被挤（pill 曾被压成竖排换行）——空间不足由标题单方承担 */
 @media (max-width: 900px) {
   .crumb { flex: 1; }
@@ -1146,6 +1164,9 @@ body.home #menuBtn { display: none; }                  /* ☰ 只服务工作区
 body.home #modePill { display: none; }                 /* 首页是第三种态，隐藏读经|研读 pill */
 body.home #viewModeBtn, body.home #hideMarksBtn,
 body.home #studyFullBtn { display: none !important; }
+/* 排版（Aa）只在有正文的屏幕出现：首页/合集层/专题都没有正文，点开调字号当前页毫无变化。
+   AGENTS 约定「首页顶栏只留 反馈+⚙️」。听书已在 .body-mod-audio 单独隐藏。 */
+body.home #typographyBtn, body.bookhub #typographyBtn, body.topic #typographyBtn { display: none !important; }
 #homeView {
   position: fixed; inset: 52px 0 0; z-index: 20;       /* 顶栏 z30 之上、popup z60 之下 */
   background: var(--page-bg); overflow-y: auto; padding: 24px 16px 40px;
@@ -1885,6 +1906,10 @@ mark.sr-hit {
    （暗底上 50% 会让正文对比度跌到 3.2:1，降档到 25-35% 后正文类目 6.5–14.2 全部 ≥4.5）。 ── */
 :root[data-theme="dark"] {
   --brand: #8b96ff; --brand-dark: #a3adff; --brand-rgb: 139, 150, 255;
+  /* 品牌底上的前景（2026-11-10 补）：沿用 --on-brand:#fff 时白字压提亮后的 #8b96ff 只有 2.66:1——
+     popup-btn.primary / .dw-seg>.sel / .mini-player-pp 全线不达标，而这批改动的主题就是对比度整改。
+     与 --pill-active-fg 同口径用深字：#15161d 压 #8b96ff 实测 6.79:1。 */
+  --on-brand: #15161d;
   --page-bg: #111318; --surface: #191b22; --surface-alt: #20232c; --border: rgba(255,255,255,.09);
   --scripture-bg: #1a1c24;
   --heading: #f2f3f7; --text: #e7e9f0; --text-soft: #b8bcc9; --text-muted: #8b90a0;
@@ -1983,7 +2008,9 @@ mark.sr-hit {
 .mini-player[hidden] { display: none; }   /* hidden 属性必须压过 display:flex（否则启动即显示） */
 .mini-player-pp {
   width: 34px; height: 34px; border-radius: 50%; border: none; cursor: pointer; flex: none;
-  background: var(--brand); color: #fff; font-size: var(--fs-13); line-height: 1;
+  /* 用 --on-brand 而不是裸 #fff（2026-11-10）：各主题背景都是 --brand，文字色必须跟着主题走。
+     裸 #fff 在暗夜（--brand 提亮成 #8b96ff）只有 2.66:1——写 token 才会在暗夜块被一并审计到。 */
+  background: var(--brand); color: var(--on-brand); font-size: var(--fs-13); line-height: 1;
   display: flex; align-items: center; justify-content: center;
 }
 .mini-player-ti { flex: 1; min-width: 0; cursor: pointer; }
@@ -1993,6 +2020,11 @@ mark.sr-hit {
 .mini-player-pr i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--brand); border-radius: 2px; }
 body.mini-audio .toast { bottom: calc(118px + env(safe-area-inset-bottom)); }   /* toast 让位迷你条 */
 body.mini-audio .text-col { padding-bottom: 118px; }                             /* 正文末行不被迷你条盖住 */
+/* 右栏同样要留位（2026-11-10 CR）：.text-col 有 padding、.study-col 没有，各模块右栏
+   （笔记输入框 / 划线汇总 / 笔记编辑面板的「删除」行）滚到底部时会被 fixed 迷你条压住。
+   .study-col 自己带 background，padding 区域仍是面板底色，不露白。笔记管理（#notesSide）
+   同样受益——它被纳入迷你条显示范围后这条路才真正走到。 */
+body.mini-audio .study-col { padding-bottom: 118px; }
 body.mini-audio #homeView { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
 @media (max-width: 900px) {
   body.mini-audio .mode-pill { bottom: calc(126px + env(safe-area-inset-bottom)); } /* 模式 pill 上移让位 */
@@ -2006,6 +2038,18 @@ body.mini-audio #homeView { padding-bottom: calc(96px + env(safe-area-inset-bott
 /* ── 2026-11-05 评审修复批次（第二轮） ── */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }   /* P1-3：跟随系统减弱动态 */
+  /* 功能性反馈动画豁免（2026-11-10）：上面的通配会把加载/缓冲指示器一起打死——
+     iteration-count:1 + duration:.01ms 让 spinner 转一帧就静止（实测 computed 1e-05s），
+     慢网首屏与听书缓冲看到的就是一张不动的图。减弱动效的本意是「不要晃动」，不是「不给反馈」。
+     这里恢复成「慢速但持续的旋转」：不打乱布局、不产生位移感，仍是可读的进行中信号。 */
+  .splash-spinner, .loading-spin, .au-spin {
+    animation-duration: 1.6s !important;
+    animation-iteration-count: infinite !important;
+    animation-timing-function: linear !important;
+  }
+  /* 跳转定位的闪烁是「这里就是目标」的方向提示，不是装饰——压成单次 .01ms 等于不提示，
+     改为一次明显的短闪。 */
+  .flash { animation-duration: .6s !important; animation-iteration-count: 1 !important; }
 }
 @media (pointer: coarse) {
   .fb-select, .fb-textarea, .fb-input, .dw-search input { font-size: 16px; }   /* P1-4：≥16px 防 iOS 聚焦视口缩放（触屏全体，含 iPad 横屏） */
