@@ -236,6 +236,60 @@ async function main() {
   console.log('12. 全部›历史弹窗(就地浏览)+空历史隐藏:', r12ok ? '✓' : '✗',
     '| 留在首页:', r12.home, '| 弹窗行数:', r12.rows, '| 首行:', r12.firstRow, '| 点条目跳转:', r12c.ch, '| 清空后首页块:', r12b.blocks, 'HTML空:', r12b.html === '');
 
+  // 13. 启动自动恢复（selectBook 上次章节）会 pushHistory，首页历史必须同步重绘：
+  //     否则 DOM 里的 data-hist 下标是刷新前的旧列表，首次点第一条会跳到刚插进来的那条
+  await page.evaluate(() => {
+    const now = Date.now();
+    localStorage.setItem('bible-study.history', JSON.stringify([
+      { module: 'bible', loc: { book: 1, chapter: 24 }, title: '创世记 24章', t: now - 60e3 },
+      { module: 'bible', loc: { book: 1, chapter: 1 }, title: '创世记 1章', t: now - 120e3 },
+    ]));
+    localStorage.setItem('bible-study.last', JSON.stringify({ book: 1, chapter: 7 }));   // 不在历史里的上次章节
+  });
+  await page.reload({ waitUntil: 'networkidle0' });
+  await page.waitForFunction(() => document.getElementById('splash').classList.contains('hidden'), { timeout: 40000 });
+  await page.waitForSelector('#homeHist .home-hist-item', { timeout: 15000 });
+  const r13 = await page.evaluate(() => ({
+    dom: [...document.querySelectorAll('#homeHist .home-hist-item .t')].map(e => e.textContent),
+    stored: JSON.parse(localStorage.getItem('bible-study.history') || '[]').map(x => x.title),
+  }));
+  await page.evaluate(() => document.querySelector('#homeHist .home-hist-item').click());
+  await new Promise((r) => setTimeout(r, 2000));
+  const r13b = await page.evaluate(() => ({
+    ch: state.currentChapter, crumb: document.querySelector('#chapterLabel').textContent,
+  }));
+  const want13 = parseInt((String(r13.dom[0]).match(/(\d+)章/) || [])[1], 10);
+  const ok13 = r13.dom.length === r13.stored.length && r13.dom.every((t, i) => t === r13.stored[i]) && r13b.ch === want13;
+  console.log('13. 启动恢复后历史 DOM 与存储一致(首条点击不错位):', ok13 ? '✓' : '✗',
+    '| DOM:', r13.dom.join(' / '), '| 存储:', r13.stored.join(' / '), '| 点首条落到:', r13b.crumb);
+
+  // 14. 书报历史里的「书级条目」（chapter 0）必须落到该书第 1 章：
+  //     books enter() 的续接上次位置只认 truthy opts，0 会被 last.chapter 顶替
+  await page.evaluate(() => {
+    const now = Date.now();
+    localStorage.setItem('bible-study.history', JSON.stringify([
+      { module: 'books', loc: { series: 'ni', volume: 1, book: 3, chapter: 0 }, title: '书级条目 · 第1章', t: now - 60e3 },
+    ]));
+    localStorage.setItem('bible-study.bookLast', JSON.stringify({ series: 'ni', volume: 1, book: 0, chapter: 5 }));
+  });
+  await page.reload({ waitUntil: 'networkidle0' });
+  await page.waitForFunction(() => document.getElementById('splash').classList.contains('hidden'), { timeout: 40000 });
+  await page.waitForSelector('#homeHist .home-hist-item', { timeout: 15000 });
+  await page.evaluate(() => {
+    const items = [...document.querySelectorAll('#homeHist .home-hist-item')];
+    const el = items.find(x => x.querySelector('.t').textContent.includes('书级条目'));
+    (el || items[0]).click();
+  });
+  await new Promise((r) => setTimeout(r, 3000));
+  const r14 = await page.evaluate(() => ({
+    mod: state.activeModule, series: state.bookSeries,
+    v: state.bookVolume, b: state.bookBook, c: state.bookChapter,
+    crumb: document.querySelector('#chapterLabel').textContent,
+  }));
+  const ok14 = r14.mod === 'books' && r14.series === 'ni' && r14.v === 1 && r14.b === 3 && r14.c === 0;
+  console.log('14. 书报书级历史条目落到第1章:', ok14 ? '✓' : '✗',
+    '| 位置:', `${r14.series} ${r14.v}/${r14.b}/${r14.c}`, '|', r14.crumb);
+
   console.log('\nJS 错误:', errors.length ? errors : '无');
   await browser.close();
   server.kill();

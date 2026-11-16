@@ -6274,6 +6274,10 @@ function pushHistory(module, loc, title) {
   list.unshift({ module, loc, title, t: Date.now() });
   if (list.length > 50) list.length = 50;
   save(LS_HISTORY, list);
+  // 首页「最近阅读」是按列表下标（data-hist）回取的，列表一变下标就全错位。init 里首页历史
+  // 早于启动数据的 selectBook(上次章节) 渲染，那一 push 会把上次章节插到最前——首次点第一条
+  // 会跳到刚插进来的那条（用户反馈）。这里同步重绘，保证 DOM 与存储不分叉。
+  renderHomeHistory();
 }
 
 function relTime(t) {
@@ -6755,6 +6759,12 @@ async function jumpHistory(h) {
     await openLrArticle(h.loc.book, { id: h.loc.articleId });
   } else if (h.module === 'books') {
     await openBookChapter(h.loc.volume, h.loc.book, h.loc.chapter, h.loc.series);
+    // 纠偏：书级条目记的是 chapter 0（切辑/选书时 pushHistory），而 books enter() 的续接
+    // 上次位置只认 truthy opts（0 被 last 顶替），会落到「上次读的那一章」而不是第 1 章。
+    // 历史条目的语义必须是精确位置，故与 applyRoute 同样显式补调一次。
+    if (state.bookVolume !== h.loc.volume || state.bookBook !== h.loc.book || state.bookChapter !== h.loc.chapter) {
+      await selectBookChapter(h.loc.volume, h.loc.book, h.loc.chapter);
+    }
   } else if (h.module === 'morning') {
     await openMorningArticle(h.loc.period, h.loc.chapterId);
   } else if (h.module === 'audio') {
