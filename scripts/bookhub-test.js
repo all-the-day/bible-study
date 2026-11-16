@@ -71,6 +71,23 @@ async function main() {
     console.log('4. 十二篮直进:', ok4 ? '✓' : '✗', '|', r4.series, '|', r4.crumb);
     if (!ok4) fail = 1;
 
+    // 4b. 反馈 #32：读过别的书报系列 → 回首页 → 点倪文集，必须真的切到 ni
+    //     （enterModule 同模块重入幂等，activeModule 回首页不重置；曾只刷 crumb 不切系列，
+    //      表现为点了没反应、内容仍是上一个系列）
+    await page.click('#homeBtn');
+    await new Promise((r) => setTimeout(r, 600));
+    await page.click('#homeGrid .home-block[data-entry="ni"]');
+    await new Promise((r) => setTimeout(r, 2500));
+    const r4b = await page.evaluate(() => ({
+      work: state.screen === 'work',
+      series: state.bookSeries,
+      metaName: document.querySelector('#bookName')?.textContent || '',
+      hasText: !!document.querySelector('#bookMain .bk-para, #bookMain .bk-head'),
+    }));
+    const ok4b = r4b.work && r4b.series === 'ni' && r4b.metaName.includes('倪柝声') && r4b.hasText;
+    console.log('4b. 换过系列后回首页点倪文集（反馈 #32）:', ok4b ? '✓' : '✗', '|', r4b.series, '|', r4b.metaName);
+    if (!ok4b) fail = 1;
+
     // 5. 回合集层搜索「两种的认识」→ 跨合集命中：ezoe 分类系列（misc）篇目与十二篮篇目同列
     //    （展示顺序由导出层 SERIES_ORDER 决定，结果按系列顺序排列；5b 按系列名定位 misc）
     await page.click('#homeBtn');

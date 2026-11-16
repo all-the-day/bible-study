@@ -156,7 +156,7 @@ const COLLECTIONS = [
   { id: 'notes', title: '我的笔记', icon: '📝', entry: () => enterModule('notes') },
   { id: 'morning', title: '听抄', icon: '🌅', entry: () => enterModule('morning') },
   { id: 'audio', title: '听书', icon: '🎧', entry: () => enterModule('audio') },
-  { id: 'ni', title: '倪文集', icon: '📚', entry: () => enterModule('books', { series: 'ni' }) },
+  { id: 'ni', title: '倪文集', icon: '📚', entry: () => openBookSeries('ni') },
   { id: 'bookhub', title: '书报', icon: '🗂️', entry: () => openBookHub() },
 ];
 
@@ -5444,6 +5444,19 @@ async function selectBookChapter(volume, book, chapter) {
   mod.renderCrumb();
   resetReadingScroll('books');   // 回到该章上次读到的位置；换章则滚顶
   syncRoute();
+}
+
+// 统一入口（首页「倪文集」块）：模块内换系列，模块外进模块
+// 反馈 #32：enterModule 对同模块重入是幂等的（只刷 crumb、不跑 enter），而 activeModule 回首页不重置
+// ——读过任意书报系列后回首页点「倪文集」，mod.enter({series:'ni'}) 整个被跳过，系列根本不切。
+async function openBookSeries(series) {
+  if (state.activeModule === 'books' && state.screen === 'work') {
+    await selectBookSeries(series);
+    return;
+  }
+  const sameModule = state.activeModule === 'books';
+  await enterModule('books', { series });
+  if (sameModule && state.bookSeries !== series) await selectBookSeries(series);
 }
 
 // 统一入口（首页块 / 搜索 / 全局笔记）：模块内切章，模块外进模块
