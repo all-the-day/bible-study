@@ -160,14 +160,15 @@ const COLLECTIONS = [
   { id: 'bookhub', title: '书报', icon: '🗂️', entry: () => openBookHub() },
 ];
 
-/* 专题注册表（见 AGENTS.md「专题」节）：页面只是作业单的链接聚合，
-   周次 / 篇号 / 书报 / 背经由 scripts/build-topics.py 的 REGISTRY 装配成 data/topics/{id}.json。 */
+/* 专题注册表（见 AGENTS.md「专题」节）：页面 = 阅读记录按块归拢的快速查找页，
+   块的范围（哪几卷原文 / 生命读经、哪本书报）由 scripts/build-topics.py 的 REGISTRY
+   装配成 data/topics/{id}.json；记录本身来自本机阅读历史，不进数据文件。
+   页面不渲染标题区（顶栏 crumb 已是「活力八 记录」），title/icon 只用于顶栏与阅读历史文案。 */
 const TOPICS = {
   vitality8: {
     id: 'vitality8',
     title: '活力八',
     icon: '🔥',
-    blurb: '腓立比书与歌罗西书：按作业单逐周读原文、生命读经与注解。',
   },
 };
 
@@ -226,6 +227,12 @@ function openThemePicker() {
 /* ── 用户语言版本记录（单一来源）：① 使用帮助弹窗「最近更新」；② 更新弹窗「本次更新」。
    纪律：只记用户可见变化、不记 chore/内部改动；用户可见功能发布时在顶部补一行（AGENTS.md 发版流程）。 ── */
 const CHANGELOG = [
+  { v: '1.0.74', date: '2026-11-16', items: [
+    '「活力八」改成快速查找页：腓立比书、歌罗西书各分「原文」与「生命读经」两块，《福音的托付》单独一块——每块只列你读过的章节与篇目，点一下回到那个位置，不再按周排作业单',
+    '读过别的书报合集后回首页点「倪文集」，现在会真的切到倪文集（之前停在刚才那个合集，像点了没反应）',
+    '首页「最近阅读」第一次点不再跳错条目（列表刚更新过时曾整体错开一条）',
+    '书报里按「整本书」记下的阅读记录，点开会回到那本书第 1 章（之前会落到上次读的那一章）',
+  ] },
   { v: '1.0.73', date: '2026-11-11', items: [
     '手机阅读时顶栏只留「回首页 / 目录 / 标题 / 读经|研读」，排版（Aa）与设置（⚙️）收进首页——标题因此能多显示一倍多的字数',
     '天路历程的正文不再是一句一行：源页按窄栏折行的地方接回成整段，读起来是连续的文字而不是碎句',
@@ -1275,12 +1282,12 @@ function showHome() {
   syncRoute();   // 回首页：URL 回根（有历史则 push，可后退返回阅读位置）
 }
 
-/* ============ 专题（topics，活力八 · 作业单） ============
-   专题 = 一份**作业单的链接聚合**：每周一条任务，条目分别深链到读经原文 / 生命读经篇目 /
-   书报章节（正文一律不复制）。数据由 scripts/build-topics.py 从已导出数据装配成
-   data/topics/{id}.json（周次 / 篇号 / 书报 / 背经由脚本里的 REGISTRY 人工维护）。
+/* ============ 专题（topics，活力八 · 记录块） ============
+   专题 = **阅读记录按块归拢的快速查找页**：每块一个范围（某卷原文 / 某卷生命读经 / 某本书报），
+   块内只列读过的记录（来自 LS_HISTORY），点一下回到那个位置；正文与篇目清单一律不复制。
+   块的范围由 scripts/build-topics.py 的 REGISTRY 装配成 data/topics/{id}.json（只有范围与展示名）。
    screen='topic' 是第三种屏幕（同 home / bookhub）：独立的 #topicView，不复用 body-mod-* 阅读器容器；
-   页面没有正文，所以没有专题内划线 / 屏级笔记——点条目直接进各阅读器模块，标注归各模块自己。 */
+   页面没有正文，所以没有专题内划线 / 屏级笔记——点记录直接进各阅读器模块，标注归各模块自己。 */
 
 function openTopic(id, opts) {
   const topic = TOPICS[id];
@@ -1298,22 +1305,21 @@ function openTopic(id, opts) {
   applyDrawerDock();
   audioSyncMini();   // 专题页不显示迷你播放条（评审 S5；不经首页的路径：抽屉历史 → 专题）
   $('bookName').textContent = topic.title;
-  setChapterLabel([{ text: '作业单' }]);
-  // 同专题再进入（从条目跳走再返回）保留滚动位置——八周清单逐周点开是典型用法；
-  // 换专题/首次进入回到顶部。必须在 renderTopicPage 重写 innerHTML 前取旧位置。
+  setChapterLabel([{ text: '记录' }]);
+  // 同专题再进入（从记录跳走再返回）保留滚动位置；换专题/首次进入回到顶部。
+  // 必须在 renderTopicPage 重写 innerHTML 前取旧位置。
   const col = $('topicTextCol');
   const keepTop = prevTopic === id && col ? (col.scrollTop || 0) : 0;
   renderTopicPage(id, keepTop);
-  pushHistory('topic', { topic: id }, `${topic.title} · 作业单`);
+  pushHistory('topic', { topic: id }, `${topic.title} · 记录`);
   if (!(opts && opts.silent)) syncRoute();
 }
 
-// 作业单页：标题 + 每周任务卡（条目全是深链，点一下直接进对应模块的目标位置）
+// 专题页：只有记录块（每块 = 一个范围，列出落在该范围内的阅读记录，点一下回到读过的地方）
 async function renderTopicPage(id, keepTop = 0) {
-  const topic = TOPICS[id];
   const main = $('topicMain');
   if (!main) return;
-  main.innerHTML = '<div class="loading-hint"><span class="loading-spin"></span>作业单加载中…</div>';
+  main.innerHTML = '<div class="loading-hint"><span class="loading-spin"></span>记录加载中…</div>';
   let data = null;
   try { data = await ensureTopicData(id); } catch (e) { data = null; }
   if (state.screen !== 'topic' || state.topicId !== id) return;   // 已离开
@@ -1321,69 +1327,66 @@ async function renderTopicPage(id, keepTop = 0) {
     main.innerHTML = '<div class="empty-hint">专题数据缺失（请检查 data/topics/' + escapeHtml(id) + '.json）</div>';
     return;
   }
-  if (!(data.weeks || []).length) {
-    // 旧版 SW 缓存里可能是 1.0.59 的旧 schema（books/无 weeks）：stale-while-revalidate 下首次访问会拿到它
-    main.innerHTML = '<div class="empty-hint">作业单数据待更新，刷新一次即可。</div>';
+  if (!(data.blocks || []).length) {
+    // 旧版 SW 缓存 / 旧 APK 里可能是 1.0.60 起的「作业单」schema（weeks）：提示刷新拿新数据
+    main.innerHTML = '<div class="empty-hint">专题数据待更新，刷新一次即可。</div>';
     return;
   }
-  main.innerHTML = `
-    <div class="topic-home">
-      <div class="topic-hero">
-        <div class="topic-hero-ic">${topic.icon || '📖'}</div>
-        <div class="topic-hero-title">${escapeHtml(topic.title)}</div>
-        <div class="topic-hero-blurb">${escapeHtml(topic.blurb || data.blurb || '')}</div>
-      </div>
-      ${(data.weeks || []).map(renderTopicWeek).join('')}
-      <div class="topic-home-foot">条目都指向已有内容：原文进读经、篇目进生命读经、书报进书报；书报与背经由作业单补齐后显示。</div>
+  // 标题区（图标 + 专题名 + 说明）已去掉：顶栏 crumb 已是「活力八 记录」，
+  // 页面只留记录块本身（用户 2026-11-16 定稿：这些内容不需要）
+  main.innerHTML = `<div class="topic-home">
+      ${(data.blocks || []).map(renderTopicBlock).join('')}
     </div>`;
   const col = $('topicTextCol');
   if (col && keepTop) col.scrollTop = keepTop;
 }
 
-// 一周任务卡：周次 + 所学章 + 五类条目（原文 / 生命读经 ×N / 书报 / 背经 / 注释）
-function renderTopicWeek(w) {
-  const book = Number(w.book) || 0;
-  const ch = Number(w.chapter) || 0;
-  const arts = w.articles || [];
-  const rows = [topicRow('bible', '原文', `${escapeHtml(w.bookName || '')} 第 ${ch} 章`, `#/bible/${book}/${ch}`, '经文')];
-  arts.forEach((a, i) => {
-    rows.push(topicRow('lr', '生命读经', `<span class="n">${i + 1}/${arts.length}</span>${escapeHtml(a.title || '')}`, `#/lr/${book}/${Number(a.id) || 0}`));
-  });
-  const br = w.bookRead;
-  if (br && br.series) {
-    const series = String(br.series).replace(/[^a-z0-9_-]/gi, '');
-    rows.push(topicRow('book', '书报', escapeHtml(br.label || br.title || ''), `#/book/${series}/${Number(br.volume) || 1}/${Number(br.book) || 0}/${Number(br.chapter) || 0}`));
-  } else {
-    rows.push(topicRowPending('book', '书报', '指定书报待填'));
-  }
-  rows.push(w.memory
-    ? topicRow('mem', '背经', escapeHtml(w.memory), `#/bible/${book}/${ch}`)
-    : topicRowPending('mem', '背经', '背经经节待填'));
-  rows.push(topicRow('fn', '注释', `${escapeHtml(w.bookName || '')} ${ch} 章 注解`, `#/bible/${book}/${ch}`, '读两遍'));
-  return `<section class="topic-week">
-    <div class="topic-week-head">
-      <span class="topic-week-no">第 ${Number(w.n) || 1} 周</span>
-      <span class="topic-week-title">${escapeHtml(w.bookName || '')} ${ch} 章</span>
-      <span class="topic-week-meta">${arts.length} 篇生命读经</span>
+// 一个记录块：范围标签 + 该范围内的阅读记录（历史顺序 = 新到旧）
+function renderTopicBlock(b) {
+  const recs = topicBlockRecords(b);
+  const rows = recs.length
+    ? recs.map(h => `<a class="topic-row" href="${topicRecordHref(h)}">
+        <span class="topic-row-t">${escapeHtml(h.title || '')}</span>
+        <span class="topic-row-time">${relTime(h.t)}</span>
+        <span class="topic-row-x">›</span>
+      </a>`).join('')
+    : '<div class="topic-empty">还没有阅读记录</div>';
+  return `<section class="topic-block">
+    <div class="topic-block-head">
+      <span class="topic-block-title">${escapeHtml(b.label || b.name || '')}</span>
+      ${recs.length ? `<span class="topic-block-meta">${recs.length} 条</span>` : ''}
     </div>
-    ${rows.join('')}
+    ${rows}
   </section>`;
 }
 
-function topicRow(kind, label, text, href, badge) {
-  return `<a class="topic-row" href="${href}">
-    <span class="topic-kind ${kind}">${label}</span>
-    <span class="topic-row-t">${text}${badge ? `<span class="topic-badge">${badge}</span>` : ''}</span>
-    <span class="topic-row-x">›</span>
-  </a>`;
+// 块范围内的阅读记录：按 history 的 module + 定位字段筛选（块定义见 scripts/build-topics.py 的 REGISTRY）
+function topicBlockRecords(b) {
+  const hist = load(LS_HISTORY, []);
+  if (b.kind === 'bible') {
+    return hist.filter(h => h.module === 'bible' && h.loc && h.loc.book === b.book);
+  }
+  if (b.kind === 'lifereading') {
+    return hist.filter(h => h.module === 'lifereading' && h.loc && h.loc.book === b.book);
+  }
+  if (b.kind === 'books') {
+    return hist.filter(h => h.module === 'books' && h.loc && h.loc.series === b.series
+      && (b.volume == null || h.loc.volume === b.volume)
+      && (b.book == null || h.loc.book === b.book));
+  }
+  return [];
 }
 
-function topicRowPending(kind, label, text) {
-  return `<div class="topic-row pending">
-    <span class="topic-kind ${kind}">${label}</span>
-    <span class="topic-row-t">${text}</span>
-    <span class="topic-row-x">›</span>
-  </div>`;
+// 记录 → 深链（与 jumpHistory 同一套路由）
+function topicRecordHref(h) {
+  const l = h.loc || {};
+  if (h.module === 'bible') return `#/bible/${Number(l.book) || 1}/${Number(l.chapter) || 1}`;
+  if (h.module === 'lifereading') return `#/lr/${Number(l.book) || 1}/${Number(l.articleId) || 1}`;
+  if (h.module === 'books') {
+    const series = String(l.series || '').replace(/[^a-z0-9_-]/gi, '');
+    return `#/book/${series}/${Number(l.volume) || 1}/${Number(l.book) || 0}/${Number(l.chapter) || 0}`;
+  }
+  return '#/';
 }
 
 // 专题数据懒加载（在途去重；失败置 null 由调用方降级）
@@ -1565,7 +1568,7 @@ async function parseRoute() {
   if (seg === 'topic') {
     const id = parts[1];
     if (!id || !TOPICS[id]) return null;
-    // 作业单是单页：旧版分屏深链（#/topic/{id}/{卷}/{屏}）忽略多余段，归一到专题页
+    // 记录页是单页：旧版分屏深链（#/topic/{id}/{卷}/{屏}）忽略多余段，归一到专题页
     return { kind: 'topic', id };
   }
   if (seg === 'bible') {
@@ -2071,7 +2074,7 @@ async function enterModule(id, opts) {
     await Promise.all([mod.renderNav(), mod.renderMain(), mod.renderSide(), mod.renderCrumb()]);
     applyDrawerDock();   // 模块切换后重估停靠态（notes 隐藏停靠列，其他模块恢复）
   } else {
-    // 同模块重入：位置可能没变（不触发 select*），但顶栏可能被别的屏幕（专题作业单）写过，
+    // 同模块重入：位置可能没变（不触发 select*），但顶栏可能被别的屏幕（专题记录页）写过，
     // 必须无条件刷一次 crumb——「读原文」跳回本模块当前章时标题残留专题标签的根因
     await mod.renderCrumb();
   }
@@ -2243,7 +2246,7 @@ function bindHomeEvents() {
     if (c && c.entry) c.entry();
   });
   bindTileKeys($('homeGrid'));
-  // 专题（topics，作业单）：条目是普通 hash 链接，由 popstate/hashchange → applyRoute 就位
+  // 专题（topics，记录块）：记录行是普通 hash 链接，由 popstate/hashchange → applyRoute 就位
   // 书报合集层：块点击 → series 直进阅读器；搜索 → 跨合集检索（篇目标题，数据来自各系列元数据缓存）
   $('bookHubGrid').addEventListener('click', (e) => {
     const tile = e.target.closest('.home-block');
@@ -7977,7 +7980,7 @@ function rereadUnitScope() {
     return { label: '本篇', anns: state.annotations.filter(a =>
       a.type === 'morning' && a.period === state.morningPeriod && a.chapterId === state.morningChapterId) };
   }
-  if (state.screen === 'topic') return null;   // 作业单页没有正文，无「本屏」可重读
+  if (state.screen === 'topic') return null;   // 记录页没有正文，无「本屏」可重读
   return null;
 }
 

@@ -1182,7 +1182,7 @@ body.home #studyFullBtn { display: none !important; }
   position: fixed; inset: 52px 0 0; z-index: 20;       /* 顶栏 z30 之上、popup z60 之下 */
   background: var(--page-bg); overflow-y: auto; padding: 24px 16px 40px;
 }
-/* ── 专题页（活力八 · 作业单）：第三种屏幕（同 home / bookhub 正交），单列链接聚合；
+/* ── 专题页（活力八 · 记录块）：第三种屏幕（同 home / bookhub 正交），单列记录区块；
    页面没有正文，不参与 body-mod-* 阅读器容器切换 ── */
 #topicView { display: none; }
 body.topic #topicView {
@@ -1193,48 +1193,29 @@ body.topic #topicTextCol { grid-column: 1; }
 body:not(.topic) #topicView { display: none; }
 #topicMain { display: none; }
 body.topic #topicMain { display: block; }
-body.topic #prevChBtn, body.topic #nextChBtn { display: none; }   /* 作业单不分章 */
+body.topic #prevChBtn, body.topic #nextChBtn { display: none; }   /* 记录页不分章 */
 body.topic #viewModeBtn, body.topic #hideMarksBtn, body.topic #studyFullBtn { display: none !important; }
-body.topic #modePill { display: none; }   /* 作业单不是阅读视图，没有读经|研读之分 */
+body.topic #modePill { display: none; }   /* 专题页不是阅读视图，没有读经|研读之分 */
 .topic-main { max-width: 780px; margin: 0 auto; }
 
-/* 作业单：标题 + 每周任务卡（条目全是深链） */
-.topic-hero { padding: 6px 4px 22px; }
-.topic-hero-ic { font-size: var(--fs-30); line-height: 1; }
-.topic-hero-title { font-size: var(--fs-24); font-weight: 700; color: var(--heading); margin-top: 10px; }
-.topic-hero-blurb { margin-top: 10px; font-size: var(--fs-14); line-height: 1.9; color: var(--text-soft); }
-.topic-week {
+/* 专题：只有记录块（每块 = 一个范围，行 = 该范围内读过的记录，全是深链）；
+   没有标题区——顶栏 crumb 已是「活力八 记录」 */
+.topic-block {
   background: var(--card-bg); border: var(--card-border); border-radius: var(--radius-md);
   box-shadow: var(--card-shadow); margin-bottom: 14px; overflow: hidden;
 }
-.topic-week-head { display: flex; align-items: baseline; gap: 8px; padding: 12px 16px 8px; }
-.topic-week-no {
-  font-size: var(--fs-12); font-weight: 700; color: var(--brand-dark);
-  background: rgba(var(--brand-rgb), .12); border-radius: 999px; padding: 1px 9px;
-}
-.topic-week-title { font-size: var(--fs-16); font-weight: 700; color: var(--heading); }
-.topic-week-meta { margin-left: auto; font-size: var(--fs-12); color: var(--text-muted); }
+.topic-block-head { display: flex; align-items: baseline; gap: 8px; padding: 12px 16px 9px; }
+.topic-block-title { font-size: var(--fs-16); font-weight: 700; color: var(--heading); }
+.topic-block-meta { margin-left: auto; font-size: var(--fs-12); color: var(--text-muted); }
 .topic-row {
   display: flex; align-items: center; gap: 10px; padding: 9px 16px;
   border-top: 1px solid var(--border); color: var(--text); text-decoration: none;
 }
 a.topic-row:hover { background: var(--hover); }
-.topic-kind { flex: 0 0 62px; font-size: var(--fs-12); font-weight: 600; color: var(--text-muted); }
-.topic-kind.lr { color: var(--brand-dark); }
 .topic-row-t { flex: 1; min-width: 0; font-size: var(--fs-14); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.topic-row-t .n { color: var(--text-muted); font-weight: 400; margin-right: 6px; }
+.topic-row-time { flex: 0 0 auto; font-size: var(--fs-12); color: var(--text-muted); }
 .topic-row-x { color: var(--text-muted); }
-.topic-badge {
-  font-size: var(--fs-12); color: var(--text-muted); border: 1px solid var(--border);
-  border-radius: 999px; padding: 0 6px; margin-left: 6px;
-}
-/* 未填条（书报 / 背经）虚化，不可点 */
-.topic-row.pending {
-  background: repeating-linear-gradient(135deg, var(--surface), var(--surface) 6px, var(--surface-alt) 6px, var(--surface-alt) 12px);
-}
-.topic-row.pending .topic-row-t { color: var(--text-muted); }
-.topic-row.pending .topic-row-x { visibility: hidden; }
-.topic-home-foot { margin-top: 8px; font-size: var(--fs-12); color: var(--text-muted); line-height: 1.8; }
+.topic-empty { padding: 10px 16px 13px; border-top: 1px solid var(--border); font-size: var(--fs-13); color: var(--text-muted); }
 
 /* ── 书报二级合集层（2026-10-12）：与 home 同款正交规则 ── */
 body.bookhub .layout { display: none; }
@@ -1696,10 +1677,11 @@ mark.sr-hit {
   .typo-row { padding: 13px 16px; }
   .typo-val { flex-basis: 78px; }
 
-  /* 专题页（≤900px）：单列，条目字号略收 */
+  /* 专题页（≤900px）：单列；记录行给时间留位，尽量不挤掉标题 */
   .topic-main { max-width: none; }
-  .topic-kind { flex-basis: 54px; }
-  .topic-week-meta { display: none; }
+  .topic-block-head { padding: 11px 14px 8px; }
+  .topic-row { padding: 9px 14px; gap: 8px; }
+  .topic-empty { padding: 9px 14px 12px; }
   /* 读经模块左栏已由统一导航抽屉取代（桌面两列隐藏、移动端直接不显示） */
   .nav-col { display: none; }
 
