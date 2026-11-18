@@ -321,7 +321,8 @@ function openHelpPopup() {
     <div class="help-li">字号行距：桌面在阅读时点顶栏 <span class="help-k">Aa</span>，手机回首页点 <span class="help-k">Aa</span></div>
     <div class="help-li">观感主题：设置 → 阅读主题（经典 / 靛蓝 / 暖纸 / 素灰）</div>
     <div class="help-li">多设备同步：设置 → 云同步</div>
-    <div class="help-li">分享：每个位置都有网址，复制给别人打开就是这里</div>
+    <div class="help-li">分享：长按顶栏标题 → 复制链接或扫码，对方打开就是这一章</div>
+    <div class="help-li">电脑上按 ←/→ 翻上一章、下一章</div>
     <div class="help-up">
       <div class="help-h">最近更新</div>
       ${upd}
@@ -1825,6 +1826,141 @@ function bindSwipeNav() {
     const dir = dx < 0 ? 1 : -1;
     if (swipeTargetChapter(dir)) swipeFeedback(dir);
   }, { passive: true });
+}
+
+/* ============ 键盘翻页（反馈 #33，PC 端 ←/→ 切上下章） ============
+   复用 swipeTargetChapter（与触屏横扫同一套边界/模块分派），只在阅读器工作区响应；
+   下列情形一律让位：输入/可编辑焦点、弹窗、抽屉、有选区（防误触标注）、研读视图、
+   听书模块（播放器自己用 ←/→ 调 ±5 秒）、路由就位进行中。 */
+function bindKeyNav() {
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+    if (state.screen !== 'work' || !READER_MODULES[state.activeModule]) return;
+    if (state.activeModule === 'audio') return;
+    const ae = document.activeElement;
+    if (ae && ae.closest && ae.closest('input, textarea, select, [contenteditable="true"]')) return;
+    if (!$('popup').hidden || !$('typoModal').hidden || !$('updateModal').hidden || !$('noteModal').hidden) return;
+    const dw = $('navDrawer');
+    if (dw && !dw.hidden && dw.classList.contains('open')) return;
+    if (document.body.classList.contains('mobile-study')) return;
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed) return;
+    if (_routeApplying || _routeBusy) return;
+    const dir = e.key === 'ArrowRight' ? 1 : -1;
+    if (swipeTargetChapter(dir)) {
+      e.preventDefault();   // 已翻页就别再让浏览器横向滚动
+      swipeFeedback(dir);
+    }
+  });
+}
+
+/* ============ 分享当前位置（反馈 #34，长按顶栏标题） ============
+   路由是 hash 的，当前位置本来就是可直接分享的网址：复制链接 / 系统分享 / 二维码三选一。
+   二维码由 vendor/qrcode.js 本地生成（离线 APK 同样可用，不把网址发给第三方）。 */
+const SHARE_PRESS_MS = 550;   // 长按判定阈值（短于系统的文本选择/呼出菜单）
+let _sharePressTimer = null;
+let _sharePressFired = false;   // 本次长按已触发分享 → 吞掉随后的 click（否则同时开抽屉）
+let _sharePressAt = 0;          // 触发时刻：只吞紧跟其后的那一次 click（防陈旧标记误吞下一次正常点击）
+
+function bindCrumbLongPress() {
+  const crumb = document.querySelector('.crumb');
+  if (!crumb) return;
+  let start = null;
+  const clear = () => {
+    if (_sharePressTimer) { clearTimeout(_sharePressTimer); _sharePressTimer = null; }
+    start = null;
+  };
+  const press = (e) => {
+    // 只对「有位置可分享」的屏生效；crumb 内按钮（翻页）不参与
+    if (state.screen !== 'work' && state.screen !== 'topic') return;
+    if (e.target.closest('button')) return;
+    const p = e.touches ? e.touches[0] : e;
+    start = { x: p.clientX, y: p.clientY };
+    _sharePressFired = false;
+    if (_sharePressTimer) clearTimeout(_sharePressTimer);
+    _sharePressTimer = setTimeout(() => {
+      _sharePressTimer = null;
+      _sharePressFired = true;
+      _sharePressAt = Date.now();
+      openSharePopup();
+    }, SHARE_PRESS_MS);
+  };
+  const move = (e) => {
+    if (!_sharePressTimer || !start) return;
+    const p = e.touches ? e.touches[0] : e;
+    if (Math.abs(p.clientX - start.x) > 10 || Math.abs(p.clientY - start.y) > 10) clear();
+  };
+  crumb.addEventListener('touchstart', press, { passive: true });
+  crumb.addEventListener('touchmove', move, { passive: true });
+  crumb.addEventListener('touchend', clear);
+  crumb.addEventListener('touchcancel', clear);
+  crumb.addEventListener('mousedown', press);
+  crumb.addEventListener('mousemove', move);
+  crumb.addEventListener('mouseup', clear);
+  crumb.addEventListener('mouseleave', clear);
+}
+
+// 当前位置的可分享网址（无 hash 的屏退回裸地址）
+function shareUrl() {
+  const route = formatRoute();
+  return location.origin + location.pathname + (route || '');
+}
+
+// 当前位置的人类可读标题（顶栏两段拼起来）
+function shareTitle() {
+  const name = ($('bookName') || {}).textContent || '';
+  const label = ($('chapterLabel') || {}).textContent || '';
+  return [name, label].filter(Boolean).join(' ').trim();
+}
+
+function openSharePopup() {
+  const url = shareUrl();
+  const title = shareTitle();
+  const qr = qrSvgHtml(url);
+  openPopup('分享', `
+    <div class="share-card">
+      ${title ? `<div class="share-loc">${escapeHtml(title)}</div>` : ''}
+      ${qr ? `<div class="share-qr">${qr}</div>` : ''}
+      <div class="share-url">${escapeHtml(url)}</div>
+      <div class="popup-actions">
+        <button class="popup-btn" id="shareCopy">复制链接</button>
+        ${navigator.share ? '<button class="popup-btn primary" id="shareSys">分享…</button>' : ''}
+      </div>
+    </div>`);
+  const copy = $('shareCopy');
+  if (copy) {
+    copy.addEventListener('click', () => {
+      const done = () => showToast('链接已复制');
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(done, () => { fallbackCopy(url); done(); });
+      } else {
+        fallbackCopy(url);
+        done();
+      }
+    });
+  }
+  const sys = $('shareSys');
+  if (sys) {
+    sys.addEventListener('click', () => {
+      navigator.share({ title: title || document.title, url }).catch(() => null);
+    });
+  }
+}
+
+// 二维码 SVG（vendor/qrcode.js；库缺失或生成失败时返回空串，弹窗退化为复制链接）
+function qrSvgHtml(text) {
+  try {
+    if (typeof qrcode !== 'function') return '';
+    const qr = qrcode(0, 'M');
+    qr.addData(text);
+    qr.make();
+    // scalable：尺寸交给 CSS（手机上按容器宽度自适应，不写死像素）；
+    // margin 4 个模块 = 扫码软件要求的静区，太小手机不好扫
+    return qr.createSvgTag({ cellSize: 4, margin: 4, scalable: true, alt: '分享二维码' });
+  } catch (e) {
+    return '';
+  }
 }
 
 /* ============ 阅读器外壳 + 模块注册表 ============ */
@@ -7052,12 +7188,17 @@ function bindEvents() {  // 首页：合集块点击 + 顶部搜索 + ⌂ 回首
     openNavDrawer();
   });
   // crumb 标题点击：桌面=收起时展开停靠列（已展开 no-op），移动端=浮层抽屉
+  // 长按标题 = 分享当前位置（反馈 #34）：长按已触发时吞掉这次 click，否则会同时开抽屉
   document.querySelector('.crumb').addEventListener('click', (e) => {
+    // 长按触发分享后紧跟的那一次 click 吞掉；超过 900ms 的陈旧标记不算
+    if (_sharePressFired && Date.now() - _sharePressAt < 900) { _sharePressFired = false; return; }
+    _sharePressFired = false;
     if (state.screen === 'home') return;
     if (e.target.closest('button')) return;   // 不拦截 crumb 内按钮（翻页按钮）
     const mod = READER_MODULES[state.activeModule];
     if (mod && mod.onCrumbClick) mod.onCrumbClick();
   });
+  bindCrumbLongPress();
   // 视图模式：双页 → 上下 → 全屏 循环
   $('viewModeBtn').addEventListener('click', () => {
     state.studyFull = false;
@@ -7165,6 +7306,7 @@ function bindEvents() {  // 首页：合集块点击 + 顶部搜索 + ⌂ 回首
   window.addEventListener('hashchange', onUrlChange);
   // 移动端滑动翻页（正文横扫切章/篇）
   bindSwipeNav();
+  bindKeyNav();   // PC 端 ←/→ 切上下章（反馈 #33）
 }
 
 // 从注号上标定位其所在节的 key（经文区域内上标无 data-key，需自行反推）

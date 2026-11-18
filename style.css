@@ -188,6 +188,8 @@ body.home .reading-progress { display: none; }
 .topbar .icon-btn:hover { background: var(--topbar-btn); }
 .icon-btn svg { width: 24px; height: 24px; display: block; }   /* Lucide 内联图标（2026-11-05；24=Lucide 标准格，22 偏空） */
 .crumb { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; font-size: var(--fs-17); font-weight: 600; }
+/* 长按标题 = 分享当前位置（反馈 #34）：关掉文字选择/长按呼出菜单，让长按只做分享一件事 */
+.crumb { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 /* 书名允许收缩（2026-10-30 S2）：原来 flex-shrink:0 让书卷名独占宽度，窄屏上
    #chapterLabel 被压成 0，flex 行还从中间溢出、被 overflow:hidden 裁掉左端，
    首字压到 ☰ 字形底下。放不下时书卷名整段让位（shrink 99，不做半字碎屑）——
@@ -1129,6 +1131,18 @@ body.scroll-locked { overflow: hidden; }
 .popup-actions { display: flex; justify-content: flex-end; margin-top: 12px; }
 .popup-btn.danger { background: var(--danger-deep); border-color: var(--danger-deep); color: #fff; }  /* 评审：白字 3.96→6.47 */
 .popup-btn:hover { opacity: .9; }
+
+/* ── 分享当前位置（反馈 #34，长按顶栏标题）：位置名 + 二维码 + 网址 + 复制/系统分享 ── */
+.share-card { text-align: center; }
+.share-loc { font-size: var(--fs-14); font-weight: 600; color: var(--heading); margin-bottom: 12px; }
+/* 二维码底色由 SVG 自带的白底+留白区提供（扫码需要；不叠主题底色，否则暗夜主题扫不出来） */
+.share-qr { display: inline-block; }
+.share-qr svg { display: block; width: 168px; height: 168px; max-width: 52vw; max-height: 52vw; border-radius: var(--radius-sm); }
+.share-url {
+  margin-top: 12px; font-size: var(--fs-12); color: var(--text-soft); line-height: 1.6;
+  word-break: break-all; user-select: all;   /* 选中即整条网址，方便手动复制 */
+}
+.share-card .popup-actions { justify-content: center; gap: 8px; }
 
 /* ── 反馈表单 ── */
 .fb-hint { font-size: var(--fs-13); color: var(--text-soft); margin-bottom: 10px; line-height: 1.6; }

@@ -66,6 +66,7 @@ jobs:
           mkdir -p www/data/lifereading www/data/books www/data/morning
           cp index.html app.js style.css manifest.json sw.js sync.js update.js www/
           cp -r icons www/
+          cp -r vendor www/   # 二维码生成库（分享弹窗用；纯本地，无网络依赖）
           # APK 内 manifest 版本用 package.json 值重写（App 内更新检查的本地版本依据；
           # 必须在自动递增版本之后执行，否则 APK 内版本号停留在递增前的旧值）
           VERSION=$(node -p "require('./package.json').version")

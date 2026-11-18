@@ -28,7 +28,7 @@ const DRY = process.argv.includes("--check");
 /* 部署白名单：与 AGENTS.md「部署（Cloudflare Pages）」节一致
    （= 运行时文件，排除 scripts/ node_modules .git .github/ config/ resources/ docs/） */
 const FILES = ["index.html", "style.css", "app.js", "sync.js", "update.js", "sw.js", "manifest.json"];
-const DIRS = ["icons", "data"];
+const DIRS = ["icons", "data", "vendor"];
 
 const md5 = (p) => createHash("md5").update(readFileSync(p)).digest("hex");
 
